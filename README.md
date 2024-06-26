@@ -90,8 +90,6 @@ pelfd &
 ```
 On the first-run, it will create a config file which you can modify:
 **~/.config/pelfd.json**, this is how your config would look after the first run:
-Sure! Here is the updated explanation with "by default" instead of "in this example":
-
 ```json
 {
   "options": {
