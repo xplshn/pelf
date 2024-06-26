@@ -6,7 +6,7 @@ PELF (Pack an ELF) is a toolset designed to simplify the process of turning your
 
 ## Tools Included
 
-### `pelf`
+### `pelf` ![pin](assets/pin.svg)
 `pelf` is the main tool used to create an `.AppBundle` from your binaries. It takes your executable files and packages them into a single file for easy distribution and execution.
 
 **Usage:**
@@ -30,7 +30,7 @@ pelf_linker [options] <AppBundle>
 ./pelf_extract [input_file] [output_directory]
 ```
 
-### `pelfd`
+### `pelfd` ![pin](assets/pin.svg)
 `pelfd` is a daemon written in Go that automates the installation of `.AppBundle` files. It handles the placement of your AppBundles in the appropriate directories, such as `.local/share/applications` and `.local/share/icons`.
 
 **Usage:**
@@ -38,7 +38,7 @@ pelf_linker [options] <AppBundle>
 pelfd [options]
 ```
 
-## Overlaying Bundles
+## Overlaying Bundles ![pin](assets/pin.svg)
 
 One of the key features of PELF is its ability to overlay bundles on top of each other. This means that programs inside one bundle can access binaries and libraries from other bundles. For example, if you bundle `wezterm` as a single file and add `wezterm-mux-server` to the same bundle using `--add-binary`, programs run by `wezterm` will be able to see all of the binaries and libraries inside the `wezterm` bundle.
 
@@ -50,7 +50,7 @@ This feature is particularly powerful because you can stack an infinite number o
 
 Using the `pelf_linker`, the `mpv.blob` can access binaries inside `spectrwm.blob` as well as its own binaries. By doing `mpv.blob --pbundle_link ani-cli`, you ensure that `mpv.blob` can access `ani-cli` and other utilities in the linked bundles.
 
-## Installation
+## Installation ![pin](assets/pin.svg)
 
 To install the PELF toolkit and its associated tools, follow these steps:
 
@@ -64,7 +64,7 @@ To install the PELF toolkit and its associated tools, follow these steps:
     ```
 2. Add ~/Programs to your $PATH in your .profile or .shrc (.kshrc|.ashrc|.bashrc)
 
-## Usage Examples
+## Usage Examples ![pin](assets/pin.svg)
 ### Creating an `.AppBundle`
 To create an `.AppBundle` from your binaries, use the `pelf` tool:
 ```sh
