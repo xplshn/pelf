@@ -2,7 +2,7 @@
 
 ## Overview
 
-PELF (Pack an ELF) is a toolset designed to simplify the process of turning your binaries into single-file executables, similar to AppImages. The format used by PELF is called `.AppBundle` or `.blob`.
+PELF (Pack an ELF) is a toolset designed to simplify the process of turning your binaries into single-file executables, similar to AppImages. The format used by PELF is called `.AppBundle` or `.blob`. The PELF files are portable across systems of the same architecture and ABI. Architecture and LIBC-independent bundles can be achieved using Wrappers.
 
 ## Tools Included
 
@@ -15,11 +15,11 @@ PELF (Pack an ELF) is a toolset designed to simplify the process of turning your
 ```
 
 ### `pelf_linker`
-`pelf_linker` is a utility that facilitates access to binaries inside an `.AppBundle` for other programs. It ensures that dependencies within the bundle are properly linked and accessible.
+`pelf_linker` is a utility that facilitates access to binaries inside an `.AppBundle` for other programs. It ensures that binaries and dependencies within the (open, overlayed) bundles are accesible to external programs. This relies on the concept of Bundle Overlays.
 
 **Usage:**
 ```sh
-pelf_linker [options] <AppBundle>
+pelf_linker [--export] [binary]
 ```
 
 ### `pelf_extract`
