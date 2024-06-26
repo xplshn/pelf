@@ -49,7 +49,7 @@ This feature is particularly powerful because you can stack an infinite number o
 - `wezterm.blob` contains some Lua programs and utilities.
 - `mpv.blob` contains `ani-cli`, `ani-skip`, `yt-dlp`, `fzf`, and `curl`.
 
-Using the `pelf_linker`, the `mpv.blob` can access binaries inside `spectrwm.blob` as well as its own binaries. By doing `mpv.blob --pbundle_link ani-cli`, you ensure that `mpv.blob` can access `ani-cli` and other utilities in the linked bundles.
+Using the `pelf_linker`, the `mpv.blob` can access binaries inside `spectrwm.blob` as well as its own binaries. By doing `mpv.blob --pbundle_link ani-cli`, you can launch an instance of the `ani-cli` included in the bundle, as well as ensure that it can access other utilities in the linked/stacked bundles.
 
 ## Installation ![pin](assets/pin.svg)
 To install the PELF toolkit, follow these steps:
