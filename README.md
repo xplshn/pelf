@@ -88,6 +88,33 @@ To start the `pelfd` daemon and have it automatically manage your `.AppBundle` f
 ```sh
 pelfd &
 ```
+On the first-run, it will create a config file which you can modify:
+**~/.config/pelfd.json**, this is how your config would look after the first run:
+Sure! Here is the updated explanation with "by default" instead of "in this example":
+
+```json
+{
+  "options": {
+    "directories_to_walk": [
+      "~/Programs"
+    ],
+    "probe_interval": 90,
+    "icon_dir": "/home/anto/.local/share/icons",
+    "app_dir": "/home/anto/.local/share/applications",
+    "probe_extensions": [
+      ".AppBundle",
+      ".blob"
+    ]
+  },
+  "tracker": {}
+}
+```
+- `"directories_to_walk"`: This is an array of directories that the `pelfd` daemon will monitor for `.AppBundle` or `.blob` files. By default, it is set to `["~/Programs"]`, meaning the daemon will only check for AppBundles in the `~/Programs` directory. You can add more directories to this array if you want the daemon to watch multiple locations.
+- `"probe_interval"`: This specifies the interval in seconds at which the `pelfd` daemon will check the specified directories for new or modified AppBundles. By default, it is set to `90` seconds.
+- `"icon_dir"`: This is the directory where icons extracted from .AppBundles will be copied to `pelfd`. By default, it is set to `"~/.local/share/icons"`, which is a common location for application icons on modern Unix clones.
+- `"app_dir"`: This is the directory where the desktop files extracted from .AppBundles will be copied to by `pelfd`. By default, it is set to `"~/.local/share/applications"`. `.desktop` files provide information about the application, such as its name, icon, and command to execute. By default, it is set to `"~/.local/share/applications"`, which is the standard location for application shortcuts on modern Unix clones.
+- `"probe_extensions"`: This is an array of file extensions that `pelfd` will look for when probing the specified directories. By default, it is set to `[".AppBundle", ".blob"]`, meaning the daemon will only consider files with these extensions as AppBundles. (CASE-SENSITIVE)
+- The "tracker" object in the config file is used to store information about the tracked AppBundles, this way, when an AppBundle is removed, its files can be safely "uninstalled", etc.
 
 ## Contributing
 Contributions to PELF are welcome! If you find a bug or have a feature request, please open an Issue. For direct contributions, fork the repository and submit a pull request with your changes.
