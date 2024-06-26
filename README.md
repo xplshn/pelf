@@ -4,6 +4,8 @@
 PELF (Pack an ELF) is a toolset designed to simplify the process of turning your binaries into single-file executables, similar to AppImages. The format used by PELF is called `.AppBundle` or `.blob`. The PELF files are portable across systems of the same architecture and ABI. Architecture and LIBC-independent bundles can be achieved using Wrappers.
 
 If you only intend on using .AppBundles, not necesarily work with them, you don't need any of this. You can get started by simply executing the bundle. The helper daemon is optional.
+![SpectrWM window manager AppBundle/.blob that contains all of my X utils including Wezterm](https://github.com/xplshn/pelf/assets/114888778/b3b99c24-825d-4be0-a1c8-ea9433776692)
+As you can see, I have my window manager and all of my X utilities, including my terminal (Wezterm) as a single file, named SpectrWM.AppBundle. You can also see the concept of overlays in action, the `ani-cli` binary inside of the mpv.AppBundle, will have access to the ROFI binary packed in my SpectrWM.AppBundle, because it will be running as a child of that process. There is PATH and LD_LIBRARY_PATH inheritance.
 
 ## Tools Included
 ### `pelf` ![pin](assets/pin.svg)
