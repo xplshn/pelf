@@ -18,7 +18,7 @@
 
 # Check if the required arguments are provided
 if [ "$#" -lt 2 ]; then
-    echo "Usage: $0 [ELF_SRC_PATH] [DST_PATH.blob] <--add-library [LIB_PATH]> <--add-binary [BIN_PATH]> <--add-metadata [icon128x128.xpm|icon128x128.png|icon.svg|app.desktop]>  <--add-arbitrary [DIR|FILE]>" >&2
+    echo "Usage: $0 [BINARY] [OUTPUT.AppBundle] <--add-library [LIB_PATH]> <--add-binary [BIN_PATH]> <--add-metadata [icon128x128.xpm|icon128x128.png|icon.svg|app.desktop]>  <--add-arbitrary [DIR|FILE]>" >&2
     exit 1
 fi
 
