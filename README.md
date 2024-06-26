@@ -2,7 +2,7 @@
 
 ## Overview
 
-PELF (Pack an ELF) is a toolset designed to simplify the process of turning your binaries into single-file executables, similar to AppImages. The format used by PELF is called `.AppBundle` or `.blob`. This README provides an overview of the tools included in the PELF project and their functionalities.
+PELF (Pack an ELF) is a toolset designed to simplify the process of turning your binaries into single-file executables, similar to AppImages. The format used by PELF is called `.AppBundle` or `.blob`.
 
 ## Tools Included
 
