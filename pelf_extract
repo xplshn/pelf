@@ -2,7 +2,7 @@
 
 # Check if the required arguments are provided
 if [ $# -lt 2 ]; then
-    echo "Usage: $0 <input_file> <output_directory>"
+    echo "Usage: $0 [input_file] [output_directory]"
     exit 1
 fi
 
