@@ -121,3 +121,7 @@ Contributions to PELF are welcome! If you find a bug or have a feature request, 
 
 ## License
 PELF is licensed under the 3BSD License. See the [LICENSE](LICENSE) file for more details.
+
+### Special thanks to:
+- [Chris DeBoy](https://codeberg.org/chris_deboy)
+- [Jade Mandelbrot+ for writting the README.md](https://hf.co/chat/assistant/667646ec7dd4a03abaf916f4)
