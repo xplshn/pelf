@@ -66,19 +66,19 @@ add_arbitrary() {
 
 add_metadata() {
     case "$1" in
-            *.png | *.xpm | *.svg)
-                mkdir -p "$tmp_dir"/bundledMetadata || { echo "Failed to create directory"; exit 1; }
-                cp -LR -- "$1" "$tmp_dir"/bundledMetadata/icon."${1##*.}" || { echo "Failed to copy icon file"; exit 1; }
-                ;;
-            *.desktop)
-                cp -LR "$1" "$tmp_dir"/bundledMetadata/app.desktop || { echo "Failed to copy desktop file"; exit 1; }
-                ;;
-            *)
-                printf "File extension not supported.\n
-                        Note: If you supply an icon, size **SHOULD** be 128x128"
-                exit 1
-                ;;
-        esac
+        *.png | *.xpm | *.svg)
+            mkdir -p "$tmp_dir/bundledMetadata" || { echo "Failed to create directory"; exit 1; }
+            cp -LR -- "$1" "$tmp_dir/bundledMetadata/icon.${1##*.}" || { echo "Failed to copy icon file"; exit 1; }
+            ;;
+        *.desktop)
+            mkdir -p "$tmp_dir/bundledMetadata" || { echo "Failed to create directory"; exit 1; }
+            cp -LR -- "$1" "$tmp_dir/bundledMetadata/app.desktop" || { echo "Failed to copy desktop file"; exit 1; }
+            ;;
+        *)
+            printf "File extension not supported.\nNote: If you supply an icon, size **SHOULD** be 128x128\n"
+            exit 1
+            ;;
+    esac
 }
 
 shift 2 # To access --(add)itional arguments
