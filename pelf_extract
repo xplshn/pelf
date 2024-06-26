@@ -1,0 +1,24 @@
+#!/bin/sh
+
+# Check if the required arguments are provided
+if [ $# -lt 2 ]; then
+    echo "Usage: $0 <input_file> <output_directory>"
+    exit 1
+fi
+
+INPUT_FILE="$1"
+TMPDIR="$2"
+
+# Find the line number where the archive starts
+ARCHIVE_MARKER=$(awk '/^__ARCHIVE_MARKER__/ { print NR + 1; exit }' "$INPUT_FILE")
+
+# Create the temporary directory if it doesn't exist
+mkdir -p "$TMPDIR"
+
+# Extract the base64-encoded archive and decode it
+tail -n +$ARCHIVE_MARKER "$INPUT_FILE" | base64 -d | tar -xzf - -C "$TMPDIR" || {
+    echo "Extraction failed" >&2
+    exit 1
+}
+
+echo "Files extracted successfully to $TMPDIR"

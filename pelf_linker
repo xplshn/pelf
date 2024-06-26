@@ -1,0 +1,59 @@
+#!/bin/sh
+
+# Function to concatenate all *_bindir environment variables into PELF_BINDIRS
+
+vval=""
+PELF_BINDIRS=""
+PELF_LIBDIRS=""
+
+concatenate_bindirs() {
+    # Target any variable ending with _bindir
+    vars="$(env | grep ".*_bindir=" | cut -f 1 -d '=')"
+    for v in $vars; do
+        # Use eval to get the value of the variable
+        eval "vval=\$$v"
+        # Append the value to PELF_BINDIRS, ensuring to add a colon if it's not the first entry
+        if [ -z "$PELF_BINDIRS" ]; then
+            PELF_BINDIRS="$vval"
+        else
+            PELF_BINDIRS="$PELF_BINDIRS:$vval"
+        fi
+    done
+
+    # Print the concatenated PELF_BINDIRS
+    if [ -z "$1" ]; then
+        echo "PELF_BINDIRS=\"$PELF_BINDIRS\""
+    fi
+}
+
+# Function to concatenate all *_bindir environment variables into PELF_LIBDIRS
+concatenate_libdirs() {
+    # Target any variable ending with _bindir
+    vars="$(env | grep ".*_libs=" | cut -f 1 -d '=')"
+    for v in $vars; do
+        # Use eval to get the value of the variable
+        eval "vval=\$$v"
+        # Append the value to PELF_LIBDIRS, ensuring to add a colon if it's not the first entry
+        if [ -z "$PELF_LIBDIRS" ]; then
+            PELF_LIBDIRS="$vval"
+        else
+            PELF_LIBDIRS="$PELF_LIBDIRS:$vval"
+        fi
+    done
+
+    # Print the concatenated PELF_LIBDIRS
+    if [ -z "$1" ]; then
+        echo "PELF_LIBDIRS=\"$PELF_LIBDIRS\""
+    fi
+}
+
+# Call the functions
+concatenate_bindirs "$1"
+concatenate_libdirs "$1"
+
+if [ "$1" = "--export" ]; then
+    export PELF_LIBDIRS="$PELF_LIBDIRS"
+    export PELF_BINDIRS="$PELF_BINDIRS"
+else
+    LD_LIBRARY_PATH="$PELF_LIBDIRS" PATH="$PATH:$PELF_BINDIRS" "$@"
+fi
