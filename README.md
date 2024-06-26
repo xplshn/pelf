@@ -1,5 +1,5 @@
 # PELF
-[![Go Report Card](https://goreportcard.com/badge/github.com/xplshn/pelf)](https://goreportcard.com/report/github.com/xplshn/pelf)
+<!-- [![Go Report Card](https://goreportcard.com/badge/github.com/xplshn/pelf)](https://goreportcard.com/report/github.com/xplshn/pelf) -->
 ![License](https://img.shields.io/github/license/xplshn/pelf)
 ![GitHub code size in bytes](https://img.shields.io/github/languages/code-size/xplshn/pelf)
 
