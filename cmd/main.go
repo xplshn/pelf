@@ -122,14 +122,13 @@ func processBundle(config Config, homeDir string) {
 		log.Printf("Scanning directory: %s", dir)
 
 		for _, ext := range options.ProbeExtensions {
-			bundles, err := filepath.Glob(filepath.Join(dir, "*"+strings.ToLower(ext)))
+			bundles, err := filepath.Glob(filepath.Join(dir, "*"+ext))
 			if err != nil {
 				log.Printf("Failed to scan directory %s for %s files: %v", dir, ext, err)
 				continue
 			}
 
 			for _, bundle := range bundles {
-				bundle = strings.ToLower(bundle)
 				// VERBOSITY: log.Printf("Found bundle: %s", bundle)
 				existing[bundle] = struct{}{}
 
