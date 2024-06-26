@@ -1,22 +1,20 @@
 #!/bin/sh
 
-# shellcheck disable=SC2034
-# shellcheck disable=SC3028
-
 # PELF. Pack an ELF.
 # PELF receives a binary as its first argument and an output as its second argument. It will pack all the necessary libraries that it needs to run, except the libC and LD. Generated files may include optional files inside, be it a library, binary, folder, icons, desktop file, etc.
+
 
 # Copyright <2024> xplshn
 # 
 # Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
-# 
 # 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
-# 
 # 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
-# 
 # 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
-# 
+#
 # THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS “AS IS” AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+# shellcheck disable=SC3028
+# In POSIX sh, RANDOM is undefined.
 
 # Check if the required arguments are provided
 if [ "$#" -lt 2 ]; then
@@ -27,7 +25,7 @@ fi
 # Create a temporary directory for bundling the files
 outer_tmp_dir="/tmp/pelf_$(date '+%s%M%S')_$RANDOM"
 tmp_dir="$outer_tmp_dir/pelf_$(date '+%s%M%S')_$RANDOM"
-mkdir -p "$tmp_dir/bin" "$tmp_dir/libs" || exit 1
+mkdir -p "$tmp_dir/bin" "$tmp_dir/lib" || exit 1
 trap 'rm -rf "$outer_tmp_dir"' EXIT
 
 src="$1"
@@ -44,14 +42,14 @@ add_thelibs() {
      /=>/ && $3 != first_word { print $3 }
  ' | while read -r lib; do
      # Copy the library to the temporary directory
-     cp -L "$lib" "$tmp_dir/libs" || exit 1
+     cp -L "$lib" "$tmp_dir/lib" || exit 1
  done
 }
 
 # Function to handle adding libraries
 add_library() {
     lib="$1"
-    cp -L "$lib" "$tmp_dir/libs" || exit 1
+    cp -L "$lib" "$tmp_dir/lib" || exit 1
     add_thelibs "$lib" || exit 1
 }
 
@@ -121,7 +119,7 @@ if ! tar -C "$tmp_dir" -czf "$outer_tmp_dir/archive.tar.gz" .; then
     exit 1
 fi
 
-# Create a self-extracting script # CAN I USE THE SED HERE? sed -i "s/__ENTRY_POINT__/$basename_src/g" your_file
+# Create a self-extracting script
 LOADER_SCRIPT=$(sed "s|__ENTRY_POINT__|$basename_src|g" <<'END_OF_LOADER_SCRIPT'
 #!/bin/sh
 # Get the binary's name
@@ -144,38 +142,24 @@ cleanup() {
 }
 # Set up the trap
 trap cleanup EXIT
-###########################################################
+##############################
 
-# BASH version
-#set_tmpdir_from_env() {
-#    # Construct the variable name by appending _bindir to $rEXENAME
-#    var_name="${rEXE_NAME}_bindir"
-#
-#    # Check if the constructed variable name exists and is not empty
-#    if [ -n "${!var_name}" ]; then
-#        # Set TMPDIR to the directory name of the constructed variable
-#        TMPDIR="$(dirname "${!var_name}")"
-#        found_runningInstance=1
-#        return
-#    fi
-#}
-
-set_tmpdir_from_env() {
-    # Construct the variable name by appending _bindir to $rEXENAME
-    var_name="${rEXE_NAME}_bindir"
-
-    # Check if the constructed variable name exists and is not empty
-    eval "var_value=\${$var_name}"
-    if [ -d "$var_value" ]; then
-        # Set TMPDIR to the directory name of the constructed variable
-        TMPDIR="$(dirname "$var_value")"
-        found_runningInstance=1
-        return
-    fi
+set_tmpdir_from_env() {                                                     # BASH version. For reference, because its clearer
+    # Construct the variable name by appending _bindir to $rEXENAME         # set_tmpdir_from_env() {
+    var_name="${rEXE_NAME}_bindir"                                          # # Construct the variable name by appending _bindir to $rEXENAME
+                                                                            # var_name="${rEXE_NAME}_bindir"
+    # Check if the constructed variable name exists and is not empty        # # Check if the constructed variable name exists and is not empty
+    eval "var_value=\${$var_name}"                                          # if [ -n "${!var_name}" ]; then
+    if [ -d "$var_value" ]; then                                            #   # Set TMPDIR to the directory name of the constructed variable
+        # Set TMPDIR to the directory name of the constructed variable      #   TMPDIR="$(dirname "${!var_name}")"
+        TMPDIR="$(dirname "$var_value")"                                    #   found_runningInstance=1
+        found_runningInstance=1                                             #   return
+        return                                                              # fi
+    fi                                                                      # }
 }
 
 set_tmpdir_from_env
-if [ -z "$found_runningInstance" ] || [ "$found_runningInstance" != "1" ]; then
+if [ -z "$found_runningInstance" ] || [ "$found_runningInstance" != "1" ] && [ "$REUSE_INSTANCES" != "1" ]; then
         # Find the start position of the archive
         ARCHIVE_MARKER=$(awk '/^__ARCHIVE_MARKER__/ { print NR + 1; exit }' "$0")
 
@@ -202,7 +186,7 @@ is_library_in_system() {
 
 # Check if USE_SYSTEM_LIBRARIES is set to 1 or doesn't exist
 if [ "${USE_SYSTEM_LIBRARIES:-0}" -eq 1 ]; then
-    for lib_file in "$TMPDIR/libs/"*; do
+    for lib_file in "$TMPDIR/lib/"*; do
         lib_name=$(basename "$lib_file")
 
         if is_library_in_system "$lib_name"; then
@@ -244,7 +228,7 @@ mv_u() {
 if [ "$(ls -1 "$TMPDIR"/bin | wc -l)" -gt 1 ]; then
         if [ -z "$found_runningInstance" ] || [ "$found_runningInstance" != "1" ]; then
                         export "$(echo "$rEXE_NAME" | sed -E 's/[-.]([a-zA-Z])/\U\1/g; s/[-.]//g')_bindir"="$TMPDIR/bin"
-                        export "$(echo "$rEXE_NAME" | sed -E 's/[-.]([a-zA-Z])/\U\1/g; s/[-.]//g')_libs"="$TMPDIR/libs"
+                        export "$(echo "$rEXE_NAME" | sed -E 's/[-.]([a-zA-Z])/\U\1/g; s/[-.]//g')_lib"="$TMPDIR/lib"
         fi
         xPATH="$TMPDIR/bin:$PATH"
         USE_BULKLIBS=0
@@ -256,7 +240,7 @@ case "$1" in
     --pbundle_help)
         printf "Description: Pack an ELF\n"
         printf "Usage:\n <--pbundle_link <binary>|--pbundle_help|--pbundle_xpmIcon|--pbundle_pngIcon|--pbundle_svgIcon|--pbundle_desktop> <args...>\n"
-        printf "EnvVars:\n USE_BULKLIBS=[0,1]\n USE_SYSTEM_LIBRARIES=[1,0]\n SHOW_DISCARDPROCESS=[0,1]\n HELP_PAGE_LIST_PACKEDFILES=[0,1]\n"
+        printf "EnvVars:\n USE_BULKLIBS=[0,1]\n USE_SYSTEM_LIBRARIES=[1,0]\n SHOW_DISCARDPROCESS=[0,1]\n HELP_PAGE_LIST_PACKEDFILES=[0,1]\n REUSE_INSTANCES=[0,1]\n"
         if [ "$HELP_PAGE_LIST_PACKEDFILES" = "1" ]; then
             ls "$TMPDIR"/*
         fi
@@ -307,11 +291,11 @@ esac
 # Execute the binary with extracted libraries using LD_LIBRARY_PATH
 if [ "${USE_BULKLIBS:-0}" -eq 1 ]; then
    mkdir -p "$LIBS_BULKDIR"
-   mv_u "$TMPDIR/libs" "$LIBS_BULKDIR"
+   mv_u "$TMPDIR/lib" "$LIBS_BULKDIR"
    PATH="$PATH:$xPATH" LD_LIBRARY_PATH="$LIBS_BULKDIR" SELF_TEMPDIR="$TMPDIR" "$binDest" "$@" || exit 1
    EXE_NAME_PID="$!"
 else
-   PATH="$PATH:$xPATH" LD_LIBRARY_PATH="$TMPDIR/libs" SELF_TEMPDIR="$TMPDIR" "$binDest" "$@" || exit 1
+   PATH="$PATH:$xPATH" LD_LIBRARY_PATH="$TMPDIR/lib" SELF_TEMPDIR="$TMPDIR" "$binDest" "$@" || exit 1
    EXE_NAME_PID="$!"
 fi
 
