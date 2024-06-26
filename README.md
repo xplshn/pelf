@@ -1,6 +1,8 @@
 # PELF
+[![Go Report Card](https://goreportcard.com/badge/github.com/xplshn/pelf)](https://goreportcard.com/report/github.com/xplshn/pelf)
+![License](https://img.shields.io/github/license/xplshn/pelf)
+![GitHub code size in bytes](https://img.shields.io/github/languages/code-size/xplshn/pelf)
 
-## Overview
 PELF (Pack an ELF) is a toolset designed to simplify the process of turning your binaries into single-file executables, similar to AppImages. The format used by PELF is called `.AppBundle` or `.blob`. The PELF files are portable across systems of the same architecture and ABI. Architecture and LIBC-independent bundles can be achieved using Wrappers.
 
 If you only intend on using .AppBundles, not necesarily work with them, you don't need any of this. You can get started by simply executing the bundle. The helper daemon is optional.
