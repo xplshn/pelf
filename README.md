@@ -1,11 +1,11 @@
 # PELF
 
 ## Overview
-
 PELF (Pack an ELF) is a toolset designed to simplify the process of turning your binaries into single-file executables, similar to AppImages. The format used by PELF is called `.AppBundle` or `.blob`. The PELF files are portable across systems of the same architecture and ABI. Architecture and LIBC-independent bundles can be achieved using Wrappers.
 
-## Tools Included
+If you only intend on using .AppBundles, not necesarily work with them, you don't need any of this. You can get started by simply executing the bundle. The helper daemon is optional.
 
+## Tools Included
 ### `pelf` ![pin](assets/pin.svg)
 `pelf` is the main tool used to create an `.AppBundle` from your binaries. It takes your executable files and packages them into a single file for easy distribution and execution.
 
@@ -39,7 +39,6 @@ pelfd [options]
 ```
 
 ## Overlaying Bundles ![pin](assets/pin.svg)
-
 One of the key features of PELF is its ability to overlay bundles on top of each other. This means that programs inside one bundle can access binaries and libraries from other bundles. For example, if you bundle `wezterm` as a single file and add `wezterm-mux-server` to the same bundle using `--add-binary`, programs run by `wezterm` will be able to see all of the binaries and libraries inside the `wezterm` bundle.
 
 This feature is particularly powerful because you can stack an infinite number of PELF bundles. For instance:
@@ -51,8 +50,7 @@ This feature is particularly powerful because you can stack an infinite number o
 Using the `pelf_linker`, the `mpv.blob` can access binaries inside `spectrwm.blob` as well as its own binaries. By doing `mpv.blob --pbundle_link ani-cli`, you ensure that `mpv.blob` can access `ani-cli` and other utilities in the linked bundles.
 
 ## Installation ![pin](assets/pin.svg)
-
-To install the PELF toolkit and its associated tools, follow these steps:
+To install the PELF toolkit, follow these steps:
 
 1. Clone the repository:
     ```sh
