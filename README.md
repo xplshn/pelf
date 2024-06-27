@@ -82,7 +82,7 @@ pelf_linker ytfzf
 ### Extracting an `.AppBundle`
 To extract the contents of an `.AppBundle` to a folder, use the `pelf_extract` tool:
 ```sh
-./pelf_extract openArena.AppBundle ./openArena.bundleDir
+./pelf_extract openArena.AppBundle ./openArena_bundleDir
 ```
 
 ### Running the `pelfd` Daemon
