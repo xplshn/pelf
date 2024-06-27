@@ -35,7 +35,7 @@ pelf_linker [--export] [binary]
 ```
 
 ### `pelfd` ![pin](assets/pin.svg)
-`pelfd` is a daemon written in Go that automates the installation of `.AppBundle` files. It handles the placement of your AppBundles in the appropriate directories, such as `.local/share/applications` and `.local/share/icons`.
+`pelfd` is a daemon written in Go that automates the "installation" of `.AppBundle` files. It automatically puts the metadata of your .AppBundles in the appropriate directories, such as `.local/share/applications` and `.local/share/icons`. So that the .AppBundles you put in ~/Programs (for example) will appear in your menus.
 
 **Usage:**
 ```sh
