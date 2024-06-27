@@ -39,7 +39,7 @@ pelf_linker [--export] [binary]
 
 **Usage:**
 ```sh
-pelfd [options]
+pelfd &
 ```
 
 ## Overlaying Bundles ![pin](assets/pin.svg)
