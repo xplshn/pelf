@@ -1,0 +1,36 @@
+--- ./pelf	2024-06-28 01:59:45.397684196 -0300
++++ ./editions/pelf_small	2024-06-28 01:41:16.802960774 -0300
+@@ -113,9 +113,8 @@
+ # Copy the executable to the temporary directory
+ add_binary "$src" || exit 1
+ 
+-# Create a tar archive of the executable, libraries and additional files.
+-if ! tar -C "$tmp_dir" -czf "$outer_tmp_dir/archive.tar.gz" .; then
+-    echo "Compression failed" >&2
++if ! tar -C "$tmp_dir" -cf - . | gzip -9 > "$outer_tmp_dir/archive.tar.gz"; then
++    echo "Compression failed. Do you have gzip?" >&2
+     exit 1
+ fi
+ 
+@@ -174,8 +173,8 @@
+ 
+         # Construct the variable name by appending _bindir to $rEXENAME
+         var_name="${rEXE_NAME}_bindir"
+-        # Decode the base64-encoded archive and extract it
+-        mkdir -p "$TMPDIR" && tail -n +$ARCHIVE_MARKER "$0" | base64 -d | tar -xzf - -C "$TMPDIR" >/dev/null 2>&1 || {
++        # Find the archive and extract it
++        mkdir -p "$TMPDIR" && tail -n +$ARCHIVE_MARKER "$0" | tar -xzf - -C "$TMPDIR" >/dev/null 2>&1 || {
+             # Use eval to check if the constructed variable name exists and is not empty
+             echo "Extraction failed" >&2
+             eval "var_value=\"\${$var_name}\""
+@@ -313,8 +312,8 @@
+ )
+ 
+ echo "$LOADER_SCRIPT" > "$dst"
+-# Append the base64-encoded archive to the self-extracting script
+-base64 <"$outer_tmp_dir/archive.tar.gz" >> "$dst" || exit 1
++# Append the archive to the self-extracting script
++cat "$outer_tmp_dir/archive.tar.gz" >> "$dst" || exit 1
+ 
+ # Make the self-extracting script executable
+ chmod +x "$dst" || exit 1

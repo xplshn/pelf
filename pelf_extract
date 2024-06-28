@@ -1,13 +1,39 @@
 #!/bin/sh
 
+# Function to display usage information
+usage() {
+    echo "Usage: $0 <--raw> [input_file] [output_directory]"
+}
+
+# Parse command line options
+RAW_MODE=false
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --raw)
+            RAW_MODE=true
+            shift
+            ;;
+        *)
+            break
+            ;;
+    esac
+done
+
 # Check if the required arguments are provided
 if [ $# -lt 2 ]; then
-    echo "Usage: $0 [input_file] [output_directory]"
+    usage
     exit 1
 fi
 
-INPUT_FILE="$1"
-TMPDIR="$2"
+# Determine input file and output directory
+if $RAW_MODE; then
+    INPUT_FILE="$1"
+    TMPDIR="$2"
+else
+    INPUT_FILE="$2"
+    TMPDIR="$3"
+fi
 
 # Find the line number where the archive starts
 ARCHIVE_MARKER=$(awk '/^__ARCHIVE_MARKER__/ { print NR + 1; exit }' "$INPUT_FILE")
@@ -15,10 +41,16 @@ ARCHIVE_MARKER=$(awk '/^__ARCHIVE_MARKER__/ { print NR + 1; exit }' "$INPUT_FILE
 # Create the temporary directory if it doesn't exist
 mkdir -p "$TMPDIR"
 
-# Extract the base64-encoded archive and decode it
-tail -n +$ARCHIVE_MARKER "$INPUT_FILE" | base64 -d | tar -xzf - -C "$TMPDIR" || {
-    echo "Extraction failed" >&2
-    exit 1
-}
+# Extract the archive based on whether --raw is used
+if $RAW_MODE; then
+    # Just copy the archive to the output directory without base64 decoding
+    tail -n +"$ARCHIVE_MARKER" "$INPUT_FILE" > "$TMPDIR/archive.tar.gz"
+else
+    # Extract the base64-encoded archive and decode it
+    tail -n +"$ARCHIVE_MARKER" "$INPUT_FILE" | base64 -d | tar -xzf - -C "$TMPDIR" >/dev/null 2>&1 || {
+        echo "Extraction failed" >&2
+        exit 1
+    }
+fi
 
 echo "Files extracted successfully to $TMPDIR"
