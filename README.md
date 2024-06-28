@@ -5,7 +5,7 @@
 
 PELF (Pack an ELF) is a toolset designed to simplify the process of turning your binaries into single-file executables, similar to AppImages. The format used by PELF is called `.AppBundle` or `.blob`. The PELF files are portable across systems of the same architecture and ABI. Architecture and LIBC-independent bundles can be achieved using Wrappers.
 
-If you only intend on using .AppBundles, not necesarily work with them, you don't need any of this. You can get started by simply executing the bundle. The helper daemon is optional.
+If you only intend on using .AppBundles, not necesarily work with them, you don't need any of this. You can get started by simply executing the bundle. The helper daemon is optional. NOTE: Your tar command must support GZIP archives. (which covers most tar implementations, including the BSDs and Busybox's)
 ![SpectrWM window manager AppBundle/.blob that contains all of my X utils including Wezterm](https://github.com/xplshn/pelf/assets/114888778/b3b99c24-825d-4be0-a1c8-ea9433776692)
 As you can see, I have my window manager and all of my X utilities, including my terminal (Wezterm) as a single file, named SpectrWM.AppBundle. You can also see the concept of overlays in action, the `ani-cli` binary inside of the mpv.AppBundle, will have access to the ROFI binary packed in my SpectrWM.AppBundle, because it will be running as a child of that process. There is PATH and LD_LIBRARY_PATH inheritance.
 
@@ -47,11 +47,11 @@ One of the key features of PELF is its ability to overlay bundles on top of each
 
 This feature is particularly powerful because you can stack an infinite number of PELF bundles. For instance:
 
-- `spectrwm.blob` contains `dmenu`, `xclock`, and various X utilities like `scrot` and `rofi`.
-- `wezterm.blob` contains some Lua programs and utilities.
-- `mpv.blob` contains `ani-cli`, `ani-skip`, `yt-dlp`, `fzf`, and `curl`.
+- `spectrwm.AppBundle` contains `dmenu`, `xclock`, and various X utilities like `scrot` and `rofi`.
+- `wezterm.AppBundle` contains some Lua programs and utilities.
+- `mpv.AppBundle` contains `ani-cli`, `ani-skip`, `yt-dlp`, `fzf`, and `curl`.
 
-Using the `pelf_linker`, the `mpv.blob` can access binaries inside `spectrwm.blob` as well as its own binaries. By doing `mpv.blob --pbundle_link ani-cli`, you can launch an instance of the `ani-cli` included in the bundle, as well as ensure that it can access other utilities in the linked/stacked bundles.
+Using the `pelf_linker`, the `mpv.AppBundle` can access binaries inside `spectrwm.AppBundle` as well as its own binaries. By doing `mpv.AppBundle --pbundle_link ani-cli`, you can launch an instance of the `ani-cli` included in the bundle, as well as ensure that it can access other utilities in the linked/stacked bundles.
 
 ## Installation ![pin](assets/pin.svg)
 To install the PELF toolkit, follow these steps:
@@ -73,11 +73,16 @@ To create an `.AppBundle` from your binaries, use the `pelf` tool:
 ./pelf /usr/bin/wezterm wezterm.AppBundle --add-binary /usr/bin/wezterm-mux-server --add-metadata /usr/share/applications/wezterm.desktop --add-metadata ./wezterm128x128.png --add-metadata ./wezterm128x128.svg --add-metadata ./wezterm128x128.xpm
 ```
 
-### Linking an `.AppBundle`
-To make the binaries inside of your (open & overlayed) PELFs visible and usable to other programs, you can use the `pelf_linker` tool:
+### Using binaries inside of an `.AppBundle` from outside it, or from other programs
+To leverage access to the binaries inside of your (open & overlayed) PELFs to other programs, you can use the `pelf_linker` tool:
 ```sh
 pelf_linker ytfzf
 ```
+Overlayed access: Here we made ytfzf be able to access all the PATHs set in $PELF_BINDIRS
+```sh
+mpv.AppBundle --pbundle_link ytfzf
+```
+Scoped access: In this other example, we made ytfzf gain access to the programs inside of the example mpv.AppBundle.
 
 ### Extracting an `.AppBundle`
 To extract the contents of an `.AppBundle` to a folder, use the `pelf_extract` tool:
@@ -115,6 +120,9 @@ On the first-run, it will create a config file which you can modify:
 - `"app_dir"`: This is the directory where the desktop files extracted from .AppBundles will be copied to by `pelfd`. By default, it is set to `"~/.local/share/applications"`. `.desktop` files provide information about the application, such as its name, icon, and command to execute. By default, it is set to `"~/.local/share/applications"`, which is the standard location for application shortcuts on modern Unix clones.
 - `"probe_extensions"`: This is an array of file extensions that `pelfd` will look for when probing the specified directories. By default, it is set to `[".AppBundle", ".blob"]`, meaning the daemon will only consider files with these extensions as AppBundles. (CASE-SENSITIVE)
 - The "tracker" object in the config file is used to store information about the tracked AppBundles, this way, when an AppBundle is removed, its files can be safely "uninstalled", etc.
+
+### Editions!
+.AppBundles may come archived with different formats or encodings. For example, the included `pelf_small` edition, will create bundles without using base64 and using GZIP directly with -9, for the best available compression, it may even end up being faster, due to avoiding base64. Remember to ALWAYS signal which edition a bundle was made with by adding it to the bundle's name! For example, .raw.AppBundle if your PELF tool was patched/modified to remove base64 encoding, .small.AppBundle if you used the pelf_small example included here.
 
 ## Contributing
 Contributions to PELF are welcome! If you find a bug or have a feature request, please open an Issue. For direct contributions, fork the repository and submit a pull request with your changes.
