@@ -123,8 +123,8 @@ fi
 LOADER_SCRIPT=$(sed "s|__ENTRY_POINT__|$basename_src|g" <<'END_OF_LOADER_SCRIPT'
 #!/bin/sh
 # Get the binary's name
-rEXE_NAME="$(basename "$0" .blob)"
 [ -n "$EXE_NAME" ] || EXE_NAME="__ENTRY_POINT__"
+rEXE_NAME="$(echo "$EXE_NAME" | tr -dc '[:alnum:]_' | tr '[:upper:]' '[:lower:]')"
 TMPDIR="/tmp/.pelfbundles/pbundle_$rEXE_NAME$(date '+%s%M%S')_$RANDOM"
 LIBS_BULKDIR="/tmp/pelfbundle_libs-bulkdir"
 cleanup() {
