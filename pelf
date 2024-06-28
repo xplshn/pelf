@@ -144,18 +144,27 @@ cleanup() {
 trap cleanup EXIT
 ##############################
 
-set_tmpdir_from_env() {                                                     # BASH version. For reference, because its clearer
-    # Construct the variable name by appending _bindir to $rEXENAME         # set_tmpdir_from_env() {
-    var_name="${rEXE_NAME}_bindir"                                          # # Construct the variable name by appending _bindir to $rEXENAME
-                                                                            # var_name="${rEXE_NAME}_bindir"
-    # Check if the constructed variable name exists and is not empty        # # Check if the constructed variable name exists and is not empty
-    eval "var_value=\${$var_name}"                                          # if [ -n "${!var_name}" ]; then
-    if [ -d "$var_value" ]; then                                            #   # Set TMPDIR to the directory name of the constructed variable
-        # Set TMPDIR to the directory name of the constructed variable      #   TMPDIR="$(dirname "${!var_name}")"
-        TMPDIR="$(dirname "$var_value")"                                    #   found_runningInstance=1
-        found_runningInstance=1                                             #   return
-        return                                                              # fi
-    fi                                                                      # }
+# BASH edition! This is kept for reference since its tidy and readable
+# set_tmpdir_from_env() {
+#    var_name="${rEXE_NAME}_bindir"
+#    if [ -n "${!var_name}" ]; then
+#        TMPDIR="$(dirname "${!var_name}")"
+#        found_runningInstance=1
+#        return 0
+#    fi
+#    return 1
+#}
+set_tmpdir_from_env() {
+    var_name="${rEXE_NAME}_bindir"
+    if [ -n "$var_name" ]; then
+        eval "bindir=\$$var_name"
+        if [ -n "$bindir" ]; then
+            TMPDIR="$(dirname "$bindir")"
+            found_runningInstance=1
+            return 0
+        fi
+    fi
+    return 1
 }
 
 set_tmpdir_from_env
