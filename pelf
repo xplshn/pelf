@@ -238,7 +238,6 @@ fi
 binDest="$TMPDIR/bin/$EXE_NAME"
 case "$1" in
     --pbundle_help)
-        printf "Description: Pack an ELF\n"
         printf "Usage:\n <--pbundle_link <binary>|--pbundle_help|--pbundle_xpmIcon|--pbundle_pngIcon|--pbundle_svgIcon|--pbundle_desktop> <args...>\n"
         printf "EnvVars:\n USE_BULKLIBS=[0,1]\n USE_SYSTEM_LIBRARIES=[1,0]\n SHOW_DISCARDPROCESS=[0,1]\n HELP_PAGE_LIST_PACKEDFILES=[0,1]\n REUSE_INSTANCES=[0,1]\n"
         if [ "$HELP_PAGE_LIST_PACKEDFILES" = "1" ]; then
