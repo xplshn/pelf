@@ -115,7 +115,7 @@ add_binary "$src" || exit 1
 
 # Create a tar archive of the executable, libraries and additional files.
 if ! tar -C "$tmp_dir" -czf "$outer_tmp_dir/archive.tar.gz" .; then
-    echo "Extraction failed" >&2
+    echo "Compression failed" >&2
     exit 1
 fi
 
