@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"io"
-	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
@@ -42,7 +41,7 @@ type BundleEntry struct {
 }
 
 func main() {
-	log.Printf(tml.Sprintf("<blue><bold>INF:</bold></blue> Starting <green>pelfd</green> daemon"))
+	log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> Starting <green>pelfd</green> daemon"))
 
 	usr, err := user.Current()
 	if err != nil {
@@ -83,7 +82,7 @@ func loadConfig(configPath, homeDir string) Config {
 	file, err := os.Open(configPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			log.Printf(tml.Sprintf("<blue><bold>INF:</bold></blue> Config file does not exist: <green>%s</green>, creating a new one", configPath))
+			log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> Config file does not exist: <green>%s</green>, creating a new one", configPath))
 			saveConfig(config, configPath)
 			return config
 		}
@@ -121,7 +120,7 @@ func processBundle(config Config, homeDir string) {
 
 	for _, dir := range options.DirectoriesToWalk {
 		dir = strings.Replace(dir, "~", homeDir, 1)
-		log.Printf(tml.Sprintf("<blue><bold>INF:</bold></blue> Scanning directory: <green>%s</green>", dir))
+		log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> Scanning directory: <green>%s</green>", dir))
 
 		for _, ext := range options.ProbeExtensions {
 			bundles, err := filepath.Glob(filepath.Join(dir, "*"+ext))
@@ -131,13 +130,13 @@ func processBundle(config Config, homeDir string) {
 			}
 
 			for _, bundle := range bundles {
-				// VERBOSITY: log.Printf(tml.Sprintf("<blue><bold>INF:</bold></blue> Found bundle: <green>%s</green>", bundle))
+				// VERBOSITY: log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> Found bundle: <green>%s</green>", bundle))
 				existing[bundle] = struct{}{}
 
 				sha := computeSHA(bundle)
 				if entry, checked := entries[bundle]; checked {
 					if entry == nil {
-						// VERBOSITY: log.Printf(tml.Sprintf("<red><bold>ERR:</bold></red> Entry for bundle <yellow>%s</yellow> is nil, skipping", bundle))
+						// VERBOSITY: log.Println(tml.Sprintf("<red><bold>ERR:</bold></red> Entry for bundle <yellow>%s</yellow> is nil, skipping", bundle))
 						continue
 					}
 
@@ -149,7 +148,7 @@ func processBundle(config Config, homeDir string) {
 							// VERBOSITY: log.Fatalf(tml.Sprintf("<red><bold>ERR:</bold></red> Bundle is not executable: <yellow>%s</yellow>", bundle))
 							entries[bundle] = nil
 						}
-					} // VERBOSITY: else {log.Printf(tml.Sprintf("<yellow><bold>WRN:</bold></yellow> Bundle already processed and unchanged: <blue>%s</blue>", bundle))}
+					} // VERBOSITY: else {log.Println(tml.Sprintf("<yellow><bold>WRN:</bold></yellow> Bundle already processed and unchanged: <blue>%s</blue>", bundle))}
 				} else {
 					if isExecutable(bundle) {
 						processBundles(bundle, sha, entries, options.IconDir, options.AppDir)
@@ -172,7 +171,7 @@ func processBundle(config Config, homeDir string) {
 	}
 
 	if changed {
-		log.Printf(tml.Sprintf("<blue><bold>INF:</bold></blue> Updating config: <green>%s</green>", filepath.Join(homeDir, configFilePath)))
+		log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> Updating config: <green>%s</green>", filepath.Join(homeDir, configFilePath)))
 		saveConfig(config, filepath.Join(homeDir, configFilePath))
 	}
 }
@@ -214,20 +213,20 @@ func processBundles(path, sha string, entries map[string]*BundleEntry, iconPath,
 	entry.Desktop = executeBundle(path, "--pbundle_desktop", filepath.Join(appPath, baseName+".desktop"))
 
 	if entry.Png != "" || entry.Xpm != "" || entry.Desktop != "" {
-		log.Printf(tml.Sprintf("<blue><bold>INF:</bold></blue> Adding bundle to entries: <green>%s</green>", path))
+		log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> Adding bundle to entries: <green>%s</green>", path))
 		entries[path] = entry
 	} else {
-		log.Printf(tml.Sprintf("<yellow><bold>WRN:</bold></yellow>: Bundle does not contain required files: <blue>%s</blue>", path))
+		log.Println(tml.Sprintf("<yellow><bold>WRN:</bold></yellow>: Bundle does not contain required files: <blue>%s</blue>", path))
 		entries[path] = nil
 	}
 }
 
 func executeBundle(bundle, param, outputFile string) string {
-	log.Printf(tml.Sprintf("<blue><bold>INF:</bold></blue> Retrieving metadata from <green>%s</green> with parameter: <cyan>%s</cyan>", bundle, param))
+	log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> Retrieving metadata from <green>%s</green> with parameter: <cyan>%s</cyan>", bundle, param))
 	cmd := exec.Command(bundle, param)
 	output, err := cmd.Output()
 	if err != nil {
-		log.Printf(tml.Sprintf("<yellow><bold>WRN:</bold></yellow> Bundle <blue>%s</blue> with parameter <cyan>%s</cyan> returned error code 1", bundle, param))
+		log.Println(tml.Sprintf("<yellow><bold>WRN:</bold></yellow> Bundle <blue>%s</blue> with parameter <cyan>%s</cyan> returned error code 1", bundle, param))
 		return ""
 	}
 
@@ -238,12 +237,12 @@ func executeBundle(bundle, param, outputFile string) string {
 		return ""
 	}
 
-	if err := ioutil.WriteFile(outputFile, data, 0644); err != nil {
+	if err := os.WriteFile(outputFile, data, 0644); err != nil {
 		log.Fatalf(tml.Sprintf("<red><bold>ERR:</bold></red> Failed to write file <yellow>%s</yellow>: <red>%v</red>", outputFile, err))
 		return ""
 	}
 
-	log.Printf(tml.Sprintf("<blue><bold>INF:</bold></blue> Successfully wrote file: <green>%s</green>", outputFile))
+	log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> Successfully wrote file: <green>%s</green>", outputFile))
 	return outputFile
 }
 
