@@ -216,7 +216,7 @@ func processBundles(path, sha string, entries map[string]*BundleEntry, iconPath,
 		log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> Adding bundle to entries: <green>%s</green>", path))
 		entries[path] = entry
 	} else {
-		log.Println(tml.Sprintf("<yellow><bold>WRN:</bold></yellow>: Bundle does not contain required files: <blue>%s</blue>", path))
+		log.Println(tml.Sprintf("<yellow><bold>WRN:</bold></yellow>: Bundle does not contain any metadata files. Skipping: <blue>%s</blue>", path))
 		entries[path] = nil
 	}
 }
