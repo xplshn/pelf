@@ -15,7 +15,7 @@ As you can see, I have my window manager and all of my X utilities, including my
 - MUSL  = Runs on Musl-based Linux distros
 ###### If you don't know what this means, you should select Glibc.
 - FreeDOOM. [GLIBC](https://github.com/xplshn/pelf/raw/master/examples/freedoom_amd64LinuxGlibc.small.AppBundle?download=) - [MUSL](https://github.com/xplshn/pelf/raw/master/examples/freedoom_amd64LinuxMusl.small.AppBundle?download=)
-- Chocolate-Doom (server + client) [GLIBC](https://github.com/xplshn/pelf/raw/master/examples/freedoom_amd64LinuxGlibc.small.AppBundle?download=) - [MUSL](https://github.com/xplshn/pelf/raw/master/examples/chocolate-doom_amd64LinuxMusl.small.AppBundle?download=)
+- Chocolate-Doom (server + client) [GLIBC](https://github.com/xplshn/pelf/raw/master/examples/chocolate-doom_amd64LinuxGlibc.small.AppBundle?download=) - [MUSL](https://github.com/xplshn/pelf/raw/master/examples/chocolate-doom_amd64LinuxMusl.small.AppBundle?download=)
 - MPV + ROFI + ANI-CLI + YT-DLP. [GLIBC](https://github.com/xplshn/pelf/raw/master/examples/mpv_amd64LinuxGlibc.small.AppBundle?download=) - [MUSL](https://github.com/xplshn/pelf/raw/master/examples/mpv_amd64LinuxMusl.small.AppBundle?download=)
 - Obfuscated RickRoll. [POSIX](https://github.com/xplshn/pelf/raw/master/examples/rickRoll.any.AppBundle?download=)
 
