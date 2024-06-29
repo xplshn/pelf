@@ -23,9 +23,8 @@ import (
 	"github.com/liamg/tml"
 )
 
-const (
-	Version = "1.4"
-)
+// Version indicates the current PELFD version
+const Version = "1.4"
 
 // Options defines the configuration options for the PELFD daemon.
 type Options struct {
@@ -345,8 +344,7 @@ func cleanupBundle(path string, entries map[string]*BundleEntry, iconDir, appDir
 
 func updateDesktopFile(content, bundlePath string, entry *BundleEntry) (string, error) {
 	// Correct Exec line
-	var updatedExec string
-	updatedExec = fmt.Sprintf("Exec=%s", bundlePath)
+	updatedExec := fmt.Sprintf("Exec=%s", bundlePath)
 
 	// Define a regular expression to match the Exec line.
 	reExec := regexp.MustCompile(`(?m)^Exec=.*$`)
