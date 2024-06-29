@@ -262,7 +262,7 @@ func processBundles(path, sha string, entries map[string]*BundleEntry, iconPath,
 			log.Println(tml.Sprintf("<red><bold>ERR:</bold></red> Failed to create thumbnail file: <yellow>%v</yellow>", err))
 			return
 		}
-		log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> A thumbnail for <green>%s</green> was created at: <cyan>%s</cyan>", entry, thumbnailPath))
+		log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> A thumbnail for <green>%s</green> was created at: <cyan>%s</cyan>", path, thumbnailPath))
 	}
 
 	desktopPath := filepath.Join(appPath, baseName+".desktop")
@@ -274,13 +274,11 @@ func processBundles(path, sha string, entries map[string]*BundleEntry, iconPath,
 			return
 		}
 		if cfg.Options.CorrectDesktopFiles {
-			// Call updateDesktopFile with the determined icon path and bundle entry
 			updatedContent, err := updateDesktopFile(string(content), path, entry)
 			if err != nil {
 				log.Println(tml.Sprintf("<red><bold>ERR:</bold></red> Failed to update .desktop file: <yellow>%v</yellow>", err))
 				return
 			}
-			// Remove the existing .desktop file before writing the updated content
 			if err := os.Remove(desktopPath); err != nil && !os.IsNotExist(err) {
 				log.Println(tml.Sprintf("<red><bold>ERR:</bold></red> Failed to remove existing .desktop file: <yellow>%v</yellow>", err))
 				return
