@@ -9,14 +9,17 @@ If you only intend on using .AppBundles, not necesarily work with them, you don'
 ![SpectrWM window manager AppBundle/.blob that contains all of my X utils including Wezterm](https://github.com/xplshn/pelf/assets/114888778/b3b99c24-825d-4be0-a1c8-ea9433776692)
 As you can see, I have my window manager and all of my X utilities, including my terminal (Wezterm) as a single file, named SpectrWM.AppBundle. You can also see the concept of overlays in action, the `ani-cli` binary inside of the mpv.AppBundle, will have access to the ROFI binary packed in my SpectrWM.AppBundle, because it will be running as a child of that process. There is PATH and LD_LIBRARY_PATH inheritance.
 
-## Example AppBundles/Binaries for you to try:
+## Example AppBundles/Binaries for you to try (amd64):
 - POSIX = Runs on any Unix clone that has some degree of POSIX compatibility/compliance
-- GLIBC = Runs on Glibc-based Linux distros
 - MUSL  = Runs on Musl-based Linux distros
+- GLIBC = Runs on Glibc-based Linux distros
+These are .small.AppBundle, so these are (VERY) compressed and do require gunzip to be available, most if not all Linux distros have it.
 ###### If you don't know what this means, you should select Glibc.
 - FreeDOOM. [GLIBC](https://github.com/xplshn/pelf/raw/master/examples/freedoom_amd64LinuxGlibc.small.AppBundle?download=) - [MUSL](https://github.com/xplshn/pelf/raw/master/examples/freedoom_amd64LinuxMusl.small.AppBundle?download=)
 - Chocolate-Doom (server + client) [GLIBC](https://github.com/xplshn/pelf/raw/master/examples/chocolate-doom_amd64LinuxGlibc.small.AppBundle?download=) - [MUSL](https://github.com/xplshn/pelf/raw/master/examples/chocolate-doom_amd64LinuxMusl.small.AppBundle?download=)
 - MPV + ROFI + ANI-CLI + YT-DLP. [GLIBC](https://github.com/xplshn/pelf/raw/master/examples/mpv_amd64LinuxGlibc.small.AppBundle?download=) - [MUSL](https://github.com/xplshn/pelf/raw/master/examples/mpv_amd64LinuxMusl.small.AppBundle?download=)
+- Zig v0.14.0 (language and C compiler). [LINUX](https://github.com/xplshn/pelf/raw/master/examples/zig_amd64Linux.small.AppBundle?download=)
+- Go v1.22.4 (entire Go toolchain) [LINUX](https://github.com/xplshn/pelf/raw/master/examples/go_amd64Linux.small.AppBundle?download=)
 - Obfuscated RickRoll. [POSIX](https://github.com/xplshn/pelf/raw/master/examples/rickRoll.any.AppBundle?download=)
 
 ## Tools Included
