@@ -1,0 +1,342 @@
+#!/bin/sh
+
+# PELF. Pack an ELF.
+# PELF receives a binary as its first argument and an output as its second argument. It will pack all the necessary libraries that it needs to run, except the libC and LD. Generated files may include optional files inside, be it a library, binary, folder, icons, desktop file, etc.
+
+
+# Copyright <2024> xplshn
+# 
+# Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+# 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+# 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
+# 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS “AS IS” AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+# shellcheck disable=SC3028
+# In POSIX sh, RANDOM is undefined.
+
+# Check if the required arguments are provided
+if [ "$#" -lt 2 ]; then
+    echo "Usage: $0 [BINARY] [OUTPUT.AppBundle] <--add-library [LIB_PATH]> <--add-binary [BIN_PATH]> <--add-metadata [icon128x128.xpm|icon128x128.png|icon.svg|app.desktop]>  <--add-arbitrary [DIR|FILE]>" >&2
+    exit 1
+fi
+
+# Create a temporary directory for bundling the files
+outer_tmp_dir="/tmp/pelf_$(date '+%s%M%S')_$RANDOM"
+tmp_dir="$outer_tmp_dir/pelf_$(date '+%s%M%S')_$RANDOM"
+mkdir -p "$tmp_dir/bin" "$tmp_dir/lib" || exit 1
+trap 'rm -rf "$outer_tmp_dir"' EXIT
+
+src="$1"
+dst="$2"
+basename_src="$(basename "$src")"
+
+# Function to figure out what libraries the binaries need/depend on.
+add_thelibs() {
+ # Copy the libraries from the executable to the temporary directory
+ ldd "$1" | awk '
+     # Store the first word of the first line
+     NR == 1 { first_word = $1 }
+     # For lines with =>, check if the third word is not the same as the first word of the first line
+     /=>/ && $3 != first_word { print $3 }
+ ' | while read -r lib; do
+     # Copy the library to the temporary directory
+     cp -L "$lib" "$tmp_dir/lib" || exit 1
+ done
+}
+
+# Function to handle adding libraries
+add_library() {
+    lib="$1"
+    cp -L "$lib" "$tmp_dir/lib" || exit 1
+    add_thelibs "$lib" || exit 1
+}
+
+# Function to handle adding binaries
+add_binary() {
+    binary="$1"
+    add_thelibs "$binary"
+    cp -L "$binary" "$tmp_dir/bin/$(basename "$binary")" || exit 1
+}
+
+add_arbitrary() {
+    cp -LR "$1" "$tmp_dir" || { echo "Failed to copy arbitrary files"; exit 1; }
+}
+
+add_metadata() {
+    case "$1" in
+        *.png | *.xpm | *.svg)
+            mkdir -p "$tmp_dir/bundledMetadata" || { echo "Failed to create directory"; exit 1; }
+            cp -LR -- "$1" "$tmp_dir/bundledMetadata/icon.${1##*.}" || { echo "Failed to copy icon file"; exit 1; }
+            ;;
+        *.desktop)
+            # Extract Exec, Icon, and TryExec lines from the .desktop file, trimming any trailing whitespace
+            EXEC_LINE=$(awk '{ gsub(/^[ \t]*|[ \t]*$/,""); print }' <"$1" | awk -F= 'tolower($1) == "exec" { print $2; exit }')
+            TRYEXEC_LINE=$(awk '{ gsub(/^[ \t]*|[ \t]*$/,""); print }' <"$1" | awk -F= 'tolower($1) == "tryexec" { print $2; exit }')
+            
+            # Check if the dst name matches the exec name in the provided .desktop
+            if [ "$(basename "$dst")" != "${EXEC_LINE%% *}" ]; then
+                printf "WARNING: The bundle name does not match the 'Exec=' line in the .desktop file.\n"
+                printf "The embedded 'Exec=' line says: %s, which does not match: %s\n" "${EXEC_LINE%% *}" "$dst"
+                printf "Consider renaming the bundle to match or adjust the .desktop file accordingly.\n"
+            fi
+
+            # Check if the TryExec line exists and matches the dst name
+            if [ -n "$TRYEXEC_LINE" ] && [ "$dst" != "${TRYEXEC_LINE%% *}" ]; then
+                printf "WARNING: The 'TryExec=' line in the .desktop file does not match the bundle's name.\n"
+                printf "The embedded 'TryExec=' line says: %s\n" "${TRYEXEC_LINE%% *}"
+                printf "Adjust the .desktop file to reflect the correct 'TryExec=' line.\n\n"
+            fi
+
+            mkdir -p "$tmp_dir/bundledMetadata" || { echo "Failed to create directory"; exit 1; }
+            cp -LR -- "$1" "$tmp_dir/bundledMetadata/app.desktop" || { echo "Failed to copy desktop file"; exit 1; }
+            ;;
+        *)
+            printf "File extension not supported.\nNote: If you supply an icon, size **SHOULD** be 128x128\n"
+            exit 1
+            ;;
+    esac
+}
+
+shift 2 # To access --(add)itional arguments
+
+# Process the optional arguments --add-library, --add-binary, and --add-arbitrary
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --add-library)
+            add_library "$2"
+            shift 2
+            ;;
+        --add-binary)
+            add_binary "$2"
+            shift 2
+            ;;
+        --add-metadata)
+            add_metadata "$2"
+            shift 2
+            ;;
+        --add-arbitrary)
+            add_arbitrary "$2"
+            shift 2
+            ;;
+
+        *)
+            echo "Invalid argument: $1" >&2
+            exit 1
+            ;;
+    esac
+done
+
+# Copy the executable to the temporary directory
+add_binary "$src" || exit 1
+
+if ! tar -C "$tmp_dir" -cf - . | gzip -9 > "$outer_tmp_dir/archive.tar.gz"; then
+    echo "Compression failed. Do you have gzip?" >&2
+    exit 1
+fi
+
+# Create a self-extracting script
+LOADER_SCRIPT=$(sed "s|__ENTRY_POINT__|$basename_src|g" <<'END_OF_LOADER_SCRIPT'
+#!/bin/sh
+
+# This file was automatically generated by PELF_small. Find out more about it here: https://github.com/xplshn/pelf
+# Please DO NOT EDIT this file, unless you are testing for changes/fixes. If you found the need to modify 
+# PELF's behavior, submit a PR of your "PELF EDITION" if you think it is appropiate.                    -
+
+# Get the binary's name
+[ -n "$EXE_NAME" ] || EXE_NAME="__ENTRY_POINT__"
+rEXE_NAME="$(echo "$EXE_NAME" | tr -dc '[:alnum:]_' | tr '[:upper:]' '[:lower:]')"
+TMPDIR="/tmp/.pelfbundles/pbundle_$rEXE_NAME$(date '+%s%M%S')_$RANDOM"
+LIBS_BULKDIR="/tmp/pelfbundle_libs-bulkdir"
+cleanup() {
+    if [ -z "$found_runningInstance" ] || [ "$found_runningInstance" != "1" ]; then
+        # Delete individual files only if they are used exclusively by the current process
+        for file in $REM_AFTERUSE; do
+            if [ -z "$(fuser "$file" 2>/dev/null | grep "$EXE_NAME_PID")" ]; then
+                rm "$file"
+            fi
+        done
+
+        # Delete the directory
+        rm -rf "$TMPDIR"
+    fi
+}
+# Set up the trap
+trap cleanup EXIT
+##############################
+
+# BASH edition! This is kept for reference since its tidy and readable
+# set_tmpdir_from_env() {
+#    var_name="${rEXE_NAME}_bindir"
+#    if [ -n "${!var_name}" ]; then
+#        TMPDIR="$(dirname "${!var_name}")"
+#        found_runningInstance=1
+#        return 0
+#    fi
+#    return 1
+#}
+set_tmpdir_from_env() {
+    var_name="${rEXE_NAME}_bindir"
+    if [ -n "$var_name" ]; then
+        eval "bindir=\$$var_name"
+        if [ -n "$bindir" ]; then
+            TMPDIR="$(dirname "$bindir")"
+            found_runningInstance=1
+            return 0
+        fi
+    fi
+    return 1
+}
+
+set_tmpdir_from_env
+if [ -z "$found_runningInstance" ] || [ "$found_runningInstance" != "1" ] && [ "$REUSE_INSTANCES" != "1" ]; then
+        # Find the start position of the archive
+        ARCHIVE_MARKER=$(awk '/^__ARCHIVE_MARKER__/ { print NR + 1; exit }' "$0")
+
+        # Construct the variable name by appending _bindir to $rEXENAME
+        var_name="${rEXE_NAME}_bindir"
+        # Find the archive and extract it
+        mkdir -p "$TMPDIR" && tail -n +$ARCHIVE_MARKER "$0" | tar -xzf - -C "$TMPDIR" >/dev/null 2>&1 || {
+            # Use eval to check if the constructed variable name exists and is not empty
+            echo "Extraction failed" >&2
+            eval "var_value=\"\${$var_name}\""
+            exit 1
+        }
+fi
+
+# Function to check if a library is found in system paths
+is_library_in_system() {
+    library=$1
+    if [ -e "/usr/lib/$library" ] || [ -e "/lib/$library" ] || [ -e "/lib64/$library" ]; then
+        return 0 # Library found in system
+    else
+        return 1 # Library not found in system
+    fi
+}
+
+# Check if USE_SYSTEM_LIBRARIES is set to 1 or doesn't exist
+if [ "${USE_SYSTEM_LIBRARIES:-0}" -eq 1 ]; then
+    for lib_file in "$TMPDIR/lib/"*; do
+        lib_name=$(basename "$lib_file")
+
+        if is_library_in_system "$lib_name"; then
+            if [ "$SHOW_DISCARDPROCESS" -eq 1 ]; then
+                echo "$lib_name found in system. Using the system's library."
+            fi
+            rm "$lib_file"
+        else
+            if [ "$SHOW_DISCARDPROCESS" -eq 1 ]; then
+                echo "$lib_name not found in system. Using the bundl
+ed library."
+            fi
+        fi
+    done 2>/dev/null
+fi
+
+mv_u() {
+  SRC_DIR="$1"
+  DEST_DIR="$2"
+
+  # Loop through each file in the source directory
+  for file in "$SRC_DIR"/*; do
+    # Check if the file is a regular file
+    [ -f "$file" ] || continue
+    # Extract the filename from the path
+    filename=$(basename "$file")
+    # Check if the file does not exist in the destination directory or is newer
+    if [ ! -e "$DEST_DIR/$file" ]; then
+      REM_AFTERUSE="$REM_AFTERUSE $DEST_DIR/$filename "
+      mv "$file" "$DEST_DIR/"
+    elif [ "$(find "$file" -newer "$DEST_DIR/$filename" 2>/dev/null)" ]; then
+      # Move the file to the destination directory
+      mv "$file" "$DEST_DIR/"
+    fi
+  done
+}
+
+# Add extra binaries to the PATH, if they are there.
+if [ "$(ls -1 "$TMPDIR"/bin | wc -l)" -gt 1 ]; then
+        if [ -z "$found_runningInstance" ] || [ "$found_runningInstance" != "1" ]; then
+                        export "$(echo "$rEXE_NAME" | sed -E 's/[-.]([a-zA-Z])/\U\1/g; s/[-.]//g')_bindir"="$TMPDIR/bin"
+                        export "$(echo "$rEXE_NAME" | sed -E 's/[-.]([a-zA-Z])/\U\1/g; s/[-.]//g')_lib"="$TMPDIR/lib"
+        fi
+        xPATH="$TMPDIR/bin:$PATH"
+        USE_BULKLIBS=0
+fi
+
+# Figure out what we do
+binDest="$TMPDIR/bin/$EXE_NAME"
+case "$1" in
+    --pbundle_help)
+        printf "Usage:\n <--pbundle_link <binary>|--pbundle_help|--pbundle_xpmIcon|--pbundle_pngIcon|--pbundle_svgIcon|--pbundle_desktop> <args...>\n"
+        printf "EnvVars:\n USE_BULKLIBS=[0,1]\n USE_SYSTEM_LIBRARIES=[1,0]\n SHOW_DISCARDPROCESS=[0,1]\n HELP_PAGE_LIST_PACKEDFILES=[0,1]\n REUSE_INSTANCES=[0,1]\n"
+        if [ "$HELP_PAGE_LIST_PACKEDFILES" = "1" ]; then
+            ls "$TMPDIR"/*
+        fi
+        exit 1
+        ;;
+    --pbundle_link)
+        binDest="$2"
+        shift 2
+        ;;
+    --pbundle_pngIcon)
+        icon_path="$TMPDIR/bundledMetadata/icon.png"
+        if [ -f "$icon_path" ]; then
+            base64 "$icon_path"
+            exit 0
+        else
+            exit 1
+        fi
+        ;;
+    --pbundle_xpmIcon)
+        icon_path="$TMPDIR/bundledMetadata/icon.xpm"
+        if [ -f "$icon_path" ]; then
+            base64 "$icon_path"
+            exit 0
+        else
+            exit 1
+        fi
+        ;;
+    --pbundle_svgIcon)
+        icon_path="$TMPDIR/bundledMetadata/icon.svg"
+        if [ -f "$icon_path" ]; then
+            base64 "$icon_path"
+            exit 0
+        else
+            exit 1
+        fi
+        ;;
+    --pbundle_desktop)
+            desktop_path="$TMPDIR/bundledMetadata/app.desktop"
+            if [ -f "$desktop_path" ]; then
+                base64 "$desktop_path"
+                exit 0
+            else
+                exit 1
+            fi
+            ;;
+esac
+
+# Execute the binary with extracted libraries using LD_LIBRARY_PATH
+if [ "${USE_BULKLIBS:-0}" -eq 1 ]; then
+   mkdir -p "$LIBS_BULKDIR"
+   mv_u "$TMPDIR/lib" "$LIBS_BULKDIR"
+   PATH="$PATH:$xPATH" LD_LIBRARY_PATH="$LIBS_BULKDIR" SELF_TEMPDIR="$TMPDIR" "$binDest" "$@" || exit 1
+   EXE_NAME_PID="$!"
+else
+   PATH="$PATH:$xPATH" LD_LIBRARY_PATH="$TMPDIR/lib" SELF_TEMPDIR="$TMPDIR" "$binDest" "$@" || exit 1
+   EXE_NAME_PID="$!"
+fi
+
+exit $?
+__ARCHIVE_MARKER__
+END_OF_LOADER_SCRIPT
+)
+
+echo "$LOADER_SCRIPT" > "$dst"
+# Append the archive to the self-extracting script
+cat "$outer_tmp_dir/archive.tar.gz" >> "$dst" || exit 1
+
+# Make the self-extracting script executable
+chmod +x "$dst" || exit 1

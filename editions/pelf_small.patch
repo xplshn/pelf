@@ -1,6 +1,6 @@
---- ./pelf	2024-06-28 02:22:23.334778695 -0300
-+++ ./editions/pelf_small	2024-06-28 02:23:21.230658391 -0300
-@@ -113,9 +113,8 @@
+--- ../pelf
++++ ./pelf_small
+@@ -131,9 +131,8 @@
  # Copy the executable to the temporary directory
  add_binary "$src" || exit 1
  
@@ -12,7 +12,7 @@
      exit 1
  fi
  
-@@ -123,8 +122,8 @@
+@@ -141,8 +140,8 @@
  LOADER_SCRIPT=$(sed "s|__ENTRY_POINT__|$basename_src|g" <<'END_OF_LOADER_SCRIPT'
  #!/bin/sh
  
@@ -23,7 +23,7 @@
  # PELF's behavior, submit a PR of your "PELF EDITION" if you think it is appropiate.                    -
  
  # Get the binary's name
-@@ -179,8 +178,8 @@
+@@ -197,8 +196,8 @@
  
          # Construct the variable name by appending _bindir to $rEXENAME
          var_name="${rEXE_NAME}_bindir"
@@ -34,7 +34,7 @@
              # Use eval to check if the constructed variable name exists and is not empty
              echo "Extraction failed" >&2
              eval "var_value=\"\${$var_name}\""
-@@ -318,8 +317,8 @@
+@@ -336,8 +335,8 @@
  )
  
  echo "$LOADER_SCRIPT" > "$dst"

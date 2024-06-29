@@ -1,3 +1,4 @@
+// PELFD. Daemon that automatically "installs" .AppBundles by checking their metadata,
 package main
 
 import (
@@ -21,27 +22,30 @@ import (
 
 const configFilePath = ".config/pelfd.json"
 
+// Options defines the configuration options for the PELFD daemon.
 type Options struct {
-	DirectoriesToWalk   []string `json:"directories_to_walk"`
-	ProbeInterval       int      `json:"probe_interval"`
-	IconDir             string   `json:"icon_dir"`
-	AppDir              string   `json:"app_dir"`
-	ProbeExtensions     []string `json:"probe_extensions"`
-	CorrectDesktopFiles bool     `json:"correct_desktop_files"`
+	DirectoriesToWalk   []string `json:"directories_to_walk"`   // Directories to scan for .AppBundle and .blob files.
+	ProbeInterval       int      `json:"probe_interval"`        // Interval in seconds between directory scans.
+	IconDir             string   `json:"icon_dir"`              // Directory to store extracted icons.
+	AppDir              string   `json:"app_dir"`               // Directory to store .desktop files.
+	ProbeExtensions     []string `json:"probe_extensions"`      // File extensions to probe within directories.
+	CorrectDesktopFiles bool     `json:"correct_desktop_files"` // Flag to enable automatic correction of .desktop files.
 }
 
+// Config represents the overall configuration structure for PELFD, including scanning options and a tracker for installed bundles.
 type Config struct {
-	Options Options                 `json:"options"`
-	Tracker map[string]*BundleEntry `json:"tracker"`
+	Options Options                 `json:"options"` // PELFD configuration options.
+	Tracker map[string]*BundleEntry `json:"tracker"` // Tracker mapping bundle paths to their metadata entries.
 }
 
+// BundleEntry represents metadata associated with an installed bundle.
 type BundleEntry struct {
-	Path    string `json:"path"`
-	SHA     string `json:"sha"`
-	Png     string `json:"png,omitempty"`
-	Xpm     string `json:"xpm,omitempty"`
-	Svg     string `json:"svg,omitempty"`
-	Desktop string `json:"desktop,omitempty"`
+	Path    string `json:"path"`              // Full path to the bundle file.
+	SHA     string `json:"sha"`               // SHA256 hash of the bundle file.
+	Png     string `json:"png,omitempty"`     // Path to the PNG icon file, if extracted.
+	Xpm     string `json:"xpm,omitempty"`     // Path to the XPM icon file, if extracted.
+	Svg     string `json:"svg,omitempty"`     // Path to the SVG icon file, if extracted.
+	Desktop string `json:"desktop,omitempty"` // Path to the corrected .desktop file, if processed.
 }
 
 func main() {
@@ -131,7 +135,6 @@ func processBundle(config Config, homeDir string) {
 			bundles, err := filepath.Glob(filepath.Join(dir, "*"+ext))
 			if err != nil {
 				log.Fatalf(tml.Sprintf("<red><bold>ERR:</bold></red> Failed to scan directory <yellow>%s</yellow> for <yellow>%s</yellow> files: %v", dir, ext, err))
-				continue
 			}
 
 			for _, bundle := range bundles {
@@ -221,15 +224,6 @@ func processBundles(path, sha string, entries map[string]*BundleEntry, iconPath,
 		entries[path] = nil
 	}
 
-	// Determine which icon path to use
-	if entry.Png != "" {
-		iconPath = entry.Png
-	} else if entry.Svg != "" {
-		iconPath = entry.Svg
-	} else if entry.Xpm != "" {
-		iconPath = entry.Xpm
-	}
-
 	desktopPath := filepath.Join(appPath, baseName+".desktop")
 
 	if _, err := os.Stat(desktopPath); err == nil {
@@ -239,41 +233,84 @@ func processBundles(path, sha string, entries map[string]*BundleEntry, iconPath,
 			return
 		}
 		if cfg.Options.CorrectDesktopFiles {
-
 			// Call updateDesktopFile with the determined icon path and bundle entry
 			updatedContent, err := updateDesktopFile(string(content), path, entry)
 			if err != nil {
 				log.Println(tml.Sprintf("<red><bold>ERR:</bold></red> Failed to update .desktop file: <yellow>%v</yellow>", err))
 				return
 			}
-
 			// Remove the existing .desktop file before writing the updated content
 			if err := os.Remove(desktopPath); err != nil && !os.IsNotExist(err) {
 				log.Println(tml.Sprintf("<red><bold>ERR:</bold></red> Failed to remove existing .desktop file: <yellow>%v</yellow>", err))
 				return
 			}
-
 			// Write the updated content back to the .desktop file
 			if err := os.WriteFile(desktopPath, []byte(updatedContent), 0644); err != nil {
 				log.Println(tml.Sprintf("<red><bold>ERR:</bold></red> Failed to write updated .desktop file: <yellow>%v</yellow>", err))
 				return
 			}
-
-			// Add a small delay to observe the file changes
-			//time.Sleep(100 * time.Millisecond)
-
-			contentAfterUpdate, err := os.ReadFile(desktopPath)
-			if err != nil {
-				log.Println(tml.Sprintf("<red><bold>ERR:</bold></red> Failed to read .desktop file after update: %v", err))
-				return
-			}
-			if string(contentAfterUpdate) != updatedContent {
-				log.Println(tml.Sprintf("<red><bold>ERR:</bold></red> The .desktop file was not updated correctly."))
-				return
-			}
-			log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> The .desktop file in the bundle was corrected."))
+			/*
+				contentAfterUpdate, err := os.ReadFile(desktopPath)
+				if err != nil {
+					log.Println(tml.Sprintf("<red><bold>ERR:</bold></red> Failed to read .desktop file after update: %v", err))
+					return
+				}
+				if string(contentAfterUpdate) != updatedContent {
+					log.Println(tml.Sprintf("<red><bold>ERR:</bold></red> The .desktop file was not updated correctly."))
+					return
+				}
+				log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> The .desktop file in the bundle was corrected."))
+			*/
 		}
 	}
+}
+
+func executeBundle(bundle, param, outputFile string) string {
+	log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> Retrieving metadata from <green>%s</green> with parameter: <cyan>%s</cyan>", bundle, param))
+	cmd := exec.Command(bundle, param)
+	output, err := cmd.Output()
+	if err != nil {
+		log.Println(tml.Sprintf("<yellow><bold>WRN:</bold></yellow> Bundle <blue>%s</blue> with parameter <cyan>%s</cyan> didn't return a metadata file", bundle, param))
+		return ""
+	}
+
+	outputStr := string(output)
+	data, err := base64.StdEncoding.DecodeString(outputStr)
+	if err != nil {
+		log.Fatalf(tml.Sprintf("<red><bold>ERR:</bold></red> Failed to decode base64 output for <yellow>%s</yellow> <yellow>%s</yellow>: <red>%v</red>", bundle, param, err))
+		return ""
+	}
+
+	if err := os.WriteFile(outputFile, data, 0644); err != nil {
+		log.Fatalf(tml.Sprintf("<red><bold>ERR:</bold></red> Failed to write file <yellow>%s</yellow>: <red>%v</red>", outputFile, err))
+		return ""
+	}
+
+	log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> Successfully wrote file: <green>%s</green>", outputFile))
+	return outputFile
+}
+
+func cleanupBundle(path string, entries map[string]*BundleEntry, iconDir, appDir string) {
+	entry := entries[path]
+	if entry == nil {
+		return
+	}
+
+	baseName := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+	pngPath := filepath.Join(iconDir, baseName+".png")
+	xpmPath := filepath.Join(iconDir, baseName+".xpm")
+	desktopPath := filepath.Join(appDir, baseName+".desktop")
+
+	filesToRemove := []string{pngPath, xpmPath, desktopPath}
+	for _, file := range filesToRemove {
+		if err := os.Remove(file); err != nil && !os.IsNotExist(err) {
+			log.Println(tml.Sprintf("<red><bold>ERR:</bold></red> Failed to remove file: <yellow>%s</yellow> <red>%v</red>", file, err))
+		} else {
+			log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> Removed file: <green>%s</green>", file))
+		}
+	}
+
+	delete(entries, path)
 }
 
 func updateDesktopFile(content, bundlePath string, entry *BundleEntry) (string, error) {
@@ -317,52 +354,4 @@ func updateDesktopFile(content, bundlePath string, entry *BundleEntry) (string, 
 	log.Println(tml.Sprintf("<yellow><bold>WRN:</bold></yellow> The bundled .desktop file (<blue>%s</blue>) had an incorrect \"TryExec=\" line. <green>It has been corrected</green>", bundlePath))
 
 	return content, nil
-}
-
-func cleanupBundle(path string, entries map[string]*BundleEntry, iconDir, appDir string) {
-	entry := entries[path]
-	if entry == nil {
-		return
-	}
-
-	baseName := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
-	pngPath := filepath.Join(iconDir, baseName+".png")
-	xpmPath := filepath.Join(iconDir, baseName+".xpm")
-	desktopPath := filepath.Join(appDir, baseName+".desktop")
-
-	filesToRemove := []string{pngPath, xpmPath, desktopPath}
-	for _, file := range filesToRemove {
-		if err := os.Remove(file); err != nil && !os.IsNotExist(err) {
-			log.Println(tml.Sprintf("<red><bold>ERR:</bold></red> Failed to remove file: <yellow>%s</yellow> <red>%v</red>", file, err))
-		} else {
-			log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> Removed file: <green>%s</green>", file))
-		}
-	}
-
-	delete(entries, path)
-}
-
-func executeBundle(bundle, param, outputFile string) string {
-	log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> Retrieving metadata from <green>%s</green> with parameter: <cyan>%s</cyan>", bundle, param))
-	cmd := exec.Command(bundle, param)
-	output, err := cmd.Output()
-	if err != nil {
-		log.Println(tml.Sprintf("<yellow><bold>WRN:</bold></yellow> Bundle <blue>%s</blue> with parameter <cyan>%s</cyan> didn't return a metadata file", bundle, param))
-		return ""
-	}
-
-	outputStr := string(output)
-	data, err := base64.StdEncoding.DecodeString(outputStr)
-	if err != nil {
-		log.Fatalf(tml.Sprintf("<red><bold>ERR:</bold></red> Failed to decode base64 output for <yellow>%s</yellow> <yellow>%s</yellow>: <red>%v</red>", bundle, param, err))
-		return ""
-	}
-
-	if err := os.WriteFile(outputFile, data, 0644); err != nil {
-		log.Fatalf(tml.Sprintf("<red><bold>ERR:</bold></red> Failed to write file <yellow>%s</yellow>: <red>%v</red>", outputFile, err))
-		return ""
-	}
-
-	log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> Successfully wrote file: <green>%s</green>", outputFile))
-	return outputFile
 }
