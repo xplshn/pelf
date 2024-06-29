@@ -7,7 +7,6 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -23,9 +22,7 @@ import (
 	"github.com/liamg/tml"
 )
 
-const (
-	Version = "1.4"
-)
+const configFilePath = ".config/pelfd.json"
 
 // Options defines the configuration options for the PELFD daemon.
 type Options struct {
@@ -54,42 +51,33 @@ type BundleEntry struct {
 }
 
 func main() {
-	// Check if the program is running as root
+	log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> Starting <green>pelfd</green> daemon"))
+
 	usr, err := user.Current()
 	if err != nil {
 		log.Fatalf(tml.Sprintf("<red><bold>ERR:</bold></red> Failed to get current user: <yellow>%v</yellow>", err))
 	}
-	if usr.Username == "root" {
-		log.Fatalf(tml.Sprintf("<red><bold>ERR:</bold></red> This program cannot run as <yellow>root</yellow>."))
-	}
-	configDir, err := os.UserConfigDir()
-	if err != nil {
-		log.Fatalf(tml.Sprintf("<red><bold>ERR:</bold></red> Failed to determine config directory: <yellow>%v</yellow>", err))
-	}
-	// Parse command-line flags
-	version := flag.Bool("version", false, "Print the version number")
-	configFilePath := flag.String("config", filepath.Join(configDir, "pelfd.json"), "Specify a custom configuration file")
-	flag.Parse()
-	if *version {
-		fmt.Printf("Version: %s\n", Version)
-		os.Exit(0)
-	}
 
-	config := loadConfig(*configFilePath, usr.HomeDir)
+	configPath := filepath.Join(usr.HomeDir, configFilePath)
+	config := loadConfig(configPath, usr.HomeDir)
+
 	if err := os.MkdirAll(config.Options.IconDir, 0755); err != nil {
 		log.Fatalf(tml.Sprintf("<red><bold>ERR:</bold></red> Failed to create icons directory: <yellow>%v</yellow>", err))
 	}
+
 	if err := os.MkdirAll(config.Options.AppDir, 0755); err != nil {
 		log.Fatalf(tml.Sprintf("<red><bold>ERR:</bold></red> Failed to create applications directory: <yellow>%v</yellow>", err))
 	}
+
 	probeInterval := time.Duration(config.Options.ProbeInterval) * time.Second
+
 	for {
-		processBundle(config, usr.HomeDir, *configFilePath)
+		processBundle(config, usr.HomeDir)
 		time.Sleep(probeInterval)
 	}
 }
 
-func loadConfig(configPath string, homeDir string) Config {
+func loadConfig(configPath, homeDir string) Config {
 	config := Config{
 		Options: Options{
 			DirectoriesToWalk:   []string{"~/Programs"},
@@ -135,7 +123,7 @@ func saveConfig(config Config, path string) {
 	}
 }
 
-func processBundle(config Config, homeDir string, configFilePath string) {
+func processBundle(config Config, homeDir string) {
 	existing := make(map[string]struct{})
 	options := config.Options
 	entries := config.Tracker
@@ -189,8 +177,8 @@ func processBundle(config Config, homeDir string, configFilePath string) {
 	}
 
 	if changed {
-		log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> Updating config: <green>%s</green>", configFilePath))
-		saveConfig(config, configFilePath)
+		log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> Updating config: <green>%s</green>", filepath.Join(homeDir, configFilePath)))
+		saveConfig(config, filepath.Join(homeDir, configFilePath))
 	}
 }
 
