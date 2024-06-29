@@ -2,52 +2,58 @@
 
 # Function to display usage information
 usage() {
-    echo "Usage: $0 <--raw> [input_file] [output_directory]"
+    echo "Usage: $0 [--raw] input_file output_directory"
 }
 
 # Parse command line options
 RAW_MODE=false
 
-while [ "$#" -gt 0 ]; do
+while [ "$#" -ne 0 ]; do
     case "$1" in
         --raw)
             RAW_MODE=true
-            shift
             ;;
         *)
             break
             ;;
     esac
+    shift
 done
 
 # Check if the required arguments are provided
-if [ $# -lt 2 ]; then
+if [ $# -ne 2 ]; then
     usage
     exit 1
 fi
 
 INPUT_FILE="$1"
-TMPDIR="$2"
+OUTPUT_DIR="$2"
 
 # Find the line number where the archive starts
 ARCHIVE_MARKER=$(awk '/^__ARCHIVE_MARKER__/ { print NR + 1; exit }' "$INPUT_FILE")
 
-# Create the temporary directory if it doesn't exist
-mkdir -p "$TMPDIR"
+# Check if the archive marker was found
+if [ -z "$ARCHIVE_MARKER" ]; then
+    echo "Error: Archive marker not found in the input file." >&2
+    exit 1
+fi
+
+# Ensure the output directory exists
+mkdir -p "$OUTPUT_DIR"
 
 # Extract the archive based on whether --raw is used
 if $RAW_MODE; then
-    # Extract the base64-encoded archive
-    tail -n +"$ARCHIVE_MARKER" "$INPUT_FILE" | tar -xzf - -C "$TMPDIR" >/dev/null 2>&1 || {
+    # Extract the base64-encoded archive directly
+    tail -n +"$ARCHIVE_MARKER" "$INPUT_FILE" | tar -xzf - -C "$OUTPUT_DIR" || {
         echo "Extraction failed" >&2
         exit 1
     }
 else
-    # Extract the base64-encoded archive and decode it
-    tail -n +"$ARCHIVE_MARKER" "$INPUT_FILE" | base64 -d | tar -xzf - -C "$TMPDIR" >/dev/null 2>&1 || {
+    # Decode and extract the base64-encoded archive
+    tail -n +"$ARCHIVE_MARKER" "$INPUT_FILE" | base64 -d | tar -xzf - -C "$OUTPUT_DIR" || {
         echo "Extraction failed" >&2
         exit 1
     }
 fi
 
-echo "Files extracted successfully to $TMPDIR"
+echo "Files extracted successfully to $OUTPUT_DIR"

@@ -2,7 +2,6 @@ package main
 
 import (
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -206,56 +205,27 @@ func computeSHA(path string) string {
 
 func processBundles(path, sha string, entries map[string]*BundleEntry, iconPath, appPath string, cfg Config) {
 	entry := &BundleEntry{Path: path, SHA: sha}
+
 	baseName := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
-
-	entry.Png = executeBundle(path, "--pbundle_pngIcon", filepath.Join(iconPath, baseName+".png"))
-	entry.Xpm = executeBundle(path, "--pbundle_xpmIcon", filepath.Join(iconPath, baseName+".xpm"))
-	entry.Svg = executeBundle(path, "--pbundle_svgIcon", filepath.Join(iconPath, baseName+".svg"))
-	entry.Desktop = executeBundle(path, "--pbundle_desktop", filepath.Join(appPath, baseName+".desktop"))
-
-	if entry.Png != "" || entry.Xpm != "" || entry.Desktop != "" {
-		log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> Adding bundle to entries: <green>%s</green>", path))
-		entries[path] = entry
-	} else {
-		log.Println(tml.Sprintf("<yellow><bold>WRN:</bold></yellow> Bundle does not contain any metadata files. Skipping: <blue>%s</blue>", path))
-		entries[path] = nil
-	}
-
-	// Determine which icon path to use
-	if entry.Png != "" {
-		iconPath = entry.Png
-	} else if entry.Svg != "" {
-		iconPath = entry.Svg
-	} else if entry.Xpm != "" {
-		iconPath = entry.Xpm
-	}
-
 	desktopPath := filepath.Join(appPath, baseName+".desktop")
 
 	if _, err := os.Stat(desktopPath); err == nil {
 		content, err := os.ReadFile(desktopPath)
 		if err != nil {
-			log.Println(tml.Sprintf("<red><bold>ERR:</bold></red> Failed to read .desktop file: <yellow>%v</yellow>", err))
+			log.Println(tml.Sprintf("<red><bold>ERR:</bold></red> Failed to read .desktop file: %v", err))
 			return
 		}
 		if cfg.Options.CorrectDesktopFiles {
-
-			// Call updateDesktopFile with the determined icon path and bundle entry
-			updatedContent, err := updateDesktopFile(string(content), path, entry)
-			if err != nil {
-				log.Println(tml.Sprintf("<red><bold>ERR:</bold></red> Failed to update .desktop file: <yellow>%v</yellow>", err))
-				return
-			}
+			updatedContent := updateExecLine(string(content), path)
 
 			// Remove the existing .desktop file before writing the updated content
 			if err := os.Remove(desktopPath); err != nil && !os.IsNotExist(err) {
-				log.Println(tml.Sprintf("<red><bold>ERR:</bold></red> Failed to remove existing .desktop file: <yellow>%v</yellow>", err))
+				log.Println(tml.Sprintf("<red><bold>ERR:</bold></red> Failed to remove existing .desktop file: %v", err))
 				return
 			}
 
-			// Write the updated content back to the .desktop file
 			if err := os.WriteFile(desktopPath, []byte(updatedContent), 0644); err != nil {
-				log.Println(tml.Sprintf("<red><bold>ERR:</bold></red> Failed to write updated .desktop file: <yellow>%v</yellow>", err))
+				log.Println(tml.Sprintf("<red><bold>ERR:</bold></red> Failed to write updated .desktop file: %v", err))
 				return
 			}
 
@@ -274,12 +244,33 @@ func processBundles(path, sha string, entries map[string]*BundleEntry, iconPath,
 			log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> The .desktop file in the bundle was corrected."))
 		}
 	}
+
+	entry.Png = executeBundle(path, "--pbundle_pngIcon", filepath.Join(iconPath, baseName+".png"))
+	entry.Xpm = executeBundle(path, "--pbundle_xpmIcon", filepath.Join(iconPath, baseName+".xpm"))
+	entry.Svg = executeBundle(path, "--pbundle_svgIcon", filepath.Join(iconPath, baseName+".svg"))
+	entry.Desktop = executeBundle(path, "--pbundle_desktop", filepath.Join(appPath, baseName+".desktop"))
+
+	if entry.Png != "" || entry.Xpm != "" || entry.Desktop != "" {
+		log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> Adding bundle to entries: <green>%s</green>", path))
+		entries[path] = entry
+	} else {
+		log.Println(tml.Sprintf("<yellow><bold>WRN:</bold></yellow> Bundle does not contain any metadata files. Skipping: <blue>%s</blue>", path))
+		entries[path] = nil
+	}
 }
 
-func updateDesktopFile(content, bundlePath string, entry *BundleEntry) (string, error) {
-	// Update Exec line
-	var updatedExec string
+/*
+func updateExecLine(content, bundlePath string) string {
+	execRegex := regexp.MustCompile(`(?m)^Exec=.*$`)
+	newExecLine := fmt.Sprintf("Exec=%s", bundlePath)
+	return execRegex.ReplaceAllString(content, newExecLine)
+}
+*/
+
+func updateExecLine(content, bundlePath string) string {
+	// Check if the bundle is on the system's path.
 	lookPath, err := exec.LookPath(filepath.Base(bundlePath))
+	updatedExec := "nil"
 	if err != nil {
 		// The bundle is not on the system's path, use the full path.
 		updatedExec = fmt.Sprintf("Exec=%s", bundlePath)
@@ -288,35 +279,9 @@ func updateDesktopFile(content, bundlePath string, entry *BundleEntry) (string, 
 		updatedExec = fmt.Sprintf("Exec=%s", filepath.Base(lookPath))
 	}
 	// Define a regular expression to match the Exec line.
-	reExec := regexp.MustCompile(`(?m)^Exec=.*$`)
-	content = reExec.ReplaceAllString(content, updatedExec)
-	log.Println(tml.Sprintf("<yellow><bold>WRN:</bold></yellow> The bundled .desktop file (<blue>%s</blue>) had an incorrect \"Exec=\" line. <green>It has been corrected</green>", bundlePath))
-
-	// Determine the icon format based on the available icon paths
-	var icon string
-	if entry.Png != "" {
-		icon = filepath.Base(entry.Png)
-	} else if entry.Svg != "" {
-		icon = filepath.Base(entry.Svg)
-	} else if entry.Xpm != "" {
-		icon = filepath.Base(entry.Xpm)
-	}
-
-	// Update Icon line
-	reIcon := regexp.MustCompile(`(?m)^Icon=.*$`)
-	if icon != "" {
-		newIconLine := fmt.Sprintf("Icon=%s", icon)
-		content = reIcon.ReplaceAllString(content, newIconLine)
-	}
-	log.Println(tml.Sprintf("<yellow><bold>WRN:</bold></yellow> The bundled .desktop file (<blue>%s</blue>) had an incorrect \"Icon=\" line. <green>It has been corrected</green>", bundlePath))
-
-	// Add TryExec line
-	reTryExec := regexp.MustCompile(`(?m)^TryExec=.*$`)
-	newTryExecLine := fmt.Sprintf("TryExec=%s", filepath.Base(bundlePath))
-	content = reTryExec.ReplaceAllString(content, newTryExecLine)
-	log.Println(tml.Sprintf("<yellow><bold>WRN:</bold></yellow> The bundled .desktop file (<blue>%s</blue>) had an incorrect \"TryExec=\" line. <green>It has been corrected</green>", bundlePath))
-
-	return content, nil
+	re := regexp.MustCompile(`(?m)^Exec=\S+`)
+	// Replace the first occurrence of the Exec line with the new one.
+	return re.ReplaceAllString(content, updatedExec)
 }
 
 func cleanupBundle(path string, entries map[string]*BundleEntry, iconDir, appDir string) {
@@ -342,27 +307,17 @@ func cleanupBundle(path string, entries map[string]*BundleEntry, iconDir, appDir
 	delete(entries, path)
 }
 
-func executeBundle(bundle, param, outputFile string) string {
-	log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> Retrieving metadata from <green>%s</green> with parameter: <cyan>%s</cyan>", bundle, param))
-	cmd := exec.Command(bundle, param)
-	output, err := cmd.Output()
-	if err != nil {
-		log.Println(tml.Sprintf("<yellow><bold>WRN:</bold></yellow> Bundle <blue>%s</blue> with parameter <cyan>%s</cyan> didn't return a metadata file", bundle, param))
+func executeBundle(path, command, outputPath string) string {
+	cmd := exec.Command(path, command, outputPath)
+	if err := cmd.Run(); err != nil {
+		log.Println(tml.Sprintf("<red><bold>ERR:</bold></red> Failed to execute bundle command <yellow>%s</yellow> on bundle <yellow>%s</yellow>: <red>%v</red>", command, path, err))
 		return ""
 	}
 
-	outputStr := string(output)
-	data, err := base64.StdEncoding.DecodeString(outputStr)
-	if err != nil {
-		log.Fatalf(tml.Sprintf("<red><bold>ERR:</bold></red> Failed to decode base64 output for <yellow>%s</yellow> <yellow>%s</yellow>: <red>%v</red>", bundle, param, err))
-		return ""
+	if _, err := os.Stat(outputPath); err == nil {
+		log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> Created file: <green>%s</green>", outputPath))
+		return outputPath
 	}
 
-	if err := os.WriteFile(outputFile, data, 0644); err != nil {
-		log.Fatalf(tml.Sprintf("<red><bold>ERR:</bold></red> Failed to write file <yellow>%s</yellow>: <red>%v</red>", outputFile, err))
-		return ""
-	}
-
-	log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> Successfully wrote file: <green>%s</green>", outputFile))
-	return outputFile
+	return ""
 }

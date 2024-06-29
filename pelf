@@ -71,6 +71,24 @@ add_metadata() {
             cp -LR -- "$1" "$tmp_dir/bundledMetadata/icon.${1##*.}" || { echo "Failed to copy icon file"; exit 1; }
             ;;
         *.desktop)
+            # Extract Exec, Icon, and TryExec lines from the .desktop file, trimming any trailing whitespace
+            EXEC_LINE=$(awk '{ gsub(/^[ \t]*|[ \t]*$/,""); print }' <"$1" | awk -F= 'tolower($1) == "exec" { print $2; exit }')
+            TRYEXEC_LINE=$(awk '{ gsub(/^[ \t]*|[ \t]*$/,""); print }' <"$1" | awk -F= 'tolower($1) == "tryexec" { print $2; exit }')
+            
+            # Check if the dst name matches the exec name in the provided .desktop
+            if [ "$(basename "$dst")" != "${EXEC_LINE%% *}" ]; then
+                printf "WARNING: The bundle name does not match the 'Exec=' line in the .desktop file.\n"
+                printf "The embedded 'Exec=' line says: %s, which does not match: %s\n" "${EXEC_LINE%% *}" "$dst"
+                printf "Consider renaming the bundle to match or adjust the .desktop file accordingly.\n"
+            fi
+
+            # Check if the TryExec line exists and matches the dst name
+            if [ -n "$TRYEXEC_LINE" ] && [ "$dst" != "${TRYEXEC_LINE%% *}" ]; then
+                printf "WARNING: The 'TryExec=' line in the .desktop file does not match the bundle's name.\n"
+                printf "The embedded 'TryExec=' line says: %s\n" "${TRYEXEC_LINE%% *}"
+                printf "Adjust the .desktop file to reflect the correct 'TryExec=' line.\n\n"
+            fi
+
             mkdir -p "$tmp_dir/bundledMetadata" || { echo "Failed to create directory"; exit 1; }
             cp -LR -- "$1" "$tmp_dir/bundledMetadata/app.desktop" || { echo "Failed to copy desktop file"; exit 1; }
             ;;
