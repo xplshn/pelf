@@ -19,7 +19,7 @@ These are .small.AppBundle, so these are (VERY) compressed and do require gunzip
 - Chocolate-Doom (server + client) [GLIBC](https://github.com/xplshn/pelf/raw/master/examples/chocolate-doom_amd64LinuxGlibc.small.AppBundle?download=) - [MUSL](https://github.com/xplshn/pelf/raw/master/examples/chocolate-doom_amd64LinuxMusl.small.AppBundle?download=)
 - MPV + ROFI + ANI-CLI + YT-DLP. [GLIBC](https://github.com/xplshn/pelf/raw/master/examples/mpv_amd64LinuxGlibc.small.AppBundle?download=) - [MUSL](https://github.com/xplshn/pelf/raw/master/examples/mpv_amd64LinuxMusl.small.AppBundle?download=)
 - Zig v0.14.0 (language and C compiler). [LINUX](https://github.com/xplshn/pelf/raw/master/examples/zig_amd64Linux.small.AppBundle?download=)
-- Go v1.22.4 (entire Go toolchain) [LINUX](https://github.com/xplshn/pelf/raw/master/examples/go_amd64Linux.small.AppBundle?download=)
+- Go v1.22.4 (entire Go toolchain). [LINUX](https://github.com/xplshn/pelf/raw/master/examples/go_amd64Linux.small.AppBundle?download=)
 - Obfuscated RickRoll. [POSIX](https://github.com/xplshn/pelf/raw/master/examples/rickRoll.any.AppBundle?download=)
 
 ## Tools Included
