@@ -155,7 +155,7 @@ func processBundle(config Config, homeDir string, configFilePath string) {
 					if entry == nil {
 						continue
 					}
-					// If the SHA of the bundle has changed
+					// Check if the SHA has changed
 					if entry.SHA != sha {
 						log.Println(tml.Sprintf("<yellow><bold>WRN:</yellow></red> The SHA of <blue>%s</blue> has changed. Refreshing entry and files...", filepath.Base(bundle)))
 						if isExecutable(bundle) {
@@ -164,23 +164,32 @@ func processBundle(config Config, homeDir string, configFilePath string) {
 						} else {
 							entries[bundle] = nil
 						}
-					}
-
-					// Or its Thumbnail has been removed...
-					if entry.Thumbnail != "" && !fileExists(entry.Thumbnail) {
-						log.Println(tml.Sprintf("<yellow><bold>WRN:</yellow></red> The thumbnail file for <blue>%s</blue> doesn't exist anymore. Generating new thumbnail...", filepath.Base(bundle)))
-						if entry.Png != "" {
-							thumbnailPath, err := GenerateThumbnail(bundle, entry.Png)
-							if err != nil {
-								log.Println(tml.Sprintf("<red><bold>ERR:</bold></red> Failed to create thumbnail file: <yellow>%v</yellow>", err))
-							}
-							entry.Thumbnail = thumbnailPath
-							log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> A new thumbnail for <green>%s</green> was created", filepath.Base(bundle)))
+						// Or if at least one of the required files are missing
+					} else if (entry.Desktop != "" && !fileExists(entry.Desktop)) ||
+						(entry.Png != "" && !fileExists(entry.Png)) ||
+						(entry.Svg != "" && !fileExists(entry.Svg)) ||
+						(entry.Xpm != "" && !fileExists(entry.Xpm)) {
+						log.Println(tml.Sprintf("<yellow><bold>WRN:</yellow></red> One or more required files for <blue>%s</blue> are missing. Refreshing entry and files...", filepath.Base(bundle)))
+						if isExecutable(bundle) {
+							processBundles(bundle, sha, entries, options.IconDir, options.AppDir, config)
 							changed = true
+						} else {
+							entries[bundle] = nil
 						}
 					}
+					// Check if the bundle's thumbnail has been removed
+					if entry.Thumbnail != "" && !fileExists(entry.Thumbnail) {
+						log.Println(tml.Sprintf("<yellow><bold>WRN:</yellow></red> The thumbnail file for <blue>%s</blue> doesn't exist anymore. Generating new thumbnail...", filepath.Base(bundle)))
+						thumbnailPath, err := GenerateThumbnail(bundle, entry.Png)
+						if err != nil {
+							log.Println(tml.Sprintf("<red><bold>ERR:</bold></red> Failed to create thumbnail file: <yellow>%v</yellow>", err))
+						}
+						entry.Thumbnail = thumbnailPath
+						log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> A new thumbnail for <green>%s</green> was created", filepath.Base(bundle)))
+						changed = true
+					}
 				} else {
-					// Bundle is not an entry in the config's tracker
+					// The bundle is not an entry in the config's tracker
 					log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> New bundle detected: <green>%s</green>", filepath.Base(bundle)))
 					if isExecutable(bundle) {
 						processBundles(bundle, sha, entries, options.IconDir, options.AppDir, config)
@@ -318,6 +327,9 @@ func cleanupBundle(path string, entries map[string]*BundleEntry, iconDir, appDir
 	}
 	filesToRemove := []string{entry.Png, entry.Svg, entry.Xpm, entry.Desktop, entry.Thumbnail}
 	for _, file := range filesToRemove {
+		if file == "" {
+			continue
+		}
 		if err := os.Remove(file); err != nil && !os.IsNotExist(err) {
 			log.Println(tml.Sprintf("<red><bold>ERR:</bold></red> Failed to remove file: <yellow>%s</yellow> <red>%v</red>", file, err))
 		} else {
