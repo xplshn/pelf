@@ -13,6 +13,7 @@ As you can see, I have my window manager and all of my X utilities, including my
 - POSIX = Runs on any Unix clone that has some degree of POSIX compatibility/compliance
 - MUSL  = Runs on Musl-based Linux distros
 - GLIBC = Runs on Glibc-based Linux distros
+- Linux = Runs on any Linux distro.
 These are .small.AppBundle, so these are (VERY) compressed and do require gunzip to be available, most if not all Linux distros have it.
 ###### If you don't know what this means, you should select Glibc.
 - FreeDOOM. [GLIBC](https://github.com/xplshn/pelf/raw/master/examples/freedoom_amd64LinuxGlibc.small.AppBundle?download=) - [MUSL](https://github.com/xplshn/pelf/raw/master/examples/freedoom_amd64LinuxMusl.small.AppBundle?download=)
