@@ -44,12 +44,13 @@ type Config struct {
 
 // BundleEntry represents metadata associated with an installed bundle.
 type BundleEntry struct {
-	Path    string `json:"path"`              // Full path to the bundle file.
-	SHA     string `json:"sha"`               // SHA256 hash of the bundle file.
-	Png     string `json:"png,omitempty"`     // Path to the PNG icon file, if extracted.
-	Xpm     string `json:"xpm,omitempty"`     // Path to the XPM icon file, if extracted.
-	Svg     string `json:"svg,omitempty"`     // Path to the SVG icon file, if extracted.
-	Desktop string `json:"desktop,omitempty"` // Path to the corrected .desktop file, if processed.
+	Path      string `json:"path"`                // Full path to the bundle file.
+	SHA       string `json:"sha"`                 // SHA256 hash of the bundle file.
+	Png       string `json:"png,omitempty"`       // Path to the PNG icon file, if extracted.
+	Xpm       string `json:"xpm,omitempty"`       // Path to the XPM icon file, if extracted.
+	Svg       string `json:"svg,omitempty"`       // Path to the SVG icon file, if extracted.
+	Desktop   string `json:"desktop,omitempty"`   // Path to the corrected .desktop file, if processed.
+	Thumbnail string `json:"thumbnail,omitempty"` // Path to the 128x128 png thumbnail file, if processed.
 }
 
 func main() {
@@ -139,27 +140,24 @@ func processBundle(config Config, homeDir string, configFilePath string) {
 	options := config.Options
 	entries := config.Tracker
 	changed := false
-
 	for _, dir := range options.DirectoriesToWalk {
 		dir = strings.Replace(dir, "~", homeDir, 1)
 		log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> Scanning directory: <green>%s</green>", dir))
-
 		for _, ext := range options.ProbeExtensions {
 			bundles, err := filepath.Glob(filepath.Join(dir, "*"+ext))
 			if err != nil {
 				log.Fatalf(tml.Sprintf("<red><bold>ERR:</bold></red> Failed to scan directory <yellow>%s</yellow> for <yellow>%s</yellow> files: %v", dir, ext, err))
 			}
-
 			for _, bundle := range bundles {
 				existing[bundle] = struct{}{}
-
 				sha := computeSHA(bundle)
 				if entry, checked := entries[bundle]; checked {
 					if entry == nil {
 						continue
 					}
-
+					// If the SHA of the bundle has changed
 					if entry.SHA != sha {
+						log.Println(tml.Sprintf("<yellow><bold>WRN:</yellow></red> The SHA of <blue>%s</blue> has changed. Refreshing entry and files...", filepath.Base(bundle)))
 						if isExecutable(bundle) {
 							processBundles(bundle, sha, entries, options.IconDir, options.AppDir, config)
 							changed = true
@@ -167,7 +165,23 @@ func processBundle(config Config, homeDir string, configFilePath string) {
 							entries[bundle] = nil
 						}
 					}
+
+					// Or its Thumbnail has been removed...
+					if entry.Thumbnail != "" && !fileExists(entry.Thumbnail) {
+						log.Println(tml.Sprintf("<yellow><bold>WRN:</yellow></red> The thumbnail file for <blue>%s</blue> doesn't exist anymore. Generating new thumbnail...", filepath.Base(bundle)))
+						if entry.Png != "" {
+							thumbnailPath, err := GenerateThumbnail(bundle, entry.Png)
+							if err != nil {
+								log.Println(tml.Sprintf("<red><bold>ERR:</bold></red> Failed to create thumbnail file: <yellow>%v</yellow>", err))
+							}
+							entry.Thumbnail = thumbnailPath
+							log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> A new thumbnail for <green>%s</green> was created", filepath.Base(bundle)))
+							changed = true
+						}
+					}
 				} else {
+					// Bundle is not an entry in the config's tracker
+					log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> New bundle detected: <green>%s</green>", filepath.Base(bundle)))
 					if isExecutable(bundle) {
 						processBundles(bundle, sha, entries, options.IconDir, options.AppDir, config)
 						changed = true
@@ -178,17 +192,15 @@ func processBundle(config Config, homeDir string, configFilePath string) {
 			}
 		}
 	}
-
 	for path := range entries {
 		if _, found := existing[path]; !found {
-			log.Println(tml.Sprintf("<yellow><bold>WRN:</yellow></red> Bundle no longer exists: <blue>%s</blue>", path))
+			log.Println(tml.Sprintf("<yellow><bold>WRN:</yellow></red> <blue>%s</blue> no longer exists", path))
 			cleanupBundle(path, entries, options.IconDir, options.AppDir)
 			changed = true
 		}
 	}
-
 	if changed {
-		log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> Updating config: <green>%s</green>", configFilePath))
+		log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> Updating <green>%s</green>", configFilePath))
 		saveConfig(config, configFilePath)
 	}
 }
@@ -213,7 +225,7 @@ func computeSHA(path string) string {
 
 	hasher := sha256.New()
 	if _, err := io.Copy(hasher, file); err != nil {
-		log.Fatalf(tml.Sprintf("<red><bold>ERR:</bold></red> Failed to compute SHA256 for file <yellow>%s</yellow>: <red>%v</red>", path, err))
+		log.Fatalf(tml.Sprintf("<red><bold>ERR:</bold></red> Failed to compute SHA256 of <yellow>%s</yellow>: <red>%v</red>", path, err))
 		return ""
 	}
 
@@ -225,8 +237,8 @@ func processBundles(path, sha string, entries map[string]*BundleEntry, iconPath,
 	baseName := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
 
 	entry.Png = executeBundle(path, "--pbundle_pngIcon", filepath.Join(iconPath, baseName+".png"))
-	entry.Xpm = executeBundle(path, "--pbundle_xpmIcon", filepath.Join(iconPath, baseName+".xpm"))
 	entry.Svg = executeBundle(path, "--pbundle_svgIcon", filepath.Join(iconPath, baseName+".svg"))
+	entry.Xpm = executeBundle(path, "--pbundle_xpmIcon", filepath.Join(iconPath, baseName+".xpm"))
 	entry.Desktop = executeBundle(path, "--pbundle_desktop", filepath.Join(appPath, baseName+".desktop"))
 
 	if entry.Png != "" || entry.Svg != "" || entry.Xpm != "" || entry.Desktop != "" {
@@ -239,34 +251,16 @@ func processBundles(path, sha string, entries map[string]*BundleEntry, iconPath,
 
 	// Create a thumbnail for file managers. See: https://specifications.freedesktop.org/thumbnail-spec/thumbnail-spec-latest.html#CREATION for details
 	if entry.Png != "" {
-		// Generate the canonical URI for the file path
-		canonicalURI, err := CanonicalURI(path)
-		if err != nil {
-			log.Println(tml.Sprintf("<red><bold>ERR:</bold></red> Couldn't generate canonical URI: <yellow>%v</yellow>", err))
-			return
-		}
-
-		// Compute the MD5 hash of the canonical URI
-		fileMD5 := HashURI(canonicalURI)
-
-		// Determine the thumbnail path
-		thumbnailPath, err := ThumbnailPath(fileMD5, "normal")
-		if err != nil {
-			log.Println(tml.Sprintf("<red><bold>ERR:</bold></red> Couldn't generate an appropriate thumbnail path: <yellow>%v</yellow>", err))
-			return
-		}
-
-		// Copy the PNG file to the thumbnail path
-		err = CopyFile(entry.Png, thumbnailPath)
+		thumbnailPath, err := GenerateThumbnail(path, entry.Png)
 		if err != nil {
 			log.Println(tml.Sprintf("<red><bold>ERR:</bold></red> Failed to create thumbnail file: <yellow>%v</yellow>", err))
-			return
 		}
+		entry.Thumbnail = thumbnailPath
 		log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> A thumbnail for <green>%s</green> was created at: <cyan>%s</cyan>", path, thumbnailPath))
 	}
 
+	// Handle .desktop files
 	desktopPath := filepath.Join(appPath, baseName+".desktop")
-
 	if _, err := os.Stat(desktopPath); err == nil {
 		content, err := os.ReadFile(desktopPath)
 		if err != nil {
@@ -322,13 +316,7 @@ func cleanupBundle(path string, entries map[string]*BundleEntry, iconDir, appDir
 	if entry == nil {
 		return
 	}
-
-	baseName := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
-	pngPath := filepath.Join(iconDir, baseName+".png")
-	xpmPath := filepath.Join(iconDir, baseName+".xpm")
-	desktopPath := filepath.Join(appDir, baseName+".desktop")
-
-	filesToRemove := []string{pngPath, xpmPath, desktopPath}
+	filesToRemove := []string{entry.Png, entry.Svg, entry.Xpm, entry.Desktop, entry.Thumbnail}
 	for _, file := range filesToRemove {
 		if err := os.Remove(file); err != nil && !os.IsNotExist(err) {
 			log.Println(tml.Sprintf("<red><bold>ERR:</bold></red> Failed to remove file: <yellow>%s</yellow> <red>%v</red>", file, err))
@@ -336,7 +324,6 @@ func cleanupBundle(path string, entries map[string]*BundleEntry, iconDir, appDir
 			log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> Removed file: <green>%s</green>", file))
 		}
 	}
-
 	delete(entries, path)
 }
 
@@ -394,8 +381,36 @@ func CanonicalURI(filePath string) (string, error) {
 	return uri.String(), nil
 }
 
+func GenerateThumbnail(path string, png string) (string, error) {
+	// Generate the canonical URI for the file path
+	canonicalURI, err := CanonicalURI(path)
+	if err != nil {
+		log.Println(tml.Sprintf("<red><bold>ERR:</bold></red> Couldn't generate canonical URI: <yellow>%v</yellow>", err))
+		return "", err
+	}
+
+	// Compute the MD5 hash of the canonical URI
+	fileMD5 := HashURI(canonicalURI)
+
+	// Determine the thumbnail path
+	getThumbnailPath, err := getThumbnailPath(fileMD5, "normal")
+	if err != nil {
+		log.Println(tml.Sprintf("<red><bold>ERR:</bold></red> Couldn't generate an appropriate thumbnail path: <yellow>%v</yellow>", err))
+		return "", err
+	}
+
+	// Copy the PNG file to the thumbnail path
+	err = CopyFile(png, getThumbnailPath)
+	if err != nil {
+		log.Println(tml.Sprintf("<red><bold>ERR:</bold></red> Failed to create thumbnail file: <yellow>%v</yellow>", err))
+		return "", err
+	}
+
+	return getThumbnailPath, nil
+}
+
 // ThumbnailPath returns the path where the thumbnail should be saved.
-func ThumbnailPath(fileMD5 string, thumbnailType string) (string, error) {
+func getThumbnailPath(fileMD5 string, thumbnailType string) (string, error) {
 	// Determine the base directory for thumbnails
 	baseDir, err := os.UserCacheDir()
 	if err != nil {
@@ -450,4 +465,17 @@ func CopyFile(src, dst string) error {
 	}
 
 	return nil
+}
+
+// fileExists checks if a file exists.
+func fileExists(filePath string) bool {
+	_, err := os.Stat(filePath)
+	if err == nil {
+		return true
+	}
+	if os.IsNotExist(err) {
+		return false
+	}
+	// If there's any other error, we consider that the file doesn't exist for simplicity
+	return false
 }
