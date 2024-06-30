@@ -24,7 +24,7 @@ import (
 )
 
 // Version indicates the current PELFD version
-const Version = "1.4"
+const Version = "1.5"
 
 // Options defines the configuration options for the PELFD daemon.
 type Options struct {
