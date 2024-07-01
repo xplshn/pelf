@@ -1,0 +1,49 @@
+#!/bin/sh
+
+# Function to calculate the MD5 hash of a URI
+calculate_md5() {
+   if ! printf "%s" "$1" | md5sum | cut -d ' ' -f1; then
+        echo "There was an error calculating the MD5 hash. Quitting..."
+        exit 1
+    fi
+    # Return the hash value
+    echo "$hash"
+}
+
+# Function to create a thumbnail for a file
+create_thumbnail() {
+    input_file="$1"
+    thumbnail_file="$2"
+
+    # Ensure input file and thumbnail file are specified
+    if [ -z "$input_file" ] || [ -z "$thumbnail_file" ]; then
+        echo "Usage: $0 [file_to_thumbnail] [128x128thumbnail.png]"
+        exit 1
+    fi
+
+    # Check if the thumbnail file exists
+    if [ ! -f "$thumbnail_file" ]; then
+        echo "The thumbnail file does not exist."
+        exit 1
+    fi
+
+    # Determine the canonical URI of the input file
+    abs_path=$(readlink -f "$input_file")
+    uri="file://$abs_path"
+
+    # Calculate the MD5 hash of the URI
+    hash=$(calculate_md5 "$uri")
+
+    # Determine the target directory and filename for the thumbnail
+    thumbnail_dir="${XDG_CACHE_HOME:-$HOME/.cache}/thumbnails/normal"
+    mkdir -p "$thumbnail_dir"
+    thumbnail_path="$thumbnail_dir/$hash.png"
+
+    # Copy the provided thumbnail to the target path
+    cp "$thumbnail_file" "$thumbnail_path"
+
+    echo "Thumbnail saved to: $thumbnail_path"
+}
+
+# Call the function with arguments
+create_thumbnail "$1" "$2"

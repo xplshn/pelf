@@ -1,9 +1,5 @@
 #!/bin/sh
 
-# PELF. Pack an ELF.
-# PELF receives a binary as its first argument and an output as its second argument. It will pack all the necessary libraries that it needs to run, except the libC and LD. Generated files may include optional files inside, be it a library, binary, folder, icons, desktop file, etc.
-
-
 # Copyright <2024> xplshn
 # 
 # Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -12,6 +8,9 @@
 # 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
 #
 # THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS “AS IS” AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+# PELF. Pack an ELF.
+# PELF receives a binary as its first argument and an output as its second argument. It will pack all the necessary libraries that it needs to run, except the libC and LD. Generated files may include optional files inside, be it a library, binary, folder, icons, desktop file, etc.
 
 # shellcheck disable=SC3028
 # In POSIX sh, RANDOM is undefined.
@@ -35,12 +34,13 @@ basename_src="$(basename "$src")"
 # Function to figure out what libraries the binaries need/depend on.
 add_thelibs() {
  # Copy the libraries from the executable to the temporary directory
- ldd "$1" | awk '
+ SOs="$(ldd "$1")"
+ echo "$SOs" | awk '
      # Store the first word of the first line
      NR == 1 { first_word = $1 }
      # For lines with =>, check if the third word is not the same as the first word of the first line
      /=>/ && $3 != first_word { print $3 }
- ' | while read -r lib; do
+    '| while read -r lib; do
      # Copy the library to the temporary directory
      cp -L "$lib" "$tmp_dir/lib" || exit 1
  done
@@ -177,6 +177,7 @@ trap cleanup EXIT
 #    fi
 #    return 1
 #}
+
 set_tmpdir_from_env() {
     var_name="${rEXE_NAME}_bindir"
     if [ -n "$var_name" ]; then
@@ -271,7 +272,7 @@ binDest="$TMPDIR/bin/$EXE_NAME"
 case "$1" in
     --pbundle_help)
         printf "Usage:\n <--pbundle_link <binary>|--pbundle_help|--pbundle_xpmIcon|--pbundle_pngIcon|--pbundle_svgIcon|--pbundle_desktop> <args...>\n"
-        printf "EnvVars:\n USE_BULKLIBS=[0,1]\n USE_SYSTEM_LIBRARIES=[1,0]\n SHOW_DISCARDPROCESS=[0,1]\n HELP_PAGE_LIST_PACKEDFILES=[0,1]\n REUSE_INSTANCES=[0,1]\n"
+        printf "EnvVars:\n USE_BULKLIBS=[0,1]\n USE_SYSTEM_LIBRARIES=[1,0]\n SHOW_DISCARDPROCESS=[0,1]\n HELP_PAGE_LIST_PACKEDFILES=[0,1]\n REUSE_INSTANCES=[0,1]\n CREATE_THUMBNAILS=[1,0]\n"
         if [ "$HELP_PAGE_LIST_PACKEDFILES" = "1" ]; then
             ls "$TMPDIR"/*
         fi
@@ -318,6 +319,35 @@ case "$1" in
             fi
             ;;
 esac
+
+# Thumbnail generation service
+if [ "${CREATE_THUMBNAILS:-1}" -ne 0 ]; then
+	# Function to calculate the MD5 hash of a URI
+	calculate_md5() {
+		if ! printf "%s" "$1" | md5sum | cut -d ' ' -f1; then
+			echo "There was an error calculating the MD5 hash. Quitting..."
+			exit 1
+		fi
+		# Instead of returning hash, directly echo it since it's the only output we need
+		#printf "%s" "$1" | md5sum | cut -d ' ' -f1
+	}
+	# Function to determine the target path for the thumbnail
+	determine_thumbnail_path() {
+		input_file="$1"
+		# Determine the canonical URI of the input file
+		abs_path=$(readlink -f "$input_file")
+		uri="file://$abs_path"
+		# Calculate the MD5 hash of the URI
+		hash=$(calculate_md5 "$uri")
+		# Determine the target directory for the thumbnail
+		thumbnail_dir="${XDG_CACHE_HOME:-$HOME/.cache}/thumbnails/normal"
+		#thumbnail_dir="/thumbnails/normal"
+		echo "${thumbnail_dir}/${hash}.png"
+	}
+	# Call the function with arguments and echo the result
+	THUMBNAIL_PATH="$(determine_thumbnail_path "$0")"
+	cp "$TMPDIR/bundledMetadata/icon.png" "$THUMBNAIL_PATH"
+fi
 
 # Execute the binary with extracted libraries using LD_LIBRARY_PATH
 if [ "${USE_BULKLIBS:-0}" -eq 1 ]; then
