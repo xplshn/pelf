@@ -148,7 +148,8 @@ On the first-run, it will create a config file which you can modify:
  4. Simplify everything by splitting the loader into a very barebones loader and some helper binaries written in shell, for example, the embedded thumbnail generator could be one such helper. The idea being that even if the user isn't able to run the .AppBundle, he can always extract it and repackage it again without having to start from scratch.
  5. Consider using the AppDir layout, since it is well-thought out and .AppImages already work this way, thus allowing us to contribute.
 
-### Current setbacks:  - Code has to be readable to stay hackable, given that this is SH, it may end up being an unbearably disgusting mess, so I have to be specially careful.
+### Current setbacks:
+  - Code has to be readable to stay hackable, given that this is SH, it may end up being an unbearably disgusting mess, so I have to be specially careful.
   - Helpers to pack QT and other programs made with intricate toolkits probably won't be supported because of the lack of manpower, and the inability to piggyback from AppDirTool.go since the code is unreadable, at least for me, it is too deeply tied to the Appimage ecosystem. I'd be great if it were independent enough to be compiled/installed with just `go install`.
   - My time to work on PELFd is limited, and there are no other projects like this one apart from AppImages, and I can't benefit much from that ecosystem
 
