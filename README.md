@@ -7,7 +7,6 @@ PELF (Pack an ELF) is a toolset designed to simplify the process of turning your
 
 If you only intend on using .AppBundles, not necesarily work with them, you don't need any of this. You can get started by simply executing the bundle. The helper daemon is optional. NOTE: Your tar command must support GZIP archives. (which covers most tar implementations, including the BSDs and Busybox's)
 ![2024-07-01-023335_1280x720_scrot](https://github.com/xplshn/pelf/assets/114888778/888033cc-8759-4990-b193-5f870ad639f0)
-As you can see, I have my window manager and all of my X utilities, including my terminal (Wezterm) as a single file, named SpectrWM.AppBundle. You can also see the concept of overlays in action, the `ani-cli` binary inside of the mpv.AppBundle, will have access to the ROFI binary packed in my SpectrWM.AppBundle, because it will be running as a child of that process. There is PATH and LD_LIBRARY_PATH inheritance.
 
 ## Example AppBundles/Binaries for you to try (amd64):
 - POSIX = Runs on any Unix clone that has some degree of POSIX compatibility/compliance
@@ -67,6 +66,9 @@ This feature is particularly powerful because you can stack an infinite number o
 
 Using the `pelf_linker`, the `mpv.AppBundle` can access binaries inside `spectrwm.AppBundle` as well as its own binaries. By doing `mpv.AppBundle --pbundle_link ani-cli`, you can launch an instance of the `ani-cli` included in the bundle, as well as ensure that it can access other utilities in the linked/stacked bundles.
 
+![SpectrWM window manager AppBundle/.blob that contains all of my X utils including Wezterm](https://github.com/xplshn/pelf/assets/114888778/b3b99c24-825d-4be0-a1c8-ea9433776692)
+As you can see, I have my window manager and all of my X utilities, including my terminal (Wezterm) as a single file, named SpectrWM.AppBundle. You can also see the concept of overlays in action, the `ani-cli` binary inside of the mpv.AppBundle, will have access to the ROFI binary packed in my SpectrWM.AppBundle, because it will be running as a child of that process. There is PATH and LD_LIBRARY_PATH inheritance.
+
 ## Installation ![pin](assets/pin.svg)
 To install the PELF toolkit, follow these steps:
 
@@ -86,10 +88,6 @@ To create an `.AppBundle` from your binaries, use the `pelf` tool:
 ```sh
 ./pelf /usr/bin/wezterm wezterm.AppBundle --add-binary /usr/bin/wezterm-mux-server --add-metadata /usr/share/applications/wezterm.desktop --add-metadata ./wezterm128x128.png --add-metadata ./wezterm128x128.svg --add-metadata ./wezterm128x128.xpm
 ```
-
-<!--
-![SpectrWM window manager AppBundle/.blob that contains all of my X utils including Wezterm](https://github.com/xplshn/pelf/assets/114888778/b3b99c24-825d-4be0-a1c8-ea9433776692)
--->
 
 ### Using binaries inside of an `.AppBundle` from outside it, or from other programs
 To leverage access to the binaries inside of your (open & overlayed) PELFs to other programs, you can use the `pelf_linker` tool:
