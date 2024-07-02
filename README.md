@@ -143,16 +143,15 @@ On the first-run, it will create a config file which you can modify:
 .AppBundles may come archived with different formats or encodings. For example, the included `pelf_small` edition, will create bundles without using base64 and using GZIP directly with -9, for the best available compression, it may even end up being faster, due to avoiding base64. Remember to ALWAYS signal which edition a bundle was made with by adding it to the bundle's name! For example, .raw.AppBundle if your PELF tool was patched/modified to remove base64 encoding, .small.AppBundle if you used the pelf_small example included here.
 
 ### Current roadmap:
- 1. Versioning.
- 2. Optionally provide the option to mount the TAR archive instead of instead of copying the files. Or replace TAR altogether for a format that is also widely available.
- 3. Employ the same tricks that the APE loader uses to be recognized as an ELF, preferably, implement a tool that can be used to turn any SH script into a (fake) "ELF".
- 4. Simplify everything by splitting the loader into a very barebones loader and some helper binaries written in shell, for example, the embedded thumbnail generator could be one such helper. The idea being that even if the user isn't able to run the .AppBundle, he can always extract it and repackage it again without having to start from scratch.
- 5. Consider using the AppDir layout, since it is well-thought out and .AppImages already work this way, thus allowing us to contribute.
+ 1. Optionally provide the option to mount the TAR archive instead of instead of copying the files. Or replace TAR altogether for a format that is also widely available.
+ 2. Employ the same tricks that the APE loader uses to be recognized as an ELF, preferably, implement a tool that can be used to turn any SH script into a (fake) "ELF".
+ 3. Simplify everything by splitting the loader into a very barebones loader and some helper binaries written in shell, for example, the embedded thumbnail generator could be one such helper. The idea being that even if the user isn't able to run the .AppBundle, he can always extract it and repackage it again without having to start from scratch.
+ 4. Consider using the AppDir layout, since it is well-thought out and .AppImages already work this way, thus allowing us to contribute.
 
 ### Current setbacks:
   - Code has to be readable to stay hackable, given that this is SH, it may end up being an unbearably disgusting mess, so I have to be specially careful.
   - Helpers to pack QT and other programs made with intricate toolkits probably won't be supported because of the lack of manpower, and the inability to piggyback from AppDirTool.go since the code is unreadable, at least for me, it is too deeply tied to the Appimage ecosystem. I'd be great if it were independent enough to be compiled/installed with just `go install`.
-  - My time to work on PELFd is limited, and there are no other projects like this one apart from AppImages, and I can't benefit much from that ecosystem
+  - My time to work on PELFd is limited, and there are no other projects like this one apart from AppImages, and I can't benefit much from that ecosystem.
 
 ###### Read these two if you are interested in how APE works:
 1. https://justine.lol/ape.html
