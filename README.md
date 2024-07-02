@@ -9,10 +9,11 @@ If you only intend on using .AppBundles, not necesarily work with them, you don'
 ![2024-07-01-023335_1280x720_scrot](https://github.com/xplshn/pelf/assets/114888778/888033cc-8759-4990-b193-5f870ad639f0)
 
 ## Example AppBundles/Binaries for you to try (amd64):
-- POSIX = Runs on any Unix clone that has some degree of POSIX compatibility/compliance
-- MUSL  = Runs on Musl-based Linux distros
-- GLIBC = Runs on Glibc-based Linux distros
-- Linux = Runs on any Linux distro.
+ - POSIX = Runs on any Unix clone that has some degree of POSIX compatibility/compliance
+ - MUSL  = Runs on Musl-based Linux distros
+ - GLIBC = Runs on Glibc-based Linux distros
+ - Linux = Runs on any Linux distro
+
 These are .small.AppBundle, so these are (VERY) compressed and do require gunzip to be available, most if not all Linux distros have it.
 ###### If you don't know what this means, you should select Glibc.
 - FreeDOOM. [GLIBC](https://github.com/xplshn/pelf/raw/master/examples/freedoom_amd64LinuxGlibc.small.AppBundle?download=) - [MUSL](https://github.com/xplshn/pelf/raw/master/examples/freedoom_amd64LinuxMusl.small.AppBundle?download=)
