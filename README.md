@@ -16,12 +16,12 @@ If you only intend on using .AppBundles, not necesarily work with them, you don'
 
 These are .small.AppBundle, so these are (VERY) compressed and do require gunzip to be available, most if not all Linux distros have it.
 ###### If you don't know what this means, you should select Glibc.
-- FreeDOOM. [GLIBC](https://github.com/xplshn/pelf/raw/master/examples/freedoom_amd64LinuxGlibc.small.AppBundle?download=) - [MUSL](https://github.com/xplshn/pelf/raw/master/examples/freedoom_amd64LinuxMusl.small.AppBundle?download=)
-- Chocolate-Doom (server + client) [GLIBC](https://github.com/xplshn/pelf/raw/master/examples/chocolate-doom_amd64LinuxGlibc.small.AppBundle?download=) - [MUSL](https://github.com/xplshn/pelf/raw/master/examples/chocolate-doom_amd64LinuxMusl.small.AppBundle?download=)
-- MPV + ROFI + ANI-CLI + YT-DLP. [GLIBC](https://github.com/xplshn/pelf/raw/master/examples/mpv_amd64LinuxGlibc.small.AppBundle?download=) - [MUSL](https://github.com/xplshn/pelf/raw/master/examples/mpv_amd64LinuxMusl.small.AppBundle?download=)
-- Zig v0.14.0 (language and C compiler). [LINUX](https://github.com/xplshn/pelf/raw/master/examples/zig_amd64Linux.small.AppBundle?download=)
-- Go v1.22.4 (entire Go toolchain). [LINUX](https://github.com/xplshn/pelf/raw/master/examples/go_amd64Linux.small.AppBundle?download=)
-- Obfuscated RickRoll. [POSIX](https://github.com/xplshn/pelf/raw/master/examples/rickRoll.any.AppBundle?download=)
+- FreeDOOM. [GLIBC](https://github.com/xplshn/pelf/releases/download/1.6/freedoom_amd64LinuxGlibc.small.AppBundle) - [MUSL](https://github.com/xplshn/pelf/releases/download/1.6/freedoom_amd64LinuxMusl.small.AppBundle)
+- Chocolate-Doom (server + client) [GLIBC](https://github.com/xplshn/pelf/releases/download/1.6/chocolate-doom_amd64LinuxGlibc.small.AppBundle) - [MUSL](https://github.com/xplshn/pelf/releases/download/1.6/chocolate-doom_amd64LinuxMusl.small.AppBundle)
+- MPV + ROFI + ANI-CLI + YT-DLP. [GLIBC](https://github.com/xplshn/pelf/releases/download/1.6/mpv_amd64LinuxGlibc.small.AppBundle) - [MUSL](https://github.com/xplshn/pelf/releases/download/1.6/mpv_amd64LinuxMusl.small.AppBundle)
+- Zig v0.14.0 (language and C compiler). [LINUX](https://github.com/xplshn/pelf/releases/download/1.6/go_amd64Linux.small.AppBundle)
+- Go v1.22.4 (entire Go toolchain). [LINUX](https://github.com/xplshn/pelf/releases/download/1.6/zig_amd64Linux.small.AppBundle)
+- Obfuscated RickRoll. [POSIX](https://github.com/xplshn/pelf/releases/download/1.6/rickRoll.any.AppBundle)
 
 ## Tools Included
 ### `pelf` ![pin](assets/pin.svg)
