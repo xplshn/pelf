@@ -25,7 +25,7 @@ These are .small.AppBundle, so these are (VERY) compressed and do require gunzip
 
 ## Tools Included
 ### `pelf` ![pin](assets/pin.svg)
-`pelf` is the main tool used to create an `.AppBundle` from your binaries. It takes your executable files and packages them into a single file for easy distribution and execution.
+`pelf` is the main tool used to create an `.AppBundle` of your binaries. It takes your executable files and packages them into a single file for easy distribution and execution.
 
 **Usage:**
 ```sh
