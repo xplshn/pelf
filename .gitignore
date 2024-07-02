@@ -1,0 +1,4 @@
+*.AppBundle
+*.blob
+work/
+exp/
