@@ -131,7 +131,7 @@ done
 # Copy the executable to the temporary directory
 add_binary "$src" || exit 1
 
-# Create a tar archive of the executable, libraries and additional files.
+# Create a tar archive of the executable, libraries and additional files
 if ! tar -C "$tmp_dir" -czf "$outer_tmp_dir/archive.tar.gz" .; then
     echo "Compression failed" >&2
     exit 1
@@ -139,7 +139,7 @@ fi
 
 # Create a self-extracting script
 HOST_INFO="$(uname -mrspv)"
-VERSION="1.6"
+VERSION="1.6_vanilla" # replace "vanilla" with whatever your custom edition is!
 LOADER_SCRIPT=$(sed -e "s|__ENTRY_POINT__|$basename_src|g" -e "s|__PELF_VERSION__|$VERSION|g" -e "s|__PELF_HOST__|$HOST_INFO|g" <<'END_OF_LOADER_SCRIPT'
 #!/bin/sh
 
