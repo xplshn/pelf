@@ -162,7 +162,7 @@ On the first-run, it will create a config file which you can modify:
 Contributions to PELF are welcome! If you find a bug or have a feature request, please open an Issue. For direct contributions, fork the repository and submit a pull request with your changes.
 
 ## License
-PELF is licensed under the 3BSD License. See the [LICENSE](LICENSE) file for more details.
+PELF and its associated tools are licensed under the 3BSD License. See the [LICENSE](LICENSE) file for more details.
 
 ### Special thanks to:
 - [Chris DeBoy](https://codeberg.org/chris_deboy)
