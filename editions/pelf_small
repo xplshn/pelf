@@ -16,20 +16,16 @@
 # In POSIX sh, RANDOM is undefined.
 
 # Check if the required arguments are provided
-if [ "$#" -lt 2 ]; then
-    echo "Usage: $0 [BINARY] [OUTPUT.AppBundle] <--add-library [LIB_PATH]> <--add-binary [BIN_PATH]> <--add-metadata [icon128x128.xpm|icon128x128.png|icon.svg|app.desktop]>  <--add-arbitrary [DIR|FILE]>" >&2
+if [ "$#" -lt 3 ]; then
+    echo "Usage: $0 [--main-bin [BINARY]|--add-appdir [AppDir] [EXE_NAME]] [--output-to OUTPUT.AppBundle] <--add-library [LIB_PATH]|--add-binary [BIN_PATH]|--add-metadata [icon128x128.xpm|icon128x128.png|icon.svg|app.desktop]|--add-arbitrary [DIR|FILE]>" >&2
     exit 1
 fi
 
 # Create a temporary directory for bundling the files
 outer_tmp_dir="/tmp/pelf_$(date '+%s%M%S')_$RANDOM"
-tmp_dir="$outer_tmp_dir/pelf_$(date '+%s%M%S')_$RANDOM"
-mkdir -p "$tmp_dir/bin" "$tmp_dir/lib" || exit 1
+tmp_dir="$outer_tmp_dir/blob"
+mkdir -p "$tmp_dir" || exit 1
 trap 'rm -rf "$outer_tmp_dir"' EXIT
-
-src="$1"
-dst="$2"
-basename_src="$(basename "$src")"
 
 # Function to figure out what libraries the binaries need/depend on.
 add_thelibs() {
@@ -41,14 +37,15 @@ add_thelibs() {
      # For lines with =>, check if the third word is not the same as the first word of the first line
      /=>/ && $3 != first_word { print $3 }
     '| while read -r lib; do
-     # Copy the library to the temporary directory
-     cp -L "$lib" "$tmp_dir/lib" || exit 1
- done
+         mkdir -p "$tmp_dir/lib"
+         cp -L "$lib" "$tmp_dir/lib" || exit 1
+       done
 }
 
 # Function to handle adding libraries
 add_library() {
     lib="$1"
+    mkdir -p "$tmp_dir/bin"
     cp -L "$lib" "$tmp_dir/lib" || exit 1
     add_thelibs "$lib" || exit 1
 }
@@ -57,6 +54,7 @@ add_library() {
 add_binary() {
     binary="$1"
     add_thelibs "$binary"
+    mkdir -p "$tmp_dir/bin"
     cp -L "$binary" "$tmp_dir/bin/$(basename "$binary")" || exit 1
 }
 
@@ -99,37 +97,120 @@ add_metadata() {
     esac
 }
 
-shift 2 # To access --(add)itional arguments
-
-# Process the optional arguments --add-library, --add-binary, and --add-arbitrary
+# These will be overriden. In case they are not, something's gone terribly wrong
+src="xsrc"
+dst="xdst"
+# Process the received arguments
 while [ "$#" -gt 0 ]; do
     case "$1" in
-        --add-library)
-            add_library "$2"
+        --output-to)
+            dst="$2"
             shift 2
+            ;;
+        --add-appdir)
+            if [ -d "$2" ]; then
+                if [ -n "$3" ]; then
+                    basename_src="$(printf '%s\n' "$3" | tr -dc '[:alnum:]_' | tr '[:upper:]' '[:lower:]')"
+                else
+                    echo "You MUST supply a VALID, LOWERCASE-ONLY string conformed of alphanumeric characters to be used as the value of $EXE_NAME inside of the bundles."
+                    exit 1
+                fi
+                # Process each item in the top level of the provided directory
+                for item in "$2"/* "$2"/.*; do
+                    [ -e "$item" ] && add_arbitrary "$item"
+                done
+
+                if [ ! -f "$2/AppRun" ]; then
+                    echo "$2/AppRun doesn't exist."
+                    exit 1
+                fi
+
+                USE_APPDIR="true"
+            else
+                echo "Directory $2 does not exist." >&2
+                exit 1
+            fi
+            shift 3
+            ;;
+            --main-bin)
+            if [ -f "$2" ]; then
+                src="$2"
+            else
+                echo "$2 isn't a file" >&2
+                exit 1
+            fi
+            shift 2
+            ;;
+        --add-library)
+            if [ -z "$USE_APPDIR"  ]; then
+                if [ -f "$2" ]; then
+                    add_library "$2"
+                else
+                    echo "$2 does not exist." >&2
+                    exit 1
+                fi
+                shift 2
+            fi
             ;;
         --add-binary)
-            add_binary "$2"
-            shift 2
+            if [ -z "$USE_APPDIR"  ]; then
+                if [ -f "$2" ]; then
+                    add_binary "$2"
+                else
+                    echo "$2 does not exist." >&2
+                    exit 1
+                fi
+                shift 2
+            fi
             ;;
         --add-metadata)
-            add_metadata "$2"
+            if [ -f "$2" ]; then
+                add_metadata "$2"
+            else
+                echo "Metadata file $2 does not exist." >&2
+                exit 1
+            fi
             shift 2
             ;;
         --add-arbitrary)
-            add_arbitrary "$2"
+            if [ -d "$2" ] || [ -f "$2" ]; then
+                add_arbitrary "$2"
+            else
+                echo "$2 does not exist." >&2
+                exit 1
+            fi
             shift 2
             ;;
-
-        *)
-            echo "Invalid argument: $1" >&2
-            exit 1
+            --add-ld-and-libc)
+            if [ -f "$2" ]; then
+                file_basename=$(basename "$2")
+                found_file=$(find "$tmp_dir" -name "$file_basename" -print -quit)
+                if [ -n "$found_file" ]; then
+                    mv "$found_file" "$tmp_dir/ld.so"
+                else
+                    cp "$2" "$tmp_dir/ld.so"
+                fi
+            fi
+            if [ -f "$3" ]; then
+                file_basename=$(basename "$3")
+                found_file=$(find "$tmp_dir" -name "$file_basename" -print -quit)
+                if [ -n "$found_file" ]; then
+                    mv "$found_file" "$tmp_dir"
+                else
+                    cp "$3" "$tmp_dir"
+                fi
+                shift 1
+            fi
+            shift 2
             ;;
     esac
 done
 
 # Copy the executable to the temporary directory
-add_binary "$src" || exit 1
+if [ "$USE_APPDIR" != "true" ];then
+    basename_src="$(basename "$src")"
+    add_binary "$src" || exit 1
+fi
 
 # Create a tar archive of the executable, libraries and additional files
 if ! tar -C "$tmp_dir" -cf - . | gzip -9 > "$outer_tmp_dir/archive.tar.gz"; then
@@ -139,13 +220,19 @@ fi
 
 # Create a self-extracting script
 HOST_INFO="$(uname -mrspv)"
-VERSION="1.6_small" # replace "small" with whatever your custom edition is!
-LOADER_SCRIPT=$(sed -e "s|__ENTRY_POINT__|$basename_src|g" -e "s|__PELF_VERSION__|$VERSION|g" -e "s|__PELF_HOST__|$HOST_INFO|g" <<'END_OF_LOADER_SCRIPT'
+VERSION="1.7_small" # replace "vanilla" with whatever your custom edition is!
+
+# Generate the loader script with conditional LD_LIBRARY_PATH replacements
+LOADER_SCRIPT=$(sed -e "s|__ENTRY_POINT__|$basename_src|g" \
+                        -e "s|__PELF_VERSION__|$VERSION|g" \
+                        -e "s|__PELF_HOST__|$HOST_INFO|g" <<'END_OF_LOADER_SCRIPT'
 #!/bin/sh
 
 # This file was automatically generated by PELF_small. Find out more about it here: https://github.com/xplshn/pelf
-# Please DO NOT EDIT this file, unless you are testing for changes/fixes. If you found the need to modify 
-# PELF's behavior, submit a PR of your "PELF EDITION" if you think it is appropiate.                    -
+# Please DO NOT EDIT this file, use `pelf_extract` and then create another bundle in case you need to modify something here.
+# Any attempts to modify a .small bundle will fail because of the binary data contained within it.
+# - If you found the need to modify the loader's behavior, submit a PR of your "PELF EDITION" if you think it is appropiate.
+
 
 # Get the binary's name
 [ -n "$EXE_NAME" ] || EXE_NAME="__ENTRY_POINT__"
@@ -259,26 +346,51 @@ mv_u() {
   done
 }
 
+
+# .AppBundle format support
+binDest="$TMPDIR/bin/$EXE_NAME"
+binDir="$TMPDIR/bin"
+libDir="$TMPDIR/lib"
+pngI128x128="$TMPDIR/bundledMetadata/icon.png"
+### .AppDir format support
+# Determine binDest
+[ ! -f "$binDest" ] && binDest="$TMPDIR/AppRun"
+# Determine binDir
+[ ! -d "$binDir" ] && binDir="$TMPDIR/usr/bin"
+# Determine libDir
+[ ! -d "$libDir" ] && libDir="$TMPDIR/usr/lib"
+# Determine pngI128x128
+#[ ! -f "$pngI128x128" ] && pngI128x128="$TMPDIR/.DirIcon"
+
+if [ ! -f "$binDest" ]; then
+    echo "Error: $binDest does NOT exist. And that is this bundle's entrypoint."
+    exit 1
+fi
+
 # Add extra binaries to the PATH, if they are there.
-if [ "$(ls -1 "$TMPDIR"/bin | wc -l)" -gt 1 ]; then
-        if [ -z "$found_runningInstance" ] || [ "$found_runningInstance" != "1" ]; then
-                        export "$(echo "$rEXE_NAME" | sed -E 's/[-.]([a-zA-Z])/\U\1/g; s/[-.]//g')_bindir"="$TMPDIR/bin"
-                        export "$(echo "$rEXE_NAME" | sed -E 's/[-.]([a-zA-Z])/\U\1/g; s/[-.]//g')_lib"="$TMPDIR/lib"
-        fi
-        xPATH="$TMPDIR/bin:$PATH"
-        USE_BULKLIBS=0
+if [ -d "$binDir" ]; then
+    if [ "$(ls -1 "$binDir" | wc -l)" -gt 1 ]; then
+            if [ -z "$found_runningInstance" ] || [ "$found_runningInstance" != "1" ]; then
+                export "$(echo "$rEXE_NAME" | sed -E 's/[-.]([a-zA-Z])/\U\1/g; s/[-.]//g')_bindir"="$binDir"
+                export "$(echo "$rEXE_NAME" | sed -E 's/[-.]([a-zA-Z])/\U\1/g; s/[-.]//g')_lib"="$libDir"
+            fi
+            xPATH="$binDir"
+            USE_BULKLIBS=0
+    fi
 fi
 
 # Figure out what we do
-binDest="$TMPDIR/bin/$EXE_NAME"
 case "$1" in
     --pbundle_help)
         printf "This bundle was generated automatically by PELF __PELF_VERSION__, the machine on which it was created has the following \"uname -mrspv\":\n %s \n" "__PELF_HOST__"
-        printf "Usage:\n <--pbundle_link <binary>|--pbundle_help|--pbundle_xpmIcon|--pbundle_pngIcon|--pbundle_svgIcon|--pbundle_desktop> <args...>\n"
-        printf "EnvVars:\n USE_BULKLIBS=[0,1]\n USE_SYSTEM_LIBRARIES=[1,0]\n SHOW_DISCARDPROCESS=[0,1]\n HELP_PAGE_LIST_PACKEDFILES=[0,1]\n REUSE_INSTANCES=[0,1]\n CREATE_THUMBNAILS=[1,0]\n"
-        if [ "$HELP_PAGE_LIST_PACKEDFILES" = "1" ]; then
-            ls "$TMPDIR"/*
-        fi
+        printf "Usage:\n <--pbundle_help|--pbundle_list|--pbundle_link <binary>|--pbundle_xpmIcon|--pbundle_pngIcon|--pbundle_svgIcon|--pbundle_desktop> <args...>\n"
+        printf "EnvVars:\n USE_BULKLIBS=[0,1]\n USE_SYSTEM_LIBRARIES=[1,0]\n SHOW_DISCARDPROCESS=[0,1]\n REUSE_INSTANCES=[0,1]\n"
+        exit 1
+        ;;
+    --pbundle_list)
+        ls -FAl "$TMPDIR" && \
+        ls -FAl "$binDir" && \
+        test -d "$libDir" && ls -FAl "$libDir"
         exit 1
         ;;
     --pbundle_link)
@@ -286,9 +398,8 @@ case "$1" in
         shift 2
         ;;
     --pbundle_pngIcon)
-        icon_path="$TMPDIR/bundledMetadata/icon.png"
-        if [ -f "$icon_path" ]; then
-            base64 "$icon_path"
+        if [ -f "$pngI128x128" ]; then
+            base64 "$pngI128x128"
             exit 0
         else
             exit 1
@@ -313,54 +424,40 @@ case "$1" in
         fi
         ;;
     --pbundle_desktop)
-            desktop_path="$TMPDIR/bundledMetadata/app.desktop"
-            if [ -f "$desktop_path" ]; then
-                base64 "$desktop_path"
-                exit 0
-            else
-                exit 1
-            fi
-            ;;
+        desktop_path="$TMPDIR/bundledMetadata/app.desktop"
+        if [ -f "$desktop_path" ]; then
+            base64 "$desktop_path"
+            exit 0
+        else
+            exit 1
+        fi
+        ;;
 esac
 
-# Thumbnail generation service
-if [ "${CREATE_THUMBNAILS:-1}" -ne 0 ]; then
-	# Function to calculate the MD5 hash of a URI
-	calculate_md5() {
-		if ! printf "%s" "$1" | md5sum | cut -d ' ' -f1; then
-			echo "There was an error calculating the MD5 hash. Quitting..."
-			exit 1
-		fi
-		# Instead of returning hash, directly echo it since it's the only output we need
-		#printf "%s" "$1" | md5sum | cut -d ' ' -f1
-	}
-	# Function to determine the target path for the thumbnail
-	determine_thumbnail_path() {
-		input_file="$1"
-		# Determine the canonical URI of the input file
-		abs_path=$(readlink -f "$input_file")
-		uri="file://$abs_path"
-		# Calculate the MD5 hash of the URI
-		hash=$(calculate_md5 "$uri")
-		# Determine the target directory for the thumbnail
-		thumbnail_dir="${XDG_CACHE_HOME:-$HOME/.cache}/thumbnails/normal"
-		#thumbnail_dir="/thumbnails/normal"
-		echo "${thumbnail_dir}/${hash}.png"
-	}
-	# Call the function with arguments and echo the result
-	THUMBNAIL_PATH="$(determine_thumbnail_path "$0")"
-	cp "$TMPDIR/bundledMetadata/icon.png" "$THUMBNAIL_PATH"
+LD_LOADER="$TMPDIR/ld.so"
+if [ "${USE_BULKLIBS:-0}" -eq 1 ]; then
+    mkdir -p "$LIBS_BULKDIR"
+    mv_u "$libDir" "$LIBS_BULKDIR"
+    libDir="$LIBS_BULKDIR"
+else
+    libDir="$libDir"
 fi
 
-# Execute the binary with extracted libraries using LD_LIBRARY_PATH
-if [ "${USE_BULKLIBS:-0}" -eq 1 ]; then
-   mkdir -p "$LIBS_BULKDIR"
-   mv_u "$TMPDIR/lib" "$LIBS_BULKDIR"
-   PATH="$PATH:$xPATH" LD_LIBRARY_PATH="$LIBS_BULKDIR" SELF_TEMPDIR="$TMPDIR" "$binDest" "$@" || exit 1
-   EXE_NAME_PID="$!"
+if [ -n "$XDG_DATA_DIRS" ]; then
+    [ -d "$TMPDIR/share" ] && xXDG_DATA_DIRS="$XDG_DATA_DIRS:$TMPDIR/share"
+    [ -d "$TMPDIR/usr/share" ] && xXDG_DATA_DIRS="$xXDG_DATA_DIRS:$TMPDIR/usr/share"
+fi
+
+export SELF_TEMPDIR="$TMPDIR"
+export LD_LIBRARY_PATH="$libDir"
+export XDG_DATA_DIRS="$xXDG_DATA_DIRS"
+export PATH="$PATH:$xPATH"
+if [ -f "$LD_LOADER" ]; then
+    "$LD_LOADER" "$binDest" "$@" || exit 1
+    EXE_NAME_PID="$!"
 else
-   PATH="$PATH:$xPATH" LD_LIBRARY_PATH="$TMPDIR/lib" SELF_TEMPDIR="$TMPDIR" "$binDest" "$@" || exit 1
-   EXE_NAME_PID="$!"
+    "$binDest" "$@"
+    EXE_NAME_PID="$!"
 fi
 
 exit $?

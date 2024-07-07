@@ -1,0 +1,17 @@
+#!/bin/sh
+
+add_thelibs() {
+ # Copy the libraries from the executable to the temporary directory
+ SOs="$(ldd "$1")"
+ echo "$SOs" | awk '
+     # Store the first word of the first line
+     NR == 1 { first_word = $1 }
+     # For lines with =>, check if the third word is not the same as the first word of the first line
+     /=>/ && $3 != first_word { print $3 }
+    '| while read -r lib; do
+     # Copy the library to the temporary directory
+     cp -L "$lib" "$2" || exit 1
+ done
+}
+
+add_thelibs "$@"
