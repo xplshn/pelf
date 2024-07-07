@@ -29,7 +29,7 @@ These are .small.AppBundle, so these are (VERY) compressed and do require gunzip
 
 **Usage:**
 ```sh
-./pelf [ELF_SRC_PATH] [DST_PATH.blob] <--add-library [LIB_PATH]> <--add-binary [BIN_PATH]> <--add-metadata [icon128x128.xpm|icon128x128.png|icon.svg|app.desktop]> <--add-arbitrary [DIR|FILE]>
+Usage: ./pelf [--main-bin [BINARY]|--add-appdir [AppDir] [EXE_NAME]] [--output-to OUTPUT.AppBundle] <--add-library [LIB_PATH]|--add-binary [BIN_PATH]|--add-metadata [icon128x128.xpm|icon128x128.png|icon.svg|app.desktop]|--add-arbitrary [DIR|FILE]>
 ```
 
 ### `pelf_linker`
@@ -87,7 +87,12 @@ To install the PELF toolkit, follow these steps:
 ### Creating an `.AppBundle`
 To create an `.AppBundle` from your binaries, use the `pelf` tool:
 ```sh
-./pelf /usr/bin/wezterm wezterm.AppBundle --add-binary /usr/bin/wezterm-mux-server --add-metadata /usr/share/applications/wezterm.desktop --add-metadata ./wezterm128x128.png --add-metadata ./wezterm128x128.svg --add-metadata ./wezterm128x128.xpm
+./pelf --main-bin /usr/bin/wezterm --output-to ./wezterm.AppBundle --add-binary /usr/bin/wezterm-mux-server --add-metadata /usr/share/applications/wezterm.desktop --add-metadata ./wezterm128x128.png --add-metadata ./wezterm128x128.svg --add-metadata ./wezterm128x128.xpm
+```
+##### Partial AppDir support
+- You can use AppDirs that have an AppRun, but in order to integrate them (add metadata), you will have to use the `--add-metadata` option, also, there are various libraries which your AppRun can rely on from within an AppBundle, make sure you use them.
+```sh
+./pelf --add-appdir ./wezterm_AppDir wezterm --output-to ./wezterm.AppBundle --add-metadata ./wezterm_AppDir/usr/share/applications/wezterm.desktop --add-metadata ./wezterm_AppDir/.DirIcon
 ```
 
 ### Using binaries inside of an `.AppBundle` from outside it, or from other programs
