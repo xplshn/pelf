@@ -25,7 +25,9 @@ fi
 outer_tmp_dir="/tmp/pelf_$(date '+%s%M%S')_$RANDOM"
 tmp_dir="$outer_tmp_dir/blob"
 mkdir -p "$tmp_dir" || exit 1
-trap 'rm -rf "$outer_tmp_dir"' EXIT
+# Trap all termination signals
+trap 'rm -rf "$outer_tmp_dir"' INT TERM HUP QUIT EXIT
+trap -- IGNORE KILL
 
 # Function to figure out what libraries the binaries need/depend on.
 add_thelibs() {
@@ -110,7 +112,7 @@ while [ "$#" -gt 0 ]; do
         --add-appdir)
             if [ -d "$2" ]; then
                 if [ -n "$3" ]; then
-                    basename_src="$(printf '%s\n' "$3" | tr -dc '[:alnum:]_' | tr '[:upper:]' '[:lower:]')"
+                    basename_src="$(printf '%s\n' "$(basename "$3")" | tr -dc '[:alnum:]_' | tr '[:upper:]' '[:lower:]')"
                 else
                     echo "You MUST supply a VALID, LOWERCASE-ONLY string conformed of alphanumeric characters to be used as the value of $EXE_NAME inside of the bundles."
                     exit 1
@@ -125,24 +127,28 @@ while [ "$#" -gt 0 ]; do
                     exit 1
                 fi
 
-                USE_APPDIR="true"
+                NO_COPYMAIN="true"
             else
                 echo "Directory $2 does not exist." >&2
                 exit 1
             fi
             shift 3
             ;;
-            --main-bin)
-            if [ -f "$2" ]; then
+        --main-bin)
+            if [ "$2" = "--plain" ] && [ -f "$3" ]; then
+                NO_COPYMAIN="true"
+                src="$3"
+                shift 3
+            elif [ -f "$2" ]; then
                 src="$2"
+                shift 2
             else
-                echo "$2 isn't a file" >&2
+                echo "Error: '$2' isn't a file" >&2
                 exit 1
             fi
-            shift 2
             ;;
         --add-library)
-            if [ -z "$USE_APPDIR"  ]; then
+            if [ -z "$NO_COPYMAIN"  ]; then
                 if [ -f "$2" ]; then
                     add_library "$2"
                 else
@@ -153,7 +159,7 @@ while [ "$#" -gt 0 ]; do
             fi
             ;;
         --add-binary)
-            if [ -z "$USE_APPDIR"  ]; then
+            if [ -z "$NO_COPYMAIN"  ]; then
                 if [ -f "$2" ]; then
                     add_binary "$2"
                 else
@@ -206,9 +212,10 @@ while [ "$#" -gt 0 ]; do
     esac
 done
 
-# Copy the executable to the temporary directory
-if [ "$USE_APPDIR" != "true" ];then
-    basename_src="$(basename "$src")"
+# Setup EXE_NAME correctly when we use `--main-bin` OR `--main-bin --plain`
+[ -z "$basename_src" ] && basename_src="$(basename "$src")"
+# Copy the main executable and its libraries to the temporary directory
+if [ "$NO_COPYMAIN" != "true" ];then
     add_binary "$src" || exit 1
 fi
 
@@ -236,7 +243,7 @@ LOADER_SCRIPT=$(sed -e "s|__ENTRY_POINT__|$basename_src|g" \
 [ -n "$EXE_NAME" ] || EXE_NAME="__ENTRY_POINT__"
 rEXE_NAME="$(echo "$EXE_NAME" | tr -dc '[:alnum:]_' | tr '[:upper:]' '[:lower:]')"
 TMPDIR="/tmp/.pelfbundles/pbundle_$rEXE_NAME$(date '+%s%M%S')_$RANDOM"
-LIBS_BULKDIR="/tmp/pelfbundle_libs-bulkdir"
+LIBS_BULKDIR="/tmp/.pelfbundles/pbundle_libs"
 cleanup() {
     if [ -z "$found_runningInstance" ] || [ "$found_runningInstance" != "1" ]; then
         # Delete individual files only if they are used exclusively by the current process
@@ -251,7 +258,9 @@ cleanup() {
     fi
 }
 # Set up the trap
-trap cleanup EXIT
+# Trap all termination signals
+trap cleanup INT TERM HUP QUIT EXIT
+trap -- IGNORE KILL
 ##############################
 
 # BASH edition! This is kept for reference since its tidy and readable
@@ -344,11 +353,10 @@ mv_u() {
   done
 }
 
-
 # .AppBundle format support
-binDest="$TMPDIR/bin/$EXE_NAME"
-binDir="$TMPDIR/bin"
 libDir="$TMPDIR/lib"
+binDir="$TMPDIR/bin"
+binDest="$binDir/$EXE_NAME"
 pngI128x128="$TMPDIR/bundledMetadata/icon.png"
 ### .AppDir format support
 # Determine binDest
@@ -358,8 +366,9 @@ pngI128x128="$TMPDIR/bundledMetadata/icon.png"
 # Determine libDir
 [ ! -d "$libDir" ] && libDir="$TMPDIR/usr/lib"
 # Determine pngI128x128
-#[ ! -f "$pngI128x128" ] && pngI128x128="$TMPDIR/.DirIcon"
+[ ! -f "$pngI128x128" ] && pngI128x128="$TMPDIR/.DirIcon"
 
+# Check if binDest exists
 if [ ! -f "$binDest" ]; then
     echo "Error: $binDest does NOT exist. And that is this bundle's entrypoint."
     exit 1
@@ -381,7 +390,7 @@ fi
 case "$1" in
     --pbundle_help)
         printf "This bundle was generated automatically by PELF __PELF_VERSION__, the machine on which it was created has the following \"uname -mrspv\":\n %s \n" "__PELF_HOST__"
-        printf "Usage:\n <--pbundle_help|--pbundle_list|--pbundle_link <binary>|--pbundle_xpmIcon|--pbundle_pngIcon|--pbundle_svgIcon|--pbundle_desktop> <args...>\n"
+        printf "Usage:\n <--pbundle_help|--pbundle_list|--pbundle_link <binary>|--pbundle_xpmIcon|--pbundle_pngIcon|--pbundle_svgIcon|--pbundle_desktop|--pbundle_genThumbnail> <args...>\n"
         printf "EnvVars:\n USE_BULKLIBS=[0,1]\n USE_SYSTEM_LIBRARIES=[1,0]\n SHOW_DISCARDPROCESS=[0,1]\n REUSE_INSTANCES=[0,1]\n"
         exit 1
         ;;
@@ -430,9 +439,21 @@ case "$1" in
             exit 1
         fi
         ;;
+    --pbundle_genThumbnail)
+        if [ -f "$binDir/.pelf_thumbgen" ]; then
+            if [ -f "$pngI128x128" ]; then
+                "$binDir/.pelf_thumbgen" "$0" "$pngI128x128"
+                exit 0
+            else
+                echo "$pngI128x128 does not exist"
+            fi
+        else
+            echo "Sorry, this bundle does not contain .pelf_thumbgen, add that binary if you wish to enable this functionality. (github.com/xplshn/pelf/tree/master/cmd/misc/thumbgen)"
+        fi
+        exit 1
+        ;;
 esac
 
-LD_LOADER="$TMPDIR/ld.so"
 if [ "${USE_BULKLIBS:-0}" -eq 1 ]; then
     mkdir -p "$LIBS_BULKDIR"
     mv_u "$libDir" "$LIBS_BULKDIR"
@@ -450,6 +471,13 @@ export SELF_TEMPDIR="$TMPDIR"
 export LD_LIBRARY_PATH="$libDir"
 export XDG_DATA_DIRS="$xXDG_DATA_DIRS"
 export PATH="$PATH:$xPATH"
+
+LD_LOADER="$TMPDIR/ld.so"
+if ! ldd "$binDest" >/dev/null 2>&1; then
+    LD_LOADER=""
+fi
+
+# Proceed to execute the packed ENTRY POINT binary
 if [ -f "$LD_LOADER" ]; then
     "$LD_LOADER" "$binDest" "$@" || exit 1
     EXE_NAME_PID="$!"
