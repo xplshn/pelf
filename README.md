@@ -21,7 +21,6 @@ These are .small.AppBundle, so these are (VERY) compressed and do require gunzip
 - Chocolate-Doom (server + client) [GLIBC](https://github.com/xplshn/pelf/releases/download/1.6/chocolate-doom_amd64LinuxGlibc.small.AppBundle) - [MUSL](https://github.com/xplshn/pelf/releases/download/1.6/chocolate-doom_amd64LinuxMusl.small.AppBundle)
 - Zig v0.14.0 (language and C compiler). [LINUX](https://github.com/xplshn/pelf/releases/download/1.6/go_amd64Linux.small.AppBundle)
 - Go v1.22.4 (entire Go toolchain). [LINUX](https://github.com/xplshn/pelf/releases/download/1.6/zig_amd64Linux.small.AppBundle)
-
 - Obfuscated RickRoll. [POSIX](https://github.com/xplshn/pelf/releases/download/1.6/rickRoll.any.AppBundle)
 
 ## Tools Included
