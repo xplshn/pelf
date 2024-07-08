@@ -1,6 +1,6 @@
---- ../pelf	2024-07-07 19:30:19.813374890 -0300
-+++ ./pelf_small	2024-07-07 19:31:46.464361182 -0300
-@@ -220,14 +220,14 @@
+--- ../pelf	2024-07-08 01:02:54.296655327 -0300
++++ ./pelf_small	2024-07-08 01:03:40.641011082 -0300
+@@ -225,14 +225,14 @@
  fi
  
  # Create a tar archive of the executable, libraries and additional files
@@ -18,7 +18,7 @@
  
  # Generate the loader script with conditional LD_LIBRARY_PATH replacements
  LOADER_SCRIPT=$(sed -e "s|__ENTRY_POINT__|$basename_src|g" \
-@@ -235,9 +235,10 @@
+@@ -240,9 +240,10 @@
                          -e "s|__PELF_HOST__|$HOST_INFO|g" <<'END_OF_LOADER_SCRIPT'
  #!/bin/sh
  
@@ -32,7 +32,7 @@
  
  # Get the binary's name
  [ -n "$EXE_NAME" ] || EXE_NAME="__ENTRY_POINT__"
-@@ -294,8 +295,8 @@
+@@ -299,8 +300,8 @@
  
          # Construct the variable name by appending _bindir to $rEXENAME
          var_name="${rEXE_NAME}_bindir"
@@ -43,7 +43,7 @@
              # Use eval to check if the constructed variable name exists and is not empty
              echo "Extraction failed" >&2
              eval "var_value=\"\${$var_name}\""
-@@ -492,8 +493,8 @@
+@@ -497,8 +498,8 @@
  )
  
  echo "$LOADER_SCRIPT" > "$dst"

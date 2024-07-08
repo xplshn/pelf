@@ -27,7 +27,7 @@ tmp_dir="$outer_tmp_dir/blob"
 mkdir -p "$tmp_dir" || exit 1
 # Trap all termination signals
 trap 'rm -rf "$outer_tmp_dir"' INT TERM HUP QUIT EXIT
-trap -- IGNORE KILL
+#trap -- IGNORE KILL
 
 # Function to figure out what libraries the binaries need/depend on.
 add_thelibs() {
@@ -117,16 +117,17 @@ while [ "$#" -gt 0 ]; do
                     echo "You MUST supply a VALID, LOWERCASE-ONLY string conformed of alphanumeric characters to be used as the value of $EXE_NAME inside of the bundles."
                     exit 1
                 fi
-                # Process each item in the top level of the provided directory
-                for item in "$2"/* "$2"/.*; do
-                    [ -e "$item" ] && add_arbitrary "$item"
+        
+                # Process each item in the top level of the provided directory, excluding . and ..
+                for item in "$2"/* "$2"/.[!.]* "$2"/..?*; do
+                    [ -e "$item" ] && [ "$item" != "$2/." ] && [ "$item" != "$2/.." ] && add_arbitrary "$item"
                 done
-
+        
                 if [ ! -f "$2/AppRun" ]; then
                     echo "$2/AppRun doesn't exist."
                     exit 1
                 fi
-
+        
                 NO_COPYMAIN="true"
             else
                 echo "Directory $2 does not exist." >&2
@@ -208,6 +209,10 @@ while [ "$#" -gt 0 ]; do
                 shift 1
             fi
             shift 2
+            ;;
+            *)
+            echo "Unrecognized argument: $2"
+            exit 1
             ;;
     esac
 done
