@@ -3,7 +3,7 @@
 ![License](https://img.shields.io/github/license/xplshn/pelf)
 ![GitHub code size in bytes](https://img.shields.io/github/languages/code-size/xplshn/pelf)
 
-PELF (Pack an ELF) is a toolset designed to simplify the process of turning your binaries into single-file executables, similar to AppImages. The format used by PELF is called `.AppBundle` or `.blob`. The PELF files are portable across systems of the same architecture and ABI. Architecture and LIBC-independent bundles can be achieved using Wrappers.
+PELF (Pack an ELF) is a toolset designed to simplify the process of turning your binaries into single-file executables, similar to AppImages. The format used by PELF is called `.AppBundle` or `.blob`. The files are portable across systems of the same architecture and ABI. Architecture-independent bundles can be achieved using Wrappers, and Libc-independent ones can be achieved by using `--add-ld-and-libc` (it is recommended that you generate the bundles on Musl-based systems, so that they are lighter and will work on other systems)
 
 #### If you only intend on using .AppBundles, not necesarily work with them, you don't need any of this. You can get started by simply executing the bundle. The helper daemon is optional.
 ##### NOTE: Your tar command must support GZIP archives. (which covers most tar implementations, including the BSDs and Busybox's)
