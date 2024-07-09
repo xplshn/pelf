@@ -16,7 +16,7 @@ PELF (Pack an ELF) is a toolset designed to simplify the process of turning your
  - GLIBC = Runs on Glibc-based Linux distros
  - Linux = Runs on any Linux distro
 
-These are .small.AppBundle, so these are (VERY) compressed and do require gunzip to be available, most if not all Linux distros have it.
+These are .small.AppBundle, so these are (VERY) compressed and do require gunzip to be available, most systems have it.
 ###### If you don't know what this means, you should select Linux or alternatively, Glibc.
 - FreeDOOM. [LINUX](https://github.com/xplshn/pelf/releases/download/1.7/freedoom_amd64Linux.small.AppBundle) - [GLIBC](https://github.com/xplshn/pelf/releases/download/1.6/freedoom_amd64LinuxGlibc.small.AppBundle) - [MUSL](https://github.com/xplshn/pelf/releases/download/1.6/freedoom_amd64LinuxMusl.small.AppBundle)
 - MPV + ROFI + ANI-CLI + YT-DLP. [LINUX](https://github.com/xplshn/pelf/releases/download/1.7/mpv_amd64Linux.small.AppBundle) - [GLIBC](https://github.com/xplshn/pelf/releases/download/1.6/mpv_amd64LinuxGlibc.small.AppBundle) - [MUSL](https://github.com/xplshn/pelf/releases/download/1.6/mpv_amd64LinuxMusl.small.AppBundle)
