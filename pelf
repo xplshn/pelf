@@ -157,6 +157,8 @@ while [ "$#" -gt 0 ]; do
                     exit 1
                 fi
                 shift 2
+            else
+                echo "You cannot use this feature along with APPDIRS. Use the command getlibs at pelf/cmd if that's what you are trying to do. You can also use --add-arbitrary and name your dir usr/lib"
             fi
             ;;
         --add-binary)
@@ -168,6 +170,8 @@ while [ "$#" -gt 0 ]; do
                     exit 1
                 fi
                 shift 2
+            else
+                echo "You cannot use this feature along with APPDIRS. Use the command getlibs at pelf/cmd if that's what you are trying to do. You can also use --add-arbitrary and name your dir usr/bin and usr/lib for the bin's libraries"
             fi
             ;;
         --add-metadata)
@@ -468,14 +472,16 @@ else
 fi
 
 if [ -n "$XDG_DATA_DIRS" ]; then
-    [ -d "$TMPDIR/share" ] && xXDG_DATA_DIRS="$XDG_DATA_DIRS:$TMPDIR/share"
-    [ -d "$TMPDIR/usr/share" ] && xXDG_DATA_DIRS="$xXDG_DATA_DIRS:$TMPDIR/usr/share"
+    [ -d "$TMPDIR/share" ] && XDG_DATA_DIRS="$XDG_DATA_DIRS:$TMPDIR/share"
+    [ -d "$TMPDIR/usr/share" ] && XDG_DATA_DIRS="$XDG_DATA_DIRS:$TMPDIR/usr/share"
 fi
 
-export SELF_TEMPDIR="$TMPDIR"
+
 export LD_LIBRARY_PATH="$libDir"
-export XDG_DATA_DIRS="$xXDG_DATA_DIRS"
+export SELF_TEMPDIR="$TMPDIR"
 export PATH="$PATH:$xPATH"
+[ -n "$XDG_DATA_DIRS" ] && export XDG_DATA_DIRS
+[ -d "$TMPDIR/schemas" ] && export GSETTINGS_SCHEMA_DIR="$TMPDIR/schemas"
 
 LD_LOADER="$TMPDIR/ld.so"
 if ! ldd "$binDest" >/dev/null 2>&1; then
