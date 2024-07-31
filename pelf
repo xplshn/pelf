@@ -385,13 +385,19 @@ fi
 
 # Add extra binaries to the PATH, if they are there.
 if [ -d "$binDir" ]; then
-    if [ "$(ls -1 "$binDir" | wc -l)" -gt 1 ]; then
-            if [ -z "$found_runningInstance" ] || [ "$found_runningInstance" != "1" ]; then
-                export "$(echo "$rEXE_NAME" | sed -E 's/[-.]([a-zA-Z])/\U\1/g; s/[-.]//g')_bindir"="$binDir"
-                export "$(echo "$rEXE_NAME" | sed -E 's/[-.]([a-zA-Z])/\U\1/g; s/[-.]//g')_lib"="$libDir"
-            fi
-            xPATH="$binDir"
-            USE_BULKLIBS=0
+    count=0
+    for _ in "$binDir"/*; do
+        count=$((count + 1))
+    done
+    if [ "$count" -gt 1 ]; then
+        if [ -z "$found_runningInstance" ] || [ "$found_runningInstance" != "1" ]; then
+            varname=$(echo "$rEXE_NAME" | sed 's/[-.]\([a-zA-Z]\)/\U\1/g; s/[-.]//g')
+            export "${varname}_bindir"="$binDir"
+            export "${varname}_lib"="$libDir"
+        fi
+        xPATH="$binDir"
+        # Just to be safe. What if another bundle removes a library that we happen to be sharing? (during the cleanup step)
+        USE_BULKLIBS=0
     fi
 fi
 

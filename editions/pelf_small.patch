@@ -1,4 +1,4 @@
---- ../pelf
+--- ./pelf
 +++ ./pelf_small
 @@ -229,14 +229,14 @@
  fi
@@ -43,7 +43,34 @@
              # Use eval to check if the constructed variable name exists and is not empty
              echo "Extraction failed" >&2
              eval "var_value=\"\${$var_name}\""
-@@ -503,8 +504,8 @@
+@@ -385,19 +386,13 @@
+ 
+ # Add extra binaries to the PATH, if they are there.
+ if [ -d "$binDir" ]; then
+-    count=0
+-    for _ in "$binDir"/*; do
+-        count=$((count + 1))
+-    done
+-    if [ "$count" -gt 1 ]; then
+-        if [ -z "$found_runningInstance" ] || [ "$found_runningInstance" != "1" ]; then
+-            varname=$(echo "$rEXE_NAME" | sed 's/[-.]\([a-zA-Z]\)/\U\1/g; s/[-.]//g')
+-            export "${varname}_bindir"="$binDir"
+-            export "${varname}_lib"="$libDir"
+-        fi
+-        xPATH="$binDir"
+-        # Just to be safe. What if another bundle removes a library that we happen to be sharing? (during the cleanup step)
+-        USE_BULKLIBS=0
++    if [ "$(ls -1 "$binDir" | wc -l)" -gt 1 ]; then
++            if [ -z "$found_runningInstance" ] || [ "$found_runningInstance" != "1" ]; then
++                export "$(echo "$rEXE_NAME" | sed -E 's/[-.]([a-zA-Z])/\U\1/g; s/[-.]//g')_bindir"="$binDir"
++                export "$(echo "$rEXE_NAME" | sed -E 's/[-.]([a-zA-Z])/\U\1/g; s/[-.]//g')_lib"="$libDir"
++            fi
++            xPATH="$binDir"
++            USE_BULKLIBS=0
+     fi
+ fi
+ 
+@@ -509,8 +504,8 @@
  )
  
  echo "$LOADER_SCRIPT" > "$dst"
