@@ -477,17 +477,17 @@ else
     libDir="$libDir"
 fi
 
+# Append to PATH-like variables if they exist, otherwise set them
+[ -n "$LD_LIBRARY_PATH" ] && LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$libDir" || LD_LIBRARY_PATH="$libDir"
+[ -n "$PATH" ] && PATH="$PATH:$xPATH" || PATH="$xPATH"
+# Handle XDG_DATA_DIRS appending if it exists
 if [ -n "$XDG_DATA_DIRS" ]; then
     [ -d "$TMPDIR/share" ] && XDG_DATA_DIRS="$XDG_DATA_DIRS:$TMPDIR/share"
     [ -d "$TMPDIR/usr/share" ] && XDG_DATA_DIRS="$XDG_DATA_DIRS:$TMPDIR/usr/share"
 fi
-
-
-export LD_LIBRARY_PATH="$libDir"
-export SELF_TEMPDIR="$TMPDIR"
-export PATH="$PATH:$xPATH"
-[ -n "$XDG_DATA_DIRS" ] && export XDG_DATA_DIRS
-[ -d "$TMPDIR/schemas" ] && export GSETTINGS_SCHEMA_DIR="$TMPDIR/schemas"
+# Handle LD_PRELOAD appending if it exists
+[ -n "$LD_PRELOAD" ] && LD_PRELOAD="$LD_PRELOAD:$libDir/libToPreload.so" || LD_PRELOAD="$libDir/libToPreload.so"
+SELF_TEMPDIR="$TMPDIR"
 
 LD_LOADER="$TMPDIR/ld.so"
 if ! ldd "$binDest" >/dev/null 2>&1; then
