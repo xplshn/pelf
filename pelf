@@ -478,26 +478,33 @@ else
 fi
 
 # Append to PATH-like variables if they exist, otherwise set them
-[ -n "$LD_LIBRARY_PATH" ] && LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$libDir" || LD_LIBRARY_PATH="$libDir"
-[ -z "$LD_LIBRARY_PATH" ] && LD_LIBRARY_PATH="$libDir"
+if [ -z "$LD_LIBRARY_PATH" ]; then
+    LD_LIBRARY_PATH="$libDir"
+else
+    LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$libDir"
+fi
 
-[ -n "$PATH" ] && PATH="$PATH:$xPATH" || PATH="$xPATH"
-[ -z "$PATH" ] && PATH="$xPATH"
+if [ -z "$PATH" ]; then
+    PATH="$xPATH"
+else
+    PATH="$PATH:$xPATH"
+fi
 
-# Handle XDG_DATA_DIRS appending if it exists
+# Append to XDG_DATA_DIRS if it exists and we have ./share || ./usr/share directories
 if [ -n "$XDG_DATA_DIRS" ]; then
     [ -d "$TMPDIR/share" ] && XDG_DATA_DIRS="$XDG_DATA_DIRS:$TMPDIR/share"
     [ -d "$TMPDIR/usr/share" ] && XDG_DATA_DIRS="$XDG_DATA_DIRS:$TMPDIR/usr/share"
-else
-    XDG_DATA_DIRS="$TMPDIR/share:$TMPDIR/usr/share"
 fi
 
-# Handle LD_PRELOAD appending if it exists, otherwise set it
-[ -n "$LD_PRELOAD" ] && LD_PRELOAD="$LD_PRELOAD:$libDir/libToPreload.so" || LD_PRELOAD="$libDir/libToPreload.so"
-[ -z "$LD_PRELOAD" ] && LD_PRELOAD="$libDir/libToPreload.so"
+# Handle LD_PRELOAD appending if it exists
+if [ -z "$LD_PRELOAD" ]; then
+    LD_PRELOAD="$libDir/libToPreload.so"
+else
+    LD_PRELOAD="$LD_PRELOAD:$libDir/libToPreload.so"
+fi
 
+# Set the LD_LOADER if we have one
 SELF_TEMPDIR="$TMPDIR"
-
 LD_LOADER="$TMPDIR/ld.so"
 if ! ldd "$binDest" >/dev/null 2>&1; then
     LD_LOADER=""
