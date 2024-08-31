@@ -16,13 +16,13 @@ create_thumbnail() {
     thumbnail_file="$2"
 
     # Ensure input file and thumbnail file are specified
-    if [ -z "$input_file" ] || [ -z "$thumbnail_file" ]; then
-        echo "Usage: $0 [file_to_thumbnail] [128x128thumbnail.png]"
+    if [ -z "$input_file" ]; then
+        echo "Usage: $0 [file_to_thumbnail] <128x128thumbnail.png>"
         exit 1
     fi
 
     # Check if the thumbnail file exists
-    if [ ! -f "$thumbnail_file" ]; then
+    if [ -n "$thumbnail_file" ] && [ ! -f "$thumbnail_file" ]; then
         echo "The thumbnail file does not exist."
         exit 1
     fi
@@ -40,9 +40,13 @@ create_thumbnail() {
     thumbnail_path="$thumbnail_dir/$hash.png"
 
     # Copy the provided thumbnail to the target path
-    cp "$thumbnail_file" "$thumbnail_path"
+    if [ -n "$thumbnail_file" ]; then
+        cp "$thumbnail_file" "$thumbnail_path"
+        echo "Thumbnail saved to: $thumbnail_path"
+        exit 0
+    fi
 
-    echo "Thumbnail saved to: $thumbnail_path"
+    echo "$thumbnail_path"
 }
 
 # Call the function with arguments

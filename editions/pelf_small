@@ -474,14 +474,23 @@ fi
 
 # Append to PATH-like variables if they exist, otherwise set them
 [ -n "$LD_LIBRARY_PATH" ] && LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$libDir" || LD_LIBRARY_PATH="$libDir"
+[ -z "$LD_LIBRARY_PATH" ] && LD_LIBRARY_PATH="$libDir"
+
 [ -n "$PATH" ] && PATH="$PATH:$xPATH" || PATH="$xPATH"
+[ -z "$PATH" ] && PATH="$xPATH"
+
 # Handle XDG_DATA_DIRS appending if it exists
 if [ -n "$XDG_DATA_DIRS" ]; then
     [ -d "$TMPDIR/share" ] && XDG_DATA_DIRS="$XDG_DATA_DIRS:$TMPDIR/share"
     [ -d "$TMPDIR/usr/share" ] && XDG_DATA_DIRS="$XDG_DATA_DIRS:$TMPDIR/usr/share"
+else
+    XDG_DATA_DIRS="$TMPDIR/share:$TMPDIR/usr/share"
 fi
-# Handle LD_PRELOAD appending if it exists
+
+# Handle LD_PRELOAD appending if it exists, otherwise set it
 [ -n "$LD_PRELOAD" ] && LD_PRELOAD="$LD_PRELOAD:$libDir/libToPreload.so" || LD_PRELOAD="$libDir/libToPreload.so"
+[ -z "$LD_PRELOAD" ] && LD_PRELOAD="$libDir/libToPreload.so"
+
 SELF_TEMPDIR="$TMPDIR"
 
 LD_LOADER="$TMPDIR/ld.so"
