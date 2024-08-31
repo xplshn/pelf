@@ -484,18 +484,21 @@ if [ -z "$LD_LIBRARY_PATH" ]; then
 else
     LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$libDir"
 fi
+export LD_LIBRARY_PATH
 
 if [ -z "$PATH" ]; then
     PATH="$xPATH"
 else
     PATH="$PATH:$xPATH"
 fi
+export PATH
 
 # Append to XDG_DATA_DIRS if it exists and we have ./share || ./usr/share directories
 if [ -n "$XDG_DATA_DIRS" ]; then
     [ -d "$TMPDIR/share" ] && XDG_DATA_DIRS="$XDG_DATA_DIRS:$TMPDIR/share"
     [ -d "$TMPDIR/usr/share" ] && XDG_DATA_DIRS="$XDG_DATA_DIRS:$TMPDIR/usr/share"
 fi
+export XDG_DATA_DIRS
 
 # Handle LD_PRELOAD appending if it exists
 if [ -z "$LD_PRELOAD" ]; then
@@ -503,6 +506,7 @@ if [ -z "$LD_PRELOAD" ]; then
 else
     LD_PRELOAD="$LD_PRELOAD:$libDir/libToPreload.so"
 fi
+export LD_PRELOAD
 
 # Set the LD_LOADER if we have one
 SELF_TEMPDIR="$TMPDIR"
