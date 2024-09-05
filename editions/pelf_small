@@ -252,7 +252,7 @@ LOADER_SCRIPT=$(sed -e "s|__ENTRY_POINT__|$basename_src|g" \
 # Get the binary's name
 [ -n "$EXE_NAME" ] || EXE_NAME="__ENTRY_POINT__"
 rEXE_NAME="$(echo "$EXE_NAME" | tr -dc '[:alnum:]_' | tr '[:upper:]' '[:lower:]')"
-TMPDIR="/tmp/.pelfbundles/pbundle_$rEXE_NAME$(date '+%s%M%S')_$RANDOM"
+TMPDIR="${TMPDIR:-/tmp}/.pelfbundles/pbundle_$rEXE_NAME$(date '+%s%M%S')_$RANDOM"
 LIBS_BULKDIR="/tmp/.pelfbundles/pbundle_libs"
 cleanup() {
     if [ -z "$found_runningInstance" ] || [ "$found_runningInstance" != "1" ]; then
