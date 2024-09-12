@@ -150,9 +150,9 @@ On the first-run, it will create a config file which you can modify:
 .AppBundles may come archived with different formats or encodings. For example, the included `pelf_small` edition, will create bundles without using base64 and using GZIP directly with -9, for the best available compression, it may even end up being faster, due to avoiding base64. Remember to ALWAYS signal which edition a bundle was made with by adding it to the bundle's name! For example, .raw.AppBundle if your PELF tool was patched/modified to remove base64 encoding, .small.AppBundle if you used the pelf_small example included here.
 
 ### Current roadmap:
- 1. Optionally provide the option to mount the TAR archive instead of instead of copying the files. Or replace TAR altogether for a format that is also widely available.
- 2. Employ the same tricks that the APE loader uses to be recognized as an ELF, preferably, implement a tool that can be used to turn any SH script into a (fake) "ELF".
- 3. Simplify everything by splitting the loader into a very barebones loader and some helper binaries written in shell, for example, the embedded thumbnail generator could be one such helper. The idea being that even if the user isn't able to run the .AppBundle, he can always extract it and repackage it again without having to start from scratch.
+ 1. Employ the same tricks that the APE loader uses to be recognized as an ELF, preferably, implement a tool that can be used to turn any SH script into a (fake) "ELF".
+ 2. Ability to re-assemble bundles
+ 3. Checksums & signatures
 
 ### Current setbacks:
   - Code has to be readable to stay hackable, given that this is SH, it may end up being an unbearable, disgusting mess, so I have to be specially careful.

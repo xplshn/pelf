@@ -8,7 +8,7 @@ PELF_LIBDIRS=""
 
 concatenate_bindirs() {
     # Target any variable ending with _bindir
-    vars="$(env | grep ".*_bindir=" | cut -f 1 -d '=')"
+    vars="$(env | grep ".*_binDir=" | cut -f 1 -d '=')"
     for v in $vars; do
         # Use eval to get the value of the variable
         eval "vval=\$$v"
@@ -29,7 +29,7 @@ concatenate_bindirs() {
 # Function to concatenate all *_bindir environment variables into PELF_LIBDIRS
 concatenate_libdirs() {
     # Target any variable ending with _bindir
-    vars="$(env | grep ".*_lib=" | cut -f 1 -d '=')"
+    vars="$(env | grep ".*_libDir=" | cut -f 1 -d '=')"
     for v in $vars; do
         # Use eval to get the value of the variable
         eval "vval=\$$v"

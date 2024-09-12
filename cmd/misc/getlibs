@@ -10,7 +10,7 @@ add_thelibs() {
      /=>/ && $3 != first_word { print $3 }
     '| while read -r lib; do
      # Copy the library to the temporary directory
-     cp -L "$lib" "$2" || exit 1
+     cp -LR "$lib" "$2" || exit 1
  done
 }
 

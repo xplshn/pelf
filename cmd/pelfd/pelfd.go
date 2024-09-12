@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -20,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/goccy/go-json"
 	"github.com/liamg/tml"
 )
 
@@ -96,7 +96,7 @@ func loadConfig(configPath string, homeDir string) Config {
 			ProbeInterval:       90,
 			IconDir:             filepath.Join(homeDir, ".local/share/icons"),
 			AppDir:              filepath.Join(homeDir, ".local/share/applications"),
-			ProbeExtensions:     []string{".AppBundle", ".blob"},
+			ProbeExtensions:     []string{".AppBundle", ".blob", ".AppIBundle"},
 			CorrectDesktopFiles: true,
 		},
 		Tracker: make(map[string]*BundleEntry),
@@ -180,7 +180,7 @@ func processBundle(config Config, homeDir string, configFilePath string) {
 					// Check if the bundle's thumbnail has been removed
 					if entry.Thumbnail != "" && !fileExists(entry.Thumbnail) {
 						log.Println(tml.Sprintf("<yellow><bold>WRN:</yellow></red> The thumbnail file for <blue>%s</blue> doesn't exist anymore. Generating new thumbnail...", filepath.Base(bundle)))
-						thumbnailPath, err := GenerateThumbnail(bundle, entry.Png)
+						thumbnailPath, err := generateThumbnail(bundle, entry.Png)
 						if err != nil {
 							log.Println(tml.Sprintf("<red><bold>ERR:</bold></red> Failed to create thumbnail file: <yellow>%v</yellow>", err))
 						}
@@ -204,7 +204,7 @@ func processBundle(config Config, homeDir string, configFilePath string) {
 	for path := range entries {
 		if _, found := existing[path]; !found {
 			log.Println(tml.Sprintf("<yellow><bold>WRN:</yellow></red> <blue>%s</blue> no longer exists", path))
-			cleanupBundle(path, entries, options.IconDir, options.AppDir)
+			cleanupBundle(path, entries)
 			changed = true
 		}
 	}
@@ -260,7 +260,7 @@ func processBundles(path, sha string, entries map[string]*BundleEntry, iconPath,
 
 	// Create a thumbnail for file managers. See: https://specifications.freedesktop.org/thumbnail-spec/thumbnail-spec-latest.html#CREATION for details
 	if entry.Png != "" {
-		thumbnailPath, err := GenerateThumbnail(path, entry.Png)
+		thumbnailPath, err := generateThumbnail(path, entry.Png)
 		if err != nil {
 			log.Println(tml.Sprintf("<red><bold>ERR:</bold></red> Failed to create thumbnail file: <yellow>%v</yellow>", err))
 		}
@@ -320,7 +320,7 @@ func executeBundle(bundle, param, outputFile string) string {
 	return outputFile
 }
 
-func cleanupBundle(path string, entries map[string]*BundleEntry, iconDir, appDir string) {
+func cleanupBundle(path string, entries map[string]*BundleEntry) {
 	entry := entries[path]
 	if entry == nil {
 		return
@@ -393,7 +393,7 @@ func CanonicalURI(filePath string) (string, error) {
 	return uri.String(), nil
 }
 
-func GenerateThumbnail(path string, png string) (string, error) {
+func generateThumbnail(path string, png string) (string, error) {
 	// Generate the canonical URI for the file path
 	canonicalURI, err := CanonicalURI(path)
 	if err != nil {

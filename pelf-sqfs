@@ -1,0 +1,554 @@
+#!/bin/sh
+
+# Create a temporary directory for bundling the files
+_VAR_WORKDIR="/tmp/pelf_$(date '+%s%M%S')"
+_VAR_TO_BE_BUNDLED="$_VAR_WORKDIR/blob"
+mkdir -p "$_VAR_TO_BE_BUNDLED" || exit 1
+# Trap all termination signals
+trap 'rm -rf "$_VAR_WORKDIR"' INT TERM HUP QUIT EXIT
+#
+
+# Exit with error message
+error() {
+    printf >&2 "ERROR: %s\n" "$*"
+    exit 1
+}
+
+# Check if the required arguments are provided
+if [ "$#" -lt 3 ]; then
+    error "Usage: $0 [--main-bin [BINARY]|--add-appdir [AppDir] [EXE_NAME]] [--output-to OUTPUT.AppBundle] <--add-library [LIB_PATH]|--add-binary [BIN_PATH]|--add-metadata [icon128x128.xpm|icon128x128.png|icon.svg|app.desktop]|--add-arbitrary [DIR|FILE]|--add-ld-and-libc /lib/ld-*-*.* /lib/libc.*-*.*|--embed-static-tools|>"
+fi
+
+# Throw an error if any of these are missing
+for cmd in mksquashfs fusermount squashfuse; do
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+        error "$cmd could not be found. Please install it and try again"
+    fi
+done
+
+# Function to figure out what libraries the binaries need/depend on.
+add_thelibs() {
+ # Copy the libraries from the executable to the temporary directory
+ SOs="$(ldd "$1")"
+ echo "$SOs" | awk '
+     # Store the first word of the first line
+     NR == 1 { first_word = $1 }
+     # For lines with =>, check if the third word is not the same as the first word of the first line
+     /=>/ && $3 != first_word { print $3 }
+    '| while read -r lib; do
+         mkdir -p "$_VAR_TO_BE_BUNDLED/usr/lib"
+         cp -L "$lib" "$_VAR_TO_BE_BUNDLED/usr/lib" || exit 1
+       done
+}
+
+# Function to handle adding libraries
+add_library() {
+    mkdir -p "$_VAR_TO_BE_BUNDLED/usr/lib"
+    cp -L "${1}" "$_VAR_TO_BE_BUNDLED/usr/lib" || exit 1
+    add_thelibs "${1}" || exit 1
+}
+
+# Function to handle adding binaries
+add_binary() {
+    add_thelibs "$1"
+    mkdir -p "$_VAR_TO_BE_BUNDLED/usr/bin"
+    cp -L "$1" "$_VAR_TO_BE_BUNDLED/usr/bin" || exit 1
+}
+
+add_arbitrary() {
+    cp -dR "$1" "$_VAR_TO_BE_BUNDLED" || { echo "Failed to copy arbitrary files"; exit 1; }
+}
+
+add_metadata() {
+    case "$1" in
+        *.png | *.xpm | *.svg)
+            mkdir -p "$_VAR_TO_BE_BUNDLED/bundledMetadata" || { echo "Failed to create directory"; exit 1; }
+            cp -dR -- "$1" "$_VAR_TO_BE_BUNDLED/bundledMetadata/icon.${1##*.}" || { echo "Failed to copy icon file"; exit 1; }
+            ;;
+        *.desktop)
+            printf "WARNING: Make sure that both the Exec= and TryExec= line match the --output-to file\n"
+
+            mkdir -p "$_VAR_TO_BE_BUNDLED/bundledMetadata" || { echo "Failed to create directory"; exit 1; }
+            cp -dR -- "$1" "$_VAR_TO_BE_BUNDLED/bundledMetadata/app.desktop" || { echo "Failed to copy desktop file"; exit 1; }
+            ;;
+        *)
+            printf "File extension not supported.\nNote: If you supply an icon, size **SHOULD** be 128x128\n"
+            exit 1
+            ;;
+    esac
+}
+
+# Function to handle file/directory existence checks and operations
+check_and_process() {
+    FPATH="$1"
+    ACTION="$2"
+
+    if [ -e "$FPATH" ]; then
+        eval "$ACTION" "$FPATH"
+    else
+        echo "$FPATH does not exist." >&2
+        exit 1
+    fi
+}
+
+# Process arguments
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --output-to)
+            _VAR_OUT_FILE="$2"
+            shift 2
+            ;;
+        --add-appdir)
+            if [ "$_VAR_APPDIR_MODE" = "true" ]; then
+                echo "--add-appdir cannot be used with other flags." >&2
+                exit 1
+            fi
+        
+            __APPDIR="${2:-}"
+            if [ -d "$__APPDIR" ]; then
+                _VAR_MAIN_BINARY="$3"
+        
+                if [ -z "$_VAR_MAIN_BINARY" ]; then
+                    error "You must specify an entrypoint binary with --add-appdir."
+                elif [ "$_VAR_MAIN_BINARY" = "AppRun" ]; then
+                    error "The entrypoint binary cannot be named 'AppRun'."
+                fi
+        
+                if [ ! -f "$__APPDIR/usr/bin/$_VAR_MAIN_BINARY" ] && [ ! -f "$__APPDIR/AppRun" ]; then
+                    error "The specified entrypoint binary ($_VAR_MAIN_BINARY) does not exist in $__APPDIR/usr/bin, and $__APPDIR/AppRun is missing."
+                fi
+        
+                echo "NOTE: When using --add-appdir to repackage a bundle or an AppDir, you must specify an entrypoint binary. If the supplied AppDir has an AppRun, it will be used to identify the AppBundle but not executed. If the AppDir does not have an AppRun but contains a binary under usr/bin that matches the entrypoint you’ve set, that binary will be used."
+        
+                _VAR_APPDIR_MODE="true"
+                cp -dR "$__APPDIR"/* "$_VAR_TO_BE_BUNDLED"
+        
+                shift 3
+            else
+                echo "Directory $__APPDIR does not exist." >&2
+                exit 1
+            fi
+            ;;
+        --main-bin)
+            if [ "$_VAR_APPDIR_MODE" = "true" ]; then
+                echo "--main-bin cannot be used with --add-appdir." >&2
+                exit 1
+            fi
+
+            check_and_process "$2" true
+            _VAR_MAIN_BINARY="$2"
+            shift 2
+            ;;
+        --add-library)
+            if [ "$_VAR_APPDIR_MODE" = "true" ]; then
+                echo "--add-library cannot be used with --add-appdir." >&2
+                exit 1
+            fi
+
+            check_and_process "$2" add_library
+            shift 2
+            ;;
+        --add-binary)
+            if [ "$_VAR_APPDIR_MODE" = "true" ]; then
+                echo "--add-binary cannot be used with --add-appdir." >&2
+                exit 1
+            fi
+
+            check_and_process "$2" add_binary
+            shift 2
+            ;;
+        --add-metadata)
+            check_and_process "$2" add_metadata
+            shift 2
+            ;;
+        --add-arbitrary)
+            check_and_process "$2" add_arbitrary
+            shift 2
+            ;;
+        --add-ld-and-libc)
+            # Ensure both $2 (ld.so) and $3 (libc) are provided
+            if [ -z "$2" ] || [ -z "$3" ]; then
+                echo "Error: ld.so or libc not provided."
+                exit 1
+            fi
+
+            # Ensure $2 exists and copy to $_VAR_TO_BE_BUNDLED/ld.so
+            if [ -f "$2" ]; then
+                cp "$2" "$_VAR_TO_BE_BUNDLED/ld.so"
+            else
+                echo "Error: ld.so ($2) not found."
+                exit 1
+            fi
+
+            # Ensure $3 exists and copy to $_VAR_TO_BE_BUNDLED/usr/lib/
+            if [ -f "$3" ]; then
+                mkdir -p "$_VAR_TO_BE_BUNDLED/usr/lib"
+                cp "$3" "$_VAR_TO_BE_BUNDLED/usr/lib/"
+            else
+                echo "Error: libc ($3) not found."
+                exit 1
+            fi
+
+            # Shift past the arguments to continue processing
+            shift 3
+            ;;
+        --embed-static-tools)
+            EMBED_STATIC_TOOLS="1"
+            shift 1
+            ;;
+        *)
+            echo "Unrecognized argument: $1" >&2
+            exit 1
+            ;;
+    esac
+done
+
+# Setup EXE_NAME correctly
+if [ "$_VAR_APPDIR_MODE" != "true" ]; then
+    add_binary "$_VAR_MAIN_BINARY" || exit 1
+fi
+
+# Create a sqfs archive of the executable, libraries and additional files
+if ! mksquashfs "$_VAR_TO_BE_BUNDLED" "$_VAR_WORKDIR/archive.sqfs" -comp zstd -Xcompression-level 22; then
+    echo "Compression failed" >&2
+    exit 1
+fi
+
+# Create a self-extracting archive
+_VAR_HOST_INFO="$(uname -mrspv)"
+CONST_VERSION="1.8_sqfs_raw" # (vanilla)
+
+# Generate the loader script with conditional LD_LIBRARY_PATH replacements
+LOADER_SCRIPT=$(sed -e "s|__ENTRY_POINT__|${_VAR_MAIN_BINARY##*/}|g" \
+                        -e "s|__PELF_VERSION__|${CONST_VERSION}|g" \
+                        -e "s|__PELF_HOST__|${_VAR_HOST_INFO}|g" <<'_END_OF_LOADER_SCRIPT'
+#!/bin/sh
+
+# This file was automatically generated by PELF. Find out more about it here: https://github.com/xplshn/pelf
+# Please DO NOT EDIT this file, unless you are testing for changes/fixes. If you found the need to modify
+# PELF's behavior, submit a PR of your "PELF EDITION" if you think it is appropiate.                    -
+
+# Get the binary's name
+[ -n "$EXE_NAME" ] || EXE_NAME="__ENTRY_POINT__"
+# rEXE_NAME can be used as a variable name :)
+rEXE_NAME="$(echo "$EXE_NAME" | tr -dc '[:alnum:]_' | tr '[:upper:]' '[:lower:]')"
+
+set_mountdir_from_env() {
+    # Generate the var_name from rEXE_NAME
+    var_name="${rEXE_NAME}_binDir"
+
+    # Check if the variable name is non-empty
+    if [ -n "$var_name" ]; then
+        eval "_BIN_DIR=\$$var_name"  # Get the bin directory based on the generated var name
+
+        if [ -n "$_BIN_DIR" ]; then
+            # Extract the 'mounted' part from _BIN_DIR
+            _VAR_MOUNT_DIR=$(echo "$_BIN_DIR" | sed -e 's|^\(.*/mounted\).*|\1|')
+
+            # If the mounted part was successfully extracted
+            if [ -n "$_VAR_MOUNT_DIR" ]; then
+                _VAR_FOUND_RUNNING_INSTANCE="1"
+                return 0  # Success
+            fi
+        fi
+    fi
+    return 1
+}
+# -> Decompress/Mount! ->
+
+# Important variables
+_VAR_BUNDLE_DIR="${TMPDIR:-/tmp}/.pelfbundles"                                      # Temporary pool directory
+_VAR_BWORK_DIR="${_VAR_BUNDLE_DIR}/pbundle_${rEXE_NAME}$(date '+%s%M%S')_${RANDOM}" # Temporary work directory
+_VAR_MOUNT_DIR="$_VAR_BWORK_DIR/mounted"                                            # Temporary directory for mounting
+_VAR_ARCHIVE="$_VAR_BWORK_DIR/archive.sqfs"                                         # The SquashFS archive will be set after extracting
+_VAR_EXEC_FILE="${_VAR_MOUNT_DIR}${EXE_NAME}"                                       # The file to execute
+#
+mkdir -p "$_VAR_BWORK_DIR"
+# Cleanup
+cleanup() {
+    count() {
+        [ -e "$1" ] \
+            && printf '%s\n' "$#" \
+            || printf '%s\n' 0
+    }
+
+    fusermount -uz "$_VAR_MOUNT_DIR" 2>/dev/null
+    rm -rf "$_VAR_BWORK_DIR" 2>/dev/null || true
+    
+    # Check if .pelfbundles is empty and remove it if so
+    BUNDLE_DIR="${TMPDIR:-/tmp}/.pelfbundles"
+    if [ -d "$BUNDLE_DIR" ] && [ "$(count "$BUNDLE_DIR")" -eq 0 ]; then
+        rmdir "$_VAR_BUNDLE_DIR"
+    fi
+}
+
+# Log messages to stderr
+log() {
+    echo >&2 "$*"
+}
+
+# Exit with error message
+error() {
+    printf >&2 "ERROR: %s\n" "$*"
+    exit 1
+}
+
+# Check if squashfuse is available
+check_squashfuse() {
+    # Check if squashfuse AND fusermount is available in the system PATH
+    if command -v squashfuse >/dev/null && command -v fusermount >/dev/null; then
+        return
+    fi
+
+    # If either squashfuse or fusermount is not available, check if they are bundled in the script
+    __STATIC_TOOLS_ARCHIVE_MARKER=$(awk '/^__STATIC_TOOLS__/ { print NR + 1; exit }' "$0") || error "Failed to locate static tools marker in the script."
+
+    if [ -z "$__STATIC_TOOLS_ARCHIVE_MARKER" ]; then
+        error "Failed to locate static tools marker in the script. No static tools where bundled and your system lacks a squashfuse implementation"
+    fi
+
+    _VAR_STATIC_TOOLS_DIR="$_VAR_BWORK_DIR/static/$(uname -om | tr ' ' '_')"
+
+    # Ensure the directory for extracted tools exists
+    mkdir -p "$_VAR_STATIC_TOOLS_DIR" || error "Failed to create directory $_VAR_STATIC_TOOLS_DIR"
+
+    # Extract the bundled tar archive
+    tail -n +"$__STATIC_TOOLS_ARCHIVE_MARKER" "$0" | base64 -d 2>/dev/null | tar -xzf - -C "$_VAR_STATIC_TOOLS_DIR" || error "Failed to extract tar archive."
+
+    # Add the extracted tools to PATH
+    PATH="$PATH:$_VAR_STATIC_TOOLS_DIR" || error "Failed to update PATH with the extracted tools."
+
+    # Check again if either squashfuse or fusermount is available
+   if command -v squashfuse >/dev/null || command -v fusermount >/dev/null; then
+        return
+   fi
+   error "Neither squashfuse nor fusermount are available in the system and were not found in the bundled archive."
+}
+
+# Mount the SquashFS archive from an offset in the script
+mount_squashfs() {
+    check_squashfuse
+
+    # Calculate the offset by finding the line number of the marker and converting to byte offset
+    __VAR_ARCHIVE_MARKER=$(grep -a -n "^__ARCHIVE_MARKER__" "$0" | cut -d: -f1)
+    if [ -z "$__VAR_ARCHIVE_MARKER" ]; then
+        error "Archive marker not found in script."
+    fi
+
+    # Convert line number to byte offset
+    __VAR_BYTE_OFFSET=$(awk "NR == $__VAR_ARCHIVE_MARKER { print length(\$0) + 1; exit }" "$0")
+    __VAR_ARCHIVE_OFFSET=$(head -n $(($__VAR_ARCHIVE_MARKER - 1)) "$0" | wc -c)
+
+    OFFSET=$((__VAR_BYTE_OFFSET + __VAR_ARCHIVE_OFFSET))
+
+    # Mount the embedded SquashFS archive using the offset
+    mkdir -p "$_VAR_MOUNT_DIR" && \
+    squashfuse -o offset="$OFFSET",ro "$0" "$_VAR_MOUNT_DIR" >/dev/null 2>&1 || error "Failed to mount SquashFS archive."
+}
+
+# Main function to handle the logic
+        main() {
+        set_mountdir_from_env && rmdir "$_VAR_BWORK_DIR"
+    
+        # Check if we need to mount the SquashFS archive
+        if [ "$_VAR_FOUND_RUNNING_INSTANCE" != "1" ] && [ "$PELF_REUSE_INSTANCES" != "1" ]; then
+            mount_squashfs
+        fi
+    
+        # Set up cleanup trap
+        trap 'cleanup' INT TERM HUP QUIT EXIT
+    
+        # Determine the main executable file
+        _BIN_DIR="$_VAR_MOUNT_DIR/usr/bin"
+        _LIB_DIR="$_VAR_MOUNT_DIR/usr/lib"
+
+        _VAR_EXEC_FILE="$_BIN_DIR/$EXE_NAME"
+
+        if [ ! -f "$_VAR_EXEC_FILE" ]; then
+            _VAR_EXEC_FILE="$_VAR_MOUNT_DIR/AppRun"
+        fi
+
+        if [ ! -f "$_VAR_EXEC_FILE" ]; then
+            error "Error: No entry point/main executable"
+        fi
+
+        # Determine the icon file
+        pngI128x128="$_VAR_MOUNT_DIR/bundledMetadata/icon.png"
+        if [ ! -f "$pngI128x128" ]; then
+            pngI128x128="$_VAR_MOUNT_DIR/.DirIcon"
+        fi
+    
+        # Add extra binaries to the PATH if they exist
+        if [ -d "$_BIN_DIR" ]; then
+            count=0
+            for _ in "$_BIN_DIR"/*; do
+                count=$((count + 1))
+            done
+
+            if [ "$_VAR_FOUND_RUNNING_INSTANCE" != "1" ]; then
+                # Export directories with transformed variable names
+                export "${rEXE_NAME}_binDir=$_BIN_DIR"
+                export "${rEXE_NAME}_libDir=$_LIB_DIR"
+            fi
+
+            if [ "$count" -gt 1 ]; then
+                xPATH="$_BIN_DIR"
+                # Handle potential library sharing issues
+                USE_BULKLIBS=0
+            fi
+        fi
+
+        # Figure out what we do
+        case "$1" in
+            --pbundle_help)
+                printf "This bundle was generated automatically by PELF __PELF_VERSION__, the machine on which it was created has the following \"uname -mrspv\":\n %s \n" "__PELF_HOST__"
+                printf "Usage:\n <--pbundle_help|--pbundle_list|--pbundle_link <binary>|--pbundle_xpmIcon|--pbundle_pngIcon|--pbundle_svgIcon|--pbundle_desktop|--pbundle_genThumbnail> <args...>\n"
+                printf "EnvVars:\n USE_BULKLIBS=[0,1]\n USE_SYSTEM_LIBRARIES=[1,0]\n SHOW_DISCARDPROCESS=[0,1]\n REUSE_INSTANCES=[0,1]\n"
+                exit 1
+                ;;
+            --pbundle_list)
+                ls -FAl "$_VAR_MOUNT_DIR" && \
+                ls -FAl "$_BIN_DIR" && \
+                test -d "$_LIB_DIR" && ls -FAl "$_LIB_DIR"
+                exit 1
+                ;;
+            --pbundle_link)
+                _VAR_EXEC_FILE="$2"
+                shift 2
+                ;;
+            --pbundle_pngIcon)
+                if [ -f "$pngI128x128" ]; then
+                    base64 "$pngI128x128"
+                    exit 0
+                else
+                    exit 1
+                fi
+                ;;
+            --pbundle_xpmIcon)
+                icon_path="$_VAR_MOUNT_DIR/bundledMetadata/icon.xpm"
+                if [ -f "$icon_path" ]; then
+                    base64 "$icon_path"
+                    exit 0
+                else
+                    exit 1
+                fi
+                ;;
+            --pbundle_svgIcon)
+                icon_path="$_VAR_MOUNT_DIR/bundledMetadata/icon.svg"
+                if [ -f "$icon_path" ]; then
+                    base64 "$icon_path"
+                    exit 0
+                else
+                    exit 1
+                fi
+                ;;
+            --pbundle_desktop)
+                desktop_path="$_VAR_MOUNT_DIR/bundledMetadata/app.desktop"
+                if [ -f "$desktop_path" ]; then
+                    base64 "$desktop_path"
+                    exit 0
+                else
+                    exit 1
+                fi
+                ;;
+            --pbundle_genThumbnail)
+                if [ -f "$_BIN_DIR/.pelf_thumbgen" ]; then
+                    if [ -f "$pngI128x128" ]; then
+                        "$_BIN_DIR/.pelf_thumbgen" "$0" "$pngI128x128"
+                        exit 0
+                    else
+                        echo "$pngI128x128 does not exist"
+                    fi
+                else
+                    echo "Sorry, this bundle does not contain .pelf_thumbgen, add that binary if you wish to enable this functionality. (github.com/xplshn/pelf/tree/master/cmd/misc/thumbgen)"
+                fi
+                exit 1
+                ;;
+        esac
+
+    # Execute the specified file from the mounted directory
+    execute_file() {
+        # Append to PATH-like variables if they exist, otherwise set them
+        if [ -z "$LD_LIBRARY_PATH" ]; then
+            LD_LIBRARY_PATH="$_LIB_DIR"
+        else
+            LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$_LIB_DIR"
+        fi
+        export LD_LIBRARY_PATH
+
+        if [ -z "$PATH" ]; then
+            PATH="$xPATH"
+        else
+            PATH="$PATH:$xPATH"
+        fi
+        export PATH
+
+        # Append to XDG_DATA_DIRS if it exists and we have ./share || ./usr/share directories
+        if [ -n "$XDG_DATA_DIRS" ]; then
+            [ -d "$_VAR_MOUNT_DIR/share" ] && XDG_DATA_DIRS="$XDG_DATA_DIRS:$_VAR_MOUNT_DIR/share"
+            [ -d "$_VAR_MOUNT_DIR/usr/share" ] && XDG_DATA_DIRS="$XDG_DATA_DIRS:$_VAR_MOUNT_DIR/usr/share"
+        fi
+        export XDG_DATA_DIRS
+
+        # Set the LD_LOADER if we have one
+        LD_LOADER="$_VAR_MOUNT_DIR/ld.so"
+        if ! ldd "$_VAR_EXEC_FILE" >/dev/null 2>&1; then
+            unset LD_LOADER # Using a LD_LOADER for already static or non-dynamic files will result in an error
+        fi
+
+        # Utility variables for scripting/AppRuns/wrappers
+        export SELF_TEMPDIR="$_VAR_MOUNT_DIR"
+
+        if ! command -v "$_VAR_EXEC_FILE" >/dev/null 2>&1; then
+            error "[$2] does NOT exist. It is not contained here nor is it available in the user's PATH"
+        fi
+
+        # Proceed to execute the packed ENTRY POINT binary
+        if [ -f "$LD_LOADER" ]; then
+            "$LD_LOADER" "$_VAR_EXEC_FILE" "$@" || exit 1
+            EXE_NAME_PID="$!"
+        else
+            "$_VAR_EXEC_FILE" "$@"
+            EXE_NAME_PID="$!"
+        fi
+    }
+    execute_file "$@"
+}
+
+main "$@"
+
+exit $?
+_END_OF_LOADER_SCRIPT
+)
+
+# Create RUNTIME
+echo "$LOADER_SCRIPT" > "$_VAR_OUT_FILE"
+
+embed_static_tools() {
+    _VAR_STATIC_TOOLS_DIR="$_VAR_WORKDIR/static/$(uname -om | tr ' ' '_')"
+    # Create the static tools directory
+    mkdir -p "$_VAR_STATIC_TOOLS_DIR" || error "Failed to create directory $_VAR_WORKDIR/static"
+
+    # Copy static tools to the directory
+    if ! cp "$(which fusermount)" "$(which squashfuse)" "$_VAR_STATIC_TOOLS_DIR"; then
+        error "Failed to copy static tools"
+    fi
+
+    # Create the tar archive
+    if ! tar -C "$_VAR_STATIC_TOOLS_DIR" -czf "$_VAR_WORKDIR/static.tgz" .; then
+        error "Compression of static tools failed"
+    fi
+
+    # Append the marker and the tar archive to the output file
+    printf "\n__STATIC_TOOLS__\n" >> "$_VAR_OUT_FILE" || error "Failed to write marker (TAR) to output file"
+    base64 <"$_VAR_WORKDIR/static.tgz" >> "$_VAR_OUT_FILE" || error "Failed to append TAR archive to output file"
+}
+
+[ -n "$EMBED_STATIC_TOOLS" ] && embed_static_tools
+
+# Append the SQFS archive to the self-extracting script
+printf "\n__ARCHIVE_MARKER__\n" >> "$_VAR_OUT_FILE" || error "Failed to write marker (SQFS) to output file"
+cat <"$_VAR_WORKDIR/archive.sqfs" >> "$_VAR_OUT_FILE" || error "Failed to append SQFS archive to output file"
+
+# Make the self-extracting script executable
+chmod +x "$_VAR_OUT_FILE" || error "Could not mark output file as executable"
