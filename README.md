@@ -31,7 +31,7 @@ These are .small.AppBundle, so these are (VERY) compressed and do require gunzip
 
 **Usage:**
 ```sh
-Usage: ./pelf [--main-bin [BINARY]|--add-appdir [AppDir] [EXE_NAME]] [--output-to OUTPUT.AppBundle] <--add-library [LIB_PATH]|--add-binary [BIN_PATH]|--add-metadata [icon128x128.xpm|icon128x128.png|icon.svg|app.desktop]|--add-arbitrary [DIR|FILE]>
+Usage: ./pelf-dwfs [--add-appdir [AppDir] EXE_NAME]|[--output-to OUTPUT.AppBundle]|<--embed-static-tools>]
 ```
 
 ### `pelf_linker`
@@ -59,7 +59,7 @@ pelfd &
 ```
 
 ## Overlaying Bundles ![pin](assets/pin.svg)
-One of the key features of PELF is its ability to overlay bundles on top of each other. This means that programs inside one bundle can access binaries and libraries from other bundles. For example, if you bundle `wezterm` as a single file and add `wezterm-mux-server` to the same bundle using `--add-binary`, programs run by `wezterm` will be able to see all of the binaries and libraries inside the `wezterm` bundle.
+One of the key features of PELF is its ability to overlay bundles on top of each other. This means that programs inside one bundle can access binaries and libraries from other bundles. For example, if you bundle `wezterm` as a single file and add `wezterm-mux-server` to the same bundle, programs run by `wezterm` will be able to see all of the binaries and libraries inside the `wezterm` bundle. In other terms, there is `$LD_LIBRARY_PATH` & `$PATH` inheritance, as well as a specific variable generated per-bundle that is: `BundleName_libDir`, `BundleName_binDir`, `BundleName_mountDir`, and `SELF_TEMPDIR`. These variables allow loading binaries/libraries contained within the bundle from external programs such as the `pelf_linker`, etc.
 
 This feature is particularly powerful because you can stack an infinite number of PELF bundles. For instance:
 
@@ -87,14 +87,9 @@ To install the PELF toolkit, follow these steps:
 
 ## Usage Examples ![pin](assets/pin.svg)
 ### Creating an `.AppBundle`
-To create an `.AppBundle` from your binaries, use the `pelf` tool:
+To create an `.AppBundle` of an AppDir, use the `pelf` tool:
 ```sh
-./pelf --main-bin /usr/bin/wezterm --output-to ./wezterm.AppBundle --add-binary /usr/bin/wezterm-mux-server --add-metadata /usr/share/applications/wezterm.desktop --add-metadata ./wezterm128x128.png --add-metadata ./wezterm128x128.svg --add-metadata ./wezterm128x128.xpm
-```
-##### Partial AppDir support
-- You can use AppDirs that have an AppRun, but in order to integrate them (add metadata), you will have to use the `--add-metadata` option, also, there are various libraries which your AppRun can rely on from within an AppBundle, make sure you use them.
-```sh
-./pelf --add-appdir ./wezterm_AppDir wezterm --output-to ./wezterm.AppBundle --add-metadata ./wezterm_AppDir/usr/share/applications/wezterm.desktop --add-metadata ./wezterm_AppDir/.DirIcon
+./pelf-dwfs --add-appdir ./myApp.AppDir myApp --output-to ./myApp --embed-static-tools
 ```
 
 ### Using binaries inside of an `.AppBundle` from outside it, or from other programs
