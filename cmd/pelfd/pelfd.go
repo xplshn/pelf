@@ -24,7 +24,7 @@ import (
 )
 
 // Version indicates the current PELFD version
-const Version = "1.5"
+const Version = "1.6"
 
 // Options defines the configuration options for the PELFD daemon.
 type Options struct {
@@ -47,7 +47,6 @@ type BundleEntry struct {
 	Path      string `json:"path"`                // Full path to the bundle file.
 	SHA       string `json:"sha"`                 // SHA256 hash of the bundle file.
 	Png       string `json:"png,omitempty"`       // Path to the PNG icon file, if extracted.
-	Xpm       string `json:"xpm,omitempty"`       // Path to the XPM icon file, if extracted.
 	Svg       string `json:"svg,omitempty"`       // Path to the SVG icon file, if extracted.
 	Desktop   string `json:"desktop,omitempty"`   // Path to the corrected .desktop file, if processed.
 	Thumbnail string `json:"thumbnail,omitempty"` // Path to the 128x128 png thumbnail file, if processed.
@@ -167,8 +166,7 @@ func processBundle(config Config, homeDir string, configFilePath string) {
 						// Or if at least one of the required files are missing
 					} else if (entry.Desktop != "" && !fileExists(entry.Desktop)) ||
 						(entry.Png != "" && !fileExists(entry.Png)) ||
-						(entry.Svg != "" && !fileExists(entry.Svg)) ||
-						(entry.Xpm != "" && !fileExists(entry.Xpm)) {
+						(entry.Svg != "" && !fileExists(entry.Svg)) {
 						log.Println(tml.Sprintf("<yellow><bold>WRN:</yellow></red> One or more required files for <blue>%s</blue> are missing. Refreshing entry and files...", filepath.Base(bundle)))
 						if isExecutable(bundle) {
 							processBundles(bundle, sha, entries, options.IconDir, options.AppDir, config)
@@ -247,10 +245,9 @@ func processBundles(path, sha string, entries map[string]*BundleEntry, iconPath,
 
 	entry.Png = executeBundle(path, "--pbundle_pngIcon", filepath.Join(iconPath, baseName+".png"))
 	entry.Svg = executeBundle(path, "--pbundle_svgIcon", filepath.Join(iconPath, baseName+".svg"))
-	entry.Xpm = executeBundle(path, "--pbundle_xpmIcon", filepath.Join(iconPath, baseName+".xpm"))
 	entry.Desktop = executeBundle(path, "--pbundle_desktop", filepath.Join(appPath, baseName+".desktop"))
 
-	if entry.Png != "" || entry.Svg != "" || entry.Xpm != "" || entry.Desktop != "" {
+	if entry.Png != "" || entry.Svg != "" || entry.Desktop != "" {
 		log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> Adding bundle to entries: <green>%s</green>", path))
 		entries[path] = entry
 	} else {
@@ -297,14 +294,20 @@ func processBundles(path, sha string, entries map[string]*BundleEntry, iconPath,
 
 func executeBundle(bundle, param, outputFile string) string {
 	log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> Retrieving metadata from <green>%s</green> with parameter: <cyan>%s</cyan>", bundle, param))
-	cmd := exec.Command(bundle, param)
+	// Prepend `sh -c` to the bundle execution
+	cmd := exec.Command("sh", "-c", bundle+" "+param)
 	output, err := cmd.Output()
 	if err != nil {
 		log.Println(tml.Sprintf("<yellow><bold>WRN:</bold></yellow> Bundle <blue>%s</blue> with parameter <cyan>%s</cyan> didn't return a metadata file", bundle, param))
 		return ""
 	}
 
-	outputStr := string(output)
+    outputStr := string(output)
+
+	// Remove the escape sequence "^[[1F^[[2K"
+	// Remove the escape sequence from the output
+	outputStr = strings.ReplaceAll(outputStr, "\x1b[1F\x1b[2K", "")
+
 	data, err := base64.StdEncoding.DecodeString(outputStr)
 	if err != nil {
 		log.Fatalf(tml.Sprintf("<red><bold>ERR:</bold></red> Failed to decode base64 output for <yellow>%s</yellow> <yellow>%s</yellow>: <red>%v</red>", bundle, param, err))
@@ -325,7 +328,7 @@ func cleanupBundle(path string, entries map[string]*BundleEntry) {
 	if entry == nil {
 		return
 	}
-	filesToRemove := []string{entry.Png, entry.Svg, entry.Xpm, entry.Desktop, entry.Thumbnail}
+	filesToRemove := []string{entry.Png, entry.Svg, entry.Desktop, entry.Thumbnail}
 	for _, file := range filesToRemove {
 		if file == "" {
 			continue
@@ -354,8 +357,6 @@ func updateDesktopFile(content, bundlePath string, entry *BundleEntry) (string, 
 		icon = entry.Png
 	} else if entry.Svg != "" {
 		icon = entry.Svg
-	} else if entry.Xpm != "" {
-		icon = entry.Xpm
 	}
 
 	// Correct Icon line
