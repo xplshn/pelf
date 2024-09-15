@@ -1,4 +1,6 @@
 *.AppBundle
 *.blob
+.p
+.*
 work/
 exp/
