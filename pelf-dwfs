@@ -292,17 +292,16 @@ mount_dwarfs() {
 
     # Execute the specified file from the mounted directory
     execute_file() {
-        xPATH="$_VAR_MOUNT_DIR/usr/bin"
-        # Check if the directory exists and contains more than one binary
-        if [ -d "$xPATH" ] && [ "$(find "$xPATH" -type f | wc -l)" -gt 1 ]; then
-            # Determine whether to prepend or append $xPATH to $PATH based on PBUNDLE_OVERTAKE_PATH
-            if [ "$PBUNDLE_OVERTAKE_PATH" = 1 ]; then
-                PATH="$xPATH${PATH+:$PATH}"
-            else
-                PATH="${PATH:+$PATH:}$xPATH"
-            fi
-            export PATH
+        # Add directories to that do exists to the xPATH
+        [ -d "$_VAR_MOUNT_DIR/bin" ] && xPATH="${xPATH:+$xPATH:}$_VAR_MOUNT_DIR/bin"
+        [ -d "$_VAR_MOUNT_DIR/usr/bin" ] && xPATH="$_VAR_MOUNT_DIR/usr/bin"
+        # Update PATH based on PBUNDLE_OVERTAKE_PATH
+        if [ "$PBUNDLE_OVERTAKE_PATH" = 1 ]; then
+            PATH="$xPATH${PATH:+:$PATH}"
+        else
+            PATH="${PATH:+$PATH:}$xPATH"
         fi
+        export PATH
 
         # Append to XDG_DATA_DIRS if it exists and we have ./share || ./usr/share directories
         if [ -n "$XDG_DATA_DIRS" ]; then
