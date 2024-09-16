@@ -99,7 +99,7 @@ while [ "$#" -gt 0 ]; do
 done
 
 # Create a sqfs archive of the executable, libraries and additional files
-#if ! mksquashfs "$_VAR_TO_BE_BUNDLED" "$_VAR_WORKDIR/archive.sqfs" -comp lz4 -Xhc; then
+#if ! mksquashfs "$_VAR_TO_BE_BUNDLED" "$_VAR_WORKDIR/archive.sqfs" -comp lz4 --Xhc; then
 if ! mksquashfs "$_VAR_TO_BE_BUNDLED" "$_VAR_WORKDIR/archive.sqfs" -comp zstd -Xcompression-level 22; then
     error "Compression failed"
 fi
@@ -128,7 +128,7 @@ rEXE_NAME="$(echo "$EXE_NAME" | tr -dc '[:alnum:]_' | tr '[:upper:]' '[:lower:]'
 _VAR_BUNDLE_DIR="${TMPDIR:-/tmp}/.pelfbundles"                                      # Temporary pool directory
 _VAR_BWORK_DIR="${_VAR_BUNDLE_DIR}/pbundle_${rEXE_NAME}$(date '+%s%M%S')_${RANDOM}" # Temporary work directory
 _VAR_MOUNT_DIR="$_VAR_BWORK_DIR/mounted"                                            # Temporary directory for mounting
-_VAR_ARCHIVE="$_VAR_BWORK_DIR/archive.sqfs"                                         # The squashfs archive in case we do base64 thingies
+_VAR_ARCHIVE="$_VAR_BWORK_DIR/archive.sqfs"                                         # The SquashFS archive in case we do base64 thingies
 _VAR_EXEC_FILE="${_VAR_MOUNT_DIR}/AppRun"                                           # The file to execute
 
 mkdir -p "$_VAR_BWORK_DIR"
@@ -145,12 +145,12 @@ error() {
 
 # Check if squashfs is available
 check_fuse() {
-    # Check if squashfs AND fusermount is available in the system PATH
+    # Check if squashfuse AND fusermount is available in the system PATH
     if command -v squashfuse >/dev/null && command -v fusermount >/dev/null; then
         return
     fi
 
-    # If either squashfs or fusermount is not available, check if they are bundled in the script
+    # If either squashfuse or fusermount aren't available, check if they are bundled in the script
     __STATIC_TOOLS_ARCHIVE_MARKER=$(awk '/^__STATIC_TOOLS__/ { print NR + 1; exit }' "$0") || error "Failed to locate static tools marker in the script."
 
     if [ -z "$__STATIC_TOOLS_ARCHIVE_MARKER" ]; then
@@ -198,10 +198,9 @@ mount_squashfs() {
 
 # Main function to handle the logic
         main() {
-
         # Check if we need to mount the squashfs archive
 #        if [ "$_VAR_FOUND_RUNNING_INSTANCE" != "1" ] && [ "$PELF_REUSE_INSTANCES" != "1" ]; then
-            mount_squashfs #&& touch "${_VAR_BWORK_DIR}/.$$"
+            mount_squashfs && touch "${_VAR_BWORK_DIR}/.$$"
 #        fi
 
         cleanup() {
@@ -306,11 +305,14 @@ mount_squashfs() {
 
     # Execute the specified file from the mounted directory
     execute_file() {
-        # Append to PATH-like variables if they exist, otherwise set them
-        if [ -z "$PATH" ]; then
-            PATH="$xPATH"
+        # Add directories to that do exists to the xPATH
+        [ -d "$_VAR_MOUNT_DIR/bin" ] && xPATH="${xPATH:+$xPATH:}$_VAR_MOUNT_DIR/bin"
+        [ -d "$_VAR_MOUNT_DIR/usr/bin" ] && xPATH="$_VAR_MOUNT_DIR/usr/bin"
+        # Update PATH based on PBUNDLE_OVERTAKE_PATH
+        if [ "$PBUNDLE_OVERTAKE_PATH" = 1 ]; then
+            PATH="$xPATH${PATH:+:$PATH}"
         else
-            PATH="$PATH:$xPATH"
+            PATH="${PATH:+$PATH:}$xPATH"
         fi
         export PATH
 
