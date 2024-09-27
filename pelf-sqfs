@@ -99,7 +99,7 @@ while [ "$#" -gt 0 ]; do
 done
 
 # Create a sqfs archive of the executable, libraries and additional files
-#if ! mksquashfs "$_VAR_TO_BE_BUNDLED" "$_VAR_WORKDIR/archive.sqfs" -comp lz4 --Xhc; then
+#if ! mksquashfs "$_VAR_TO_BE_BUNDLED" "$_VAR_WORKDIR/archive.sqfs" -comp lz4 -Xhc; then
 if ! mksquashfs "$_VAR_TO_BE_BUNDLED" "$_VAR_WORKDIR/archive.sqfs" -comp zstd -Xcompression-level 22; then
     error "Compression failed"
 fi

@@ -186,9 +186,9 @@ mount_dwarfs() {
         main() {
 
         # Check if we need to mount the dwarfs archive
-#        if [ "$_VAR_FOUND_RUNNING_INSTANCE" != "1" ] && [ "$PELF_REUSE_INSTANCES" != "1" ]; then
+#       if [ "$_VAR_FOUND_RUNNING_INSTANCE" != "1" ] && [ "$PELF_REUSE_INSTANCES" != "1" ]; then
             mount_dwarfs && touch "${_VAR_BWORK_DIR}/.$$"
-#        fi
+#       fi
 
         cleanup() {
             count() {
@@ -215,20 +215,18 @@ mount_dwarfs() {
         _LIB_DIRs="$_VAR_MOUNT_DIR/lib:$_VAR_MOUNT_DIR/usr/lib:$_VAR_MOUNT_DIR/lib64:$_VAR_MOUNT_DIR/usr/lib64:$_VAR_MOUNT_DIR/lib32:$_VAR_MOUNT_DIR/usr/lib32:$_VAR_MOUNT_DIR/libx32:$_VAR_MOUNT_DIR/usr/libx32"
 
         # Add extra binaries to the PATH if they exist
-        if [ -d "$_BIN_DIRs" ]; then
-            if [ "$_VAR_FOUND_RUNNING_INSTANCE" != "1" ]; then
-                # Export directories with transformed variable names
-                export "${rEXE_NAME}_binDir=$_BIN_DIRs"
-                export "${rEXE_NAME}_libDir=$_LIB_DIRs"
-                export "${rEXE_NAME}_mountDir=$_VAR_MOUNT_DIR"
-            fi
+        if [ "$_VAR_FOUND_RUNNING_INSTANCE" != "1" ]; then
+            # Export directories with transformed variable names
+            export "${rEXE_NAME}_binDir=$_BIN_DIRs"
+            export "${rEXE_NAME}_libDir=$_LIB_DIRs"
+            export "${rEXE_NAME}_mountDir=$_VAR_MOUNT_DIR"
         fi
 
         # Figure out what we do
         case "$1" in
             --pbundle_help)
                 printf "This bundle was generated automatically by PELF __PELF_VERSION__, the machine on which it was created has the following \"uname -mrspv\":\n %s \n" "__PELF_HOST__"
-                printf "Usage:\n <--pbundle_help|--pbundle_list|--pbundle_link <binary>|--pbundle_pngIcon|--pbundle_svgIcon|--pbundle_desktop|--pbundle_genThumbnail> <args...>\n"
+                printf "Usage:\n <|--pbundle_help|--pbundle_list|--pbundle_link <binary>|--pbundle_pngIcon|--pbundle_svgIcon|--pbundle_desktop|--pbundle_genThumbnail|--pbundle_mount|> <args...>\n"
                 exit 1
                 ;;
             --pbundle_list)
@@ -239,12 +237,14 @@ mount_dwarfs() {
                 ;;
             --pbundle_link)
                 # NOTE: This would be under execute_file, except LD_LIBRARY_PATH MUSTN'T be set when using an AppRun, but we do need this var in order to run a binary manually
-                if [ -z "$LD_LIBRARY_PATH" ]; then
-                    LD_LIBRARY_PATH="$_LIB_DIRs"
-                else
-                    LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$_LIB_DIRs"
+                if [ "$PELF_NO_LD_VAR" != "1" ]; then
+                    if [ -z "$LD_LIBRARY_PATH" ] ; then
+                        LD_LIBRARY_PATH="$_LIB_DIRs"
+                    else
+                        LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$_LIB_DIRs"
+                    fi
+                    export LD_LIBRARY_PATH
                 fi
-                export LD_LIBRARY_PATH
                 _VAR_EXEC_FILE="$2"
                 shift 2
                 ;;

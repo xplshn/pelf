@@ -1,0 +1,34 @@
+#!/bin/sh
+
+[ "$DEBUG" = "1" ] && set -x
+
+#SELF_TEMPDIR="${SELF_TEMPDIR:-$(basename "$(readlink -f "$0")")}"
+SELF=$(readlink -f "$0")
+SELF_TEMPDIR=${SELF%/*}
+[ -d "$SELF_TEMPDIR/rootfs" ] || exit 1 && BWROOTFS="$SELF_TEMPDIR/rootfs"
+
+if [ -z "$1" ]; then
+	ARGS="env -u LD_PRELOAD -u LD_LIBRARY_PATH -u ENV sh"
+else
+	ARGS="$*"
+fi
+
+# shellcheck disable=SC2086
+bwrap --bind "$BWROOTFS" / \
+    --proc /proc \
+    --bind /sys /sys \
+    --bind /run /run \
+    --dev-bind /dev /dev \
+    --bind /etc/hostname /etc/hostname \
+    --bind /etc/localtime /etc/localtime \
+    --bind /etc/nsswitch.conf /etc/nsswitch.conf \
+    --bind /media /media \
+    --bind /mnt /mnt \
+    --bind /home /home \
+    --bind /tmp /tmp \
+    --bind /etc/passwd /etc/passwd \
+    --bind /etc/group /etc/group \
+    --share-net \
+    --bind /etc/resolv.conf /etc/resolv.conf \
+    --bind /etc/hosts /etc/hosts \
+    -- $ARGS # SC2086
