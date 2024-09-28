@@ -46,6 +46,10 @@ while [ "$#" -gt 0 ]; do
             _VAR_OUT_FILE="$2"
             shift 2
             ;;
+        --compression)
+            _VAR_COMPRESS_ARG="$2"
+            shift 2
+            ;;
         --add-appdir)
             if [ "$_VAR_APPDIR_MODE" = "true" ]; then
                 echo "--add-appdir cannot be used more than 1 time" >&2
@@ -99,8 +103,9 @@ while [ "$#" -gt 0 ]; do
 done
 
 # Create a DWFS archive of the executable, libraries and additional files
-#if ! mkdwarfs --input "$_VAR_TO_BE_BUNDLED" --output "$_VAR_WORKDIR/archive.dwfs" --progress=ascii --max-lookback-blocks=5; then
-if ! mkdwarfs --input "$_VAR_TO_BE_BUNDLED" --output "$_VAR_WORKDIR/archive.dwfs" --progress=ascii --max-lookback-blocks=5 --categorize=pcmaudio --compression pcmaudio/waveform::flac:level=8; then
+[ -n "$_VAR_COMPRESS_ARG" ] || _VAR_COMPRESS_ARG="--max-lookback-blocks=5 --no-history --compression zstd:level=22" #_VAR_COMPRESS_ARG="--max-lookback-blocks=5 --categorize=pcmaudio --compression pcmaudio/waveform::flac:level=8"
+# shellcheck disable=SC2086
+if ! mkdwarfs --input "$_VAR_TO_BE_BUNDLED" --output "$_VAR_WORKDIR/archive.dwfs" --progress=ascii $_VAR_COMPRESS_ARG; then
     error "Compression failed"
 fi
 

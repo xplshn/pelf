@@ -1,0 +1,11 @@
+#!/bin/sh
+
+#: "${GOCACHE:=$HOME/.cache/go}"
+#: "${GOBIN:=$HOME/.local/bin}"
+#: "${GOPATH:=$HOME/.cache/go}"
+#: "${CGO_ENABLED:=0}"
+#: "${GOFLAGS:=-ldflags=-static -ldflags=-s -ldflags=-w}"
+#: "${GO_LDFLAGS:=-buildmode=pie}"
+#: "${GOROOT:=$SELF_TEMPDIR}"
+
+GOROOT="$SELF_TEMPDIR" exec "${SELF_TEMPDIR}/bin/go" "$@"
