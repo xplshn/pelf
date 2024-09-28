@@ -1,24 +1,29 @@
 ### PELF
-An Executable packaging format which can be used to pack applications, toolchains, window managers, and more than 1 program into a single portable file.
+> PELF is an executable packaging format designed to pack applications, toolchains, window managers, and multiple programs into a single portable file.
 
-PELF can be used as a drop-in replacement for AppImages, both PELF and AppImages use the AppDir spec, so unpacking an AppImage and re-packaging it as an AppBundle is trivial
+PELF can serve as a drop-in replacement for AppImages. Both PELF and AppImages utilize the AppDir specification, making it easy to unpack an AppImage and re-package it as an AppBundle.
 
 #### Advantages
-- PELF uses Dwarfs by default, which should perform a bit better than Squashfs, this can be further enhanced by using better compression options such as PCMAUDIO ordering and FLAC compression
-- Simplicity, PELF is a very concise SH script that gets the job done, and the resulting .AppBundles are also a self-"extracting" (mounting, not extracting) archive made in POSIX SH. This has the advantage of being hackable, flexible and easy to debug.
-- PELF can be adapted to use tar.gz or squashfs (see the other branches)
-- AppBundles have the advantage of being very flexible, they don't force you to comply with the AppDir standard, thus, you can even ship Window managers + basic GUI utils in a single file, like I have with Sway.AppBundle, you can even ship Toolchains as single-file executables
-- The possibilities are endless if you're able to provide an AppRun that does what you want, for example, creating an .AppBundle that contains a rick roll video + a video player and works on both glibc/musl systems is trivial
-- Creating a multi-arch AppBundle is trivial, since the file is identified as a `sh` script and can be excuted under any arch & os
+- **Dwarfs Compression**: PELF uses Dwarfs by default, which generally performs better than SquashFS. Performance can be further optimized with advanced compression options such as PCMAUDIO ordering and FLAC compression.
+- **Simplicity**: PELF is a minimalistic SH script that efficiently accomplishes the task. The resulting `.AppBundle` is a self-mounting archive created in POSIX SH, making it hackable, flexible, and easy to debug.
+- **Custom Compression**: PELF can be configured to use `tar.gz` or `SquashFS` (see alternative branches).
+- **Flexibility of AppBundles**: AppBundles do not force compliance with the AppDir standard. For example, you can bundle window managers and basic GUI utilities into a single file (as done with `Sway.AppBundle`). You can even package toolchains as single-file executables.
+- **Endless Possibilities**: With a custom AppRun script, you can create versatile `.AppBundles`. For instance, packaging a Rick Roll video with a video player that works on both glibc and musl systems is straightforward.
+- **Multi-Arch Compatibility**: The `.AppBundle` file is identified as a `sh` script, which can be executed on any architecture and operating system, making it easy to create multi-architecture AppBundles.
 
-#### Drawbakcs
-- As much of an advantage as `sh` is, it is certainly not ideal, a Go or C version of `pelf-dwfs` could appear in the future alongside the `sh` version...
-- No existing thumbnailers support the `.AppBundle` format, thus, `pelfd` has to be used for integration, `pelfd` would be the equivalent of `appimaged`
+#### Drawbacks
+- **Limitations of SH**: While `sh` is powerful, it’s not the most ideal choice for every situation. A Go or C implementation of `pelf-dwfs` might be developed in the future alongside the `sh` version.
+- **Lack of Thumbnailer Support**: Currently, no existing thumbnailers support the `.AppBundle` format. Therefore, `pelfd` must be used for integration, acting as the equivalent of `appimaged`.
 
 ### Usage
 ```
 pelf --add-appdir ./myApp.AppDir myApp-28-09-2024-xplshn --output-to ./myApp.AppBundle --embed-static-tools
 ```
+### Usage of the Resulting `.AppBundle`
+> By using the `--pbundle_link` option, you can access files contained within the `./bin` or `./usr/bin` directories of an `.AppBundle`, inheriting environment variables like `PATH`. This allows multiple AppBundles to stack on top of each other, sharing libraries and binaries across "parent" bundles.
+
 #### Explanation
-We specify an appdir to be packed and an ID for the app, this id will be used for mounting the appbundle, it should contain the date on which the archive was packed, the name of the project or program packed and the maintainer of the .AppBundle, you may choose to ignore this and go with an arbitrary name, but it isn't recommended to do so.
-We also embed the tools used for mounting and umounting the `.AppBundle`, which in the case of `pelf-dwfs` would be `dwarfs` & `fusermount`
+You specify an `AppDir` to be packed and an ID for the app. This ID will be used when mounting the `.AppBundle` and should include the packing date, the project or program name, and the maintainer's information. While you can choose an arbitrary name, it’s not recommended.
+
+Additionally, we embed the tools used for mounting and unmounting the `.AppBundle`, such as `dwarfs` and `fusermount`, when using `pelf-dwfs`.
+
