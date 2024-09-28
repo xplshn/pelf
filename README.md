@@ -27,3 +27,4 @@ You specify an `AppDir` to be packed and an ID for the app. This ID will be used
 
 Additionally, we embed the tools used for mounting and unmounting the `.AppBundle`, such as `dwarfs` and `fusermount`, when using `pelf-dwfs`.
 
+![image](https://github.com/user-attachments/assets/97c58d55-293a-4f32-81a9-2f9738e0cb77)
