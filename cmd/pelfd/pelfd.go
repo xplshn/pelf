@@ -1,9 +1,8 @@
-// PELFD. Daemon that automatically "installs" .AppBundles by checking their metadata,
+// PELFD. Daemon that automatically "installs" .AppBundles by checking their metadata.
 package main
 
 import (
 	"crypto/md5"
-	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"flag"
@@ -21,10 +20,11 @@ import (
 
 	"github.com/goccy/go-json"
 	"github.com/liamg/tml"
+	"github.com/zeebo/blake3"
 )
 
 // Version indicates the current PELFD version
-const Version = "1.6"
+const Version = "1.7"
 
 // Options defines the configuration options for the PELFD daemon.
 type Options struct {
@@ -44,12 +44,13 @@ type Config struct {
 
 // BundleEntry represents metadata associated with an installed bundle.
 type BundleEntry struct {
-	Path      string `json:"path"`                // Full path to the bundle file.
-	SHA       string `json:"sha"`                 // SHA256 hash of the bundle file.
-	Png       string `json:"png,omitempty"`       // Path to the PNG icon file, if extracted.
-	Svg       string `json:"svg,omitempty"`       // Path to the SVG icon file, if extracted.
-	Desktop   string `json:"desktop,omitempty"`   // Path to the corrected .desktop file, if processed.
-	Thumbnail string `json:"thumbnail,omitempty"` // Path to the 128x128 png thumbnail file, if processed.
+	Path        string `json:"path"`                // Full path to the bundle file.
+	B3SUM       string `json:"b3sum"`               // B3SUM[0..256] hash of the bundle file.
+	Png         string `json:"png,omitempty"`       // Path to the PNG icon file, if extracted.
+	Svg         string `json:"svg,omitempty"`       // Path to the SVG icon file, if extracted.
+	Desktop     string `json:"desktop,omitempty"`   // Path to the corrected .desktop file, if processed.
+	Thumbnail   string `json:"thumbnail,omitempty"` // Path to the 128x128 png thumbnail file, if processed.
+	HasMetadata bool   `json:"has_metadata"`        // Indicates if metadata was found.
 }
 
 func main() {
@@ -139,66 +140,63 @@ func processBundle(config Config, homeDir string, configFilePath string) {
 	options := config.Options
 	entries := config.Tracker
 	changed := false
+
+	// Helper function to refresh bundles
+	refreshBundle := func(bundle, b3sum string) bool {
+		if isExecutable(bundle) {
+			processBundles(bundle, b3sum, entries, options.IconDir, options.AppDir, config)
+			return true
+		}
+		entries[bundle] = nil
+		return false
+	}
+
 	for _, dir := range options.DirectoriesToWalk {
 		dir = strings.Replace(dir, "~", homeDir, 1)
 		log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> Scanning directory: <green>%s</green>", dir))
+
 		for _, ext := range options.ProbeExtensions {
 			bundles, err := filepath.Glob(filepath.Join(dir, "*"+ext))
 			if err != nil {
 				log.Fatalf(tml.Sprintf("<red><bold>ERR:</bold></red> Failed to scan directory <yellow>%s</yellow> for <yellow>%s</yellow> files: %v", dir, ext, err))
 			}
+
 			for _, bundle := range bundles {
 				existing[bundle] = struct{}{}
-				sha := computeSHA(bundle)
-				if entry, checked := entries[bundle]; checked {
-					if entry == nil {
-						continue
+				b3sum := computeB3SUM(bundle)
+
+				if entry, checked := entries[bundle]; checked && entry != nil {
+					// Only refresh if B3SUM has changed
+					if entry.B3SUM != b3sum {
+						log.Println(tml.Sprintf("<yellow><bold>WRN:</yellow></red> The B3SUM of <blue>%s</blue> has changed. Refreshing entry and files...", filepath.Base(bundle)))
+						changed = refreshBundle(bundle, b3sum) || changed
+					} else {
+						// If the B3SUM hasn't changed, skip the file checks and no refresh
+						log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> The B3SUM of <green>%s</green> has not changed. Skipping file checks.", filepath.Base(bundle)))
 					}
-					// Check if the SHA has changed
-					if entry.SHA != sha {
-						log.Println(tml.Sprintf("<yellow><bold>WRN:</yellow></red> The SHA of <blue>%s</blue> has changed. Refreshing entry and files...", filepath.Base(bundle)))
-						if isExecutable(bundle) {
-							processBundles(bundle, sha, entries, options.IconDir, options.AppDir, config)
-							changed = true
-						} else {
-							entries[bundle] = nil
-						}
-						// Or if at least one of the required files are missing
-					} else if (entry.Desktop != "" && !fileExists(entry.Desktop)) ||
-						(entry.Png != "" && !fileExists(entry.Png)) ||
-						(entry.Svg != "" && !fileExists(entry.Svg)) {
-						log.Println(tml.Sprintf("<yellow><bold>WRN:</yellow></red> One or more required files for <blue>%s</blue> are missing. Refreshing entry and files...", filepath.Base(bundle)))
-						if isExecutable(bundle) {
-							processBundles(bundle, sha, entries, options.IconDir, options.AppDir, config)
-							changed = true
-						} else {
-							entries[bundle] = nil
-						}
-					}
+
 					// Check if the bundle's thumbnail has been removed
 					if entry.Thumbnail != "" && !fileExists(entry.Thumbnail) {
 						log.Println(tml.Sprintf("<yellow><bold>WRN:</yellow></red> The thumbnail file for <blue>%s</blue> doesn't exist anymore. Generating new thumbnail...", filepath.Base(bundle)))
 						thumbnailPath, err := generateThumbnail(bundle, entry.Png)
 						if err != nil {
 							log.Println(tml.Sprintf("<red><bold>ERR:</bold></red> Failed to create thumbnail file: <yellow>%v</yellow>", err))
+						} else {
+							entry.Thumbnail = thumbnailPath
+							log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> A new thumbnail for <green>%s</green> was created", filepath.Base(bundle)))
+							changed = true
 						}
-						entry.Thumbnail = thumbnailPath
-						log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> A new thumbnail for <green>%s</green> was created", filepath.Base(bundle)))
-						changed = true
 					}
 				} else {
-					// The bundle is not an entry in the config's tracker
+					// New bundle detected
 					log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> New bundle detected: <green>%s</green>", filepath.Base(bundle)))
-					if isExecutable(bundle) {
-						processBundles(bundle, sha, entries, options.IconDir, options.AppDir, config)
-						changed = true
-					} else {
-						entries[bundle] = nil
-					}
+					changed = refreshBundle(bundle, b3sum) || changed
 				}
 			}
 		}
 	}
+
+	// Cleanup bundles that no longer exist
 	for path := range entries {
 		if _, found := existing[path]; !found {
 			log.Println(tml.Sprintf("<yellow><bold>WRN:</yellow></red> <blue>%s</blue> no longer exists", path))
@@ -206,6 +204,8 @@ func processBundle(config Config, homeDir string, configFilePath string) {
 			changed = true
 		}
 	}
+
+	// Save config if any changes were made
 	if changed {
 		log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> Updating <green>%s</green>", configFilePath))
 		saveConfig(config, configFilePath)
@@ -222,7 +222,7 @@ func isExecutable(path string) bool {
 	return mode&0111 != 0
 }
 
-func computeSHA(path string) string {
+func computeB3SUM(path string) string {
 	file, err := os.Open(path)
 	if err != nil {
 		log.Fatalf(tml.Sprintf("<red><bold>ERR:</bold></red> Failed to open file <yellow>%s</yellow>: <red>%v</red>", path, err))
@@ -230,29 +230,31 @@ func computeSHA(path string) string {
 	}
 	defer file.Close()
 
-	hasher := sha256.New()
+	hasher := blake3.New()
 	if _, err := io.Copy(hasher, file); err != nil {
-		log.Fatalf(tml.Sprintf("<red><bold>ERR:</bold></red> Failed to compute SHA256 of <yellow>%s</yellow>: <red>%v</red>", path, err))
+		log.Fatalf(tml.Sprintf("<red><bold>ERR:</bold></red> Failed to compute B3SUM of <yellow>%s</yellow>: <red>%v</red>", path, err))
 		return ""
 	}
 
 	return hex.EncodeToString(hasher.Sum(nil))
 }
 
-func processBundles(path, sha string, entries map[string]*BundleEntry, iconPath, appPath string, cfg Config) {
-	entry := &BundleEntry{Path: path, SHA: sha}
+func processBundles(path, b3sum string, entries map[string]*BundleEntry, iconPath, appPath string, cfg Config) {
+	entry := &BundleEntry{Path: path, B3SUM: b3sum, HasMetadata: false} // Initialize HasMetadata to false
 	baseName := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
 
 	entry.Png = executeBundle(path, "--pbundle_pngIcon", filepath.Join(iconPath, baseName+".png"))
 	entry.Svg = executeBundle(path, "--pbundle_svgIcon", filepath.Join(iconPath, baseName+".svg"))
 	entry.Desktop = executeBundle(path, "--pbundle_desktop", filepath.Join(appPath, baseName+".desktop"))
 
+	// Check if at least one of the metadata files was found
 	if entry.Png != "" || entry.Svg != "" || entry.Desktop != "" {
+		entry.HasMetadata = true // Mark that metadata was found
 		log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> Adding bundle to entries: <green>%s</green>", path))
 		entries[path] = entry
 	} else {
 		log.Println(tml.Sprintf("<yellow><bold>WRN:</bold></yellow> Bundle does not contain any metadata files. Skipping: <blue>%s</blue>", path))
-		entries[path] = nil
+		entries[path] = entry // Still assign entry, but without metadata
 	}
 
 	// Create a thumbnail for file managers. See: https://specifications.freedesktop.org/thumbnail-spec/thumbnail-spec-latest.html#CREATION for details
@@ -302,7 +304,7 @@ func executeBundle(bundle, param, outputFile string) string {
 		return ""
 	}
 
-    outputStr := string(output)
+	outputStr := string(output)
 
 	// Remove the escape sequence "^[[1F^[[2K"
 	// Remove the escape sequence from the output

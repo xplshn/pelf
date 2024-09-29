@@ -18,17 +18,21 @@ bwrap --bind "$BWROOTFS" / \
     --proc /proc \
     --bind /sys /sys \
     --bind /run /run \
-    --dev-bind /dev /dev \
-    --bind /etc/hostname /etc/hostname \
-    --bind /etc/localtime /etc/localtime \
-    --bind /etc/nsswitch.conf /etc/nsswitch.conf \
     --bind /media /media \
     --bind /mnt /mnt \
     --bind /home /home \
     --bind /tmp /tmp \
-    --bind /etc/passwd /etc/passwd \
-    --bind /etc/group /etc/group \
+    --dev-bind /dev /dev \
+    --ro-bind /etc/passwd /etc/passwd \
+    --ro-bind /etc/group /etc/group \
     --share-net \
-    --bind /etc/resolv.conf /etc/resolv.conf \
-    --bind /etc/hosts /etc/hosts \
+    --ro-bind /etc/hostname /etc/hostname \
+    --ro-bind /etc/localtime /etc/localtime \
+    --ro-bind /etc/nsswitch.conf /etc/nsswitch.conf \
+    --ro-bind /etc/resolv.conf /etc/resolv.conf \
+    --ro-bind /etc/hosts /etc/hosts \
+    --ro-bind /usr/share/fontconfig /usr/share/fontconfig \
+    --ro-bind /usr/share/fonts /usr/share/fonts \
     -- $ARGS # SC2086
+
+# --uid "0" --gid "0" \

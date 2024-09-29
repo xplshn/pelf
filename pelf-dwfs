@@ -317,6 +317,7 @@ mount_dwarfs() {
 
         # Utility variables for scripting/AppRuns/wrappers
         export SELF_TEMPDIR="$_VAR_MOUNT_DIR"
+        export SELF="$0" # Like ARGV0 in AppImages
 
         if ! command -v "$_VAR_EXEC_FILE" >/dev/null 2>&1; then
             error "[$2] does NOT exist. It is not contained here nor is it available in the user's PATH"

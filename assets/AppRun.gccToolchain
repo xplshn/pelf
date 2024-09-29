@@ -1,0 +1,67 @@
+#!/bin/sh
+
+if [ -n "$SELF" ]; then # Check if ARGV0 is set, which should contain the original command name
+    SELF=$(basename "$SELF")
+else
+    SELF=$(basename "$0") # Fallback to $0 if ARGV0 is not set, but this shouldn't happen with proper symlink setup
+fi
+
+SELF_TEMPDIR="$(dirname "$0")"
+
+# Set PATH to include local directories
+export PATH="$SELF_TEMPDIR/usr/bin:$SELF_TEMPDIR/bin:$PATH"
+
+# Set C_INCLUDE_PATH if it exists, or just initialize it
+if [ -n "$C_INCLUDE_PATH" ]; then
+    export C_INCLUDE_PATH="$SELF_TEMPDIR/usr/include:$SELF_TEMPDIR/include:$C_INCLUDE_PATH"
+else
+    export C_INCLUDE_PATH="$SELF_TEMPDIR/usr/include:$SELF_TEMPDIR/include"
+fi
+
+# Set CPLUS_INCLUDE_PATH if it exists, or just initialize it
+if [ -n "$CPLUS_INCLUDE_PATH" ]; then
+    export CPLUS_INCLUDE_PATH="$SELF_TEMPDIR/usr/include:$SELF_TEMPDIR/include:$CPLUS_INCLUDE_PATH"
+else
+    export CPLUS_INCLUDE_PATH="$SELF_TEMPDIR/usr/include:$SELF_TEMPDIR/include"
+fi
+
+# Set LIBRARY_PATH if it exists, or just initialize it
+if [ -n "$LIBRARY_PATH" ]; then
+    export LIBRARY_PATH="$SELF_TEMPDIR/usr/lib:$SELF_TEMPDIR/lib:$LIBRARY_PATH"
+else
+    export LIBRARY_PATH="$SELF_TEMPDIR/usr/lib:$SELF_TEMPDIR/lib"
+fi
+
+# Set PKG_CONFIG_PATH if it exists, or just initialize it
+if [ -n "$PKG_CONFIG_PATH" ]; then
+    export PKG_CONFIG_PATH="$SELF_TEMPDIR/usr/lib/pkgconfig:$SELF_TEMPDIR/lib/pkgconfig:$PKG_CONFIG_PATH"
+else
+    export PKG_CONFIG_PATH="$SELF_TEMPDIR/usr/lib/pkgconfig:$SELF_TEMPDIR/lib/pkgconfig"
+fi
+
+# Set CFLAGS if it exists, or just initialize it
+if [ -n "$CFLAGS" ]; then
+    export CFLAGS="-I$SELF_TEMPDIR/usr/include -I$SELF_TEMPDIR/include $CFLAGS"
+else
+    export CFLAGS="-I$SELF_TEMPDIR/usr/include -I$SELF_TEMPDIR/include"
+fi
+
+# Set LDFLAGS if it exists, or just initialize it
+if [ -n "$LDFLAGS" ]; then
+    export LDFLAGS="-L$SELF_TEMPDIR/usr/lib -L$SELF_TEMPDIR/lib $LDFLAGS"
+else
+    export LDFLAGS="-L$SELF_TEMPDIR/usr/lib -L$SELF_TEMPDIR/lib"
+fi
+
+# Check if the binary exists in the specified directories and execute it
+if [ -f "$SELF_TEMPDIR/bin/$SELF" ]; then
+    exec "$SELF_TEMPDIR/bin/$SELF" "$@"
+elif [ -f "$SELF_TEMPDIR/usr/bin/$SELF" ]; then
+    exec "$SELF_TEMPDIR/usr/bin/$SELF" "$@"
+fi
+
+if [ "$#" -lt 1 ]; then
+    echo "No arguments were passed or the command does not match any binaries in bin/ or usr/bin/"
+else
+    exec "$@"
+fi
