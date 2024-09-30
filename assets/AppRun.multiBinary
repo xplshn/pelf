@@ -1,0 +1,22 @@
+#!/bin/sh
+
+if [ -n "$SELF" ]; then # Check if ARGV0 is set, which should contain the original command name
+    SELF=$(basename "$SELF")
+else
+    SELF=$(basename "$0") # Fallback to $0 if ARGV0 is not set, but this shouldn't happen with proper symlink setup
+fi
+
+SELF_TEMPDIR="$(dirname "$0")"
+
+# Check if the binary exists in the specified directories and execute it
+if [ -f "$SELF_TEMPDIR/bin/$SELF" ]; then
+    exec "$SELF_TEMPDIR/bin/$SELF" "$@"
+elif [ -f "$SELF_TEMPDIR/usr/bin/$SELF" ]; then
+    exec "$SELF_TEMPDIR/usr/bin/$SELF" "$@"
+fi
+
+if [ "$#" -lt 1 ]; then
+    echo "No arguments were passed or the command does not match any binaries in bin/ or usr/bin/"
+else
+    exec "$@"
+fi
