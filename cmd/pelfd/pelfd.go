@@ -23,7 +23,7 @@ import (
 )
 
 // Version indicates the current PELFD version
-const Version = "1.7"
+const Version = "1.8"
 
 // Options defines the configuration options for the PELFD daemon.
 type Options struct {
@@ -50,6 +50,7 @@ type BundleEntry struct {
 	Desktop     string `json:"desktop,omitempty"`   // Path to the corrected .desktop file, if processed.
 	Thumbnail   string `json:"thumbnail,omitempty"` // Path to the 128x128 png thumbnail file, if processed.
 	HasMetadata bool   `json:"has_metadata"`        // Indicates if metadata was found.
+//	LastUpdated int64  `json:"last_updated"`        // Epoch date when the entry was last updated.
 }
 
 func main() {
@@ -199,6 +200,32 @@ func processBundle(config Config, homeDir string, configFilePath string) {
 							changed = true
 						}
 					}
+
+					// Check if files are missing and re-create them
+					if entry.Png != "" && !fileExists(entry.Png) {
+						log.Println(tml.Sprintf("<yellow><bold>WRN:</yellow></red> The PNG file for <blue>%s</blue> doesn't exist anymore. Re-creating PNG...", filepath.Base(bundle)))
+						entry.Png = executeBundle(bundle, "--pbundle_pngIcon", filepath.Join(options.IconDir, filepath.Base(bundle)+".png"))
+						changed = true
+					}
+					if entry.Svg != "" && !fileExists(entry.Svg) {
+						log.Println(tml.Sprintf("<yellow><bold>WRN:</yellow></red> The SVG file for <blue>%s</blue> doesn't exist anymore. Re-creating SVG...", filepath.Base(bundle)))
+						entry.Svg = executeBundle(bundle, "--pbundle_svgIcon", filepath.Join(options.IconDir, filepath.Base(bundle)+".svg"))
+						changed = true
+					}
+					if entry.Desktop != "" && !fileExists(entry.Desktop) {
+						log.Println(tml.Sprintf("<yellow><bold>WRN:</yellow></red> The .desktop file for <blue>%s</blue> doesn't exist anymore. Re-creating .desktop...", filepath.Base(bundle)))
+						entry.Desktop = executeBundle(bundle, "--pbundle_desktop", filepath.Join(options.AppDir, filepath.Base(bundle)+".desktop"))
+						changed = true
+					}
+
+					// // Re-check if has_metadata is false and 128 seconds have passed
+					// if !entry.HasMetadata && time.Since(time.Unix(entry.LastUpdated, 0)) > 128*time.Second {
+					// 	log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> Re-checking metadata for <green>%s</green> as 128 seconds have passed.", filepath.Base(bundle)))
+					// 	changed = refreshBundle(bundle, b3sum) || changed
+					// }
+					//
+					// Update the last updated timestamp
+					//entry.LastUpdated = time.Now().Unix()
 				} else {
 					// New bundle detected
 					log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> New bundle detected: <green>%s</green>", filepath.Base(bundle)))
@@ -264,6 +291,32 @@ func processBundleForFile(config Config, filePath string, homeDir string, config
 				changed = true
 			}
 		}
+
+		// Check if files are missing and re-create them
+		if entry.Png != "" && !fileExists(entry.Png) {
+			log.Println(tml.Sprintf("<yellow><bold>WRN:</yellow></red> The PNG file for <blue>%s</blue> doesn't exist anymore. Re-creating PNG...", filepath.Base(bundle)))
+			entry.Png = executeBundle(bundle, "--pbundle_pngIcon", filepath.Join(options.IconDir, filepath.Base(bundle)+".png"))
+			changed = true
+		}
+		if entry.Svg != "" && !fileExists(entry.Svg) {
+			log.Println(tml.Sprintf("<yellow><bold>WRN:</yellow></red> The SVG file for <blue>%s</blue> doesn't exist anymore. Re-creating SVG...", filepath.Base(bundle)))
+			entry.Svg = executeBundle(bundle, "--pbundle_svgIcon", filepath.Join(options.IconDir, filepath.Base(bundle)+".svg"))
+			changed = true
+		}
+		if entry.Desktop != "" && !fileExists(entry.Desktop) {
+			log.Println(tml.Sprintf("<yellow><bold>WRN:</yellow></red> The .desktop file for <blue>%s</blue> doesn't exist anymore. Re-creating .desktop...", filepath.Base(bundle)))
+			entry.Desktop = executeBundle(bundle, "--pbundle_desktop", filepath.Join(options.AppDir, filepath.Base(bundle)+".desktop"))
+			changed = true
+		}
+
+		//// Re-check if has_metadata is false and 128 seconds have passed
+		//if !entry.HasMetadata && time.Since(time.Unix(entry.LastUpdated, 0)) > 128*time.Second {
+		//	log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> Re-checking metadata for <green>%s</green> as 128 seconds have passed.", filepath.Base(bundle)))
+		//	changed = refreshBundle(bundle, b3sum) || changed
+		//}
+		//
+		// Update the last updated timestamp
+		//entry.LastUpdated = time.Now().Unix()
 	} else {
 		// New bundle detected
 		log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> New bundle detected: <green>%s</green>", filepath.Base(bundle)))
@@ -323,6 +376,7 @@ func computeB3SUM(path string) string {
 }
 
 func processBundles(path, b3sum string, entries map[string]*BundleEntry, iconPath, appPath string, cfg Config) {
+	//entry := &BundleEntry{Path: path, B3SUM: b3sum, HasMetadata: false, LastUpdated: time.Now().Unix()} // Initialize HasMetadata to false
 	entry := &BundleEntry{Path: path, B3SUM: b3sum, HasMetadata: false} // Initialize HasMetadata to false
 	baseName := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
 
