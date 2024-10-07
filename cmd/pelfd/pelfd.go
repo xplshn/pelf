@@ -1,4 +1,3 @@
-// PELFD. Daemon that automatically "installs" .AppBundles by checking their metadata.
 package main
 
 import (
@@ -69,6 +68,8 @@ func main() {
 	// Parse command-line flags
 	version := flag.Bool("version", false, "Print the version number")
 	configFilePath := flag.String("config", filepath.Join(configDir, "pelfd.json"), "Specify a custom configuration file")
+	integrateFile := flag.String("integrate", "", "Manually integrate a specific file")
+	deintegrateFile := flag.String("deintegrate", "", "Manually de-integrate a specific file")
 	flag.Parse()
 	if *version {
 		fmt.Printf("Version: %s\n", Version)
@@ -82,6 +83,17 @@ func main() {
 	if err := os.MkdirAll(config.Options.AppDir, 0755); err != nil {
 		log.Fatalf(tml.Sprintf("<red><bold>ERR:</bold></red> Failed to create applications directory: <yellow>%v</yellow>", err))
 	}
+
+	if *integrateFile != "" {
+		processBundleForFile(config, *integrateFile, usr.HomeDir, *configFilePath)
+		os.Exit(0)
+	}
+
+	if *deintegrateFile != "" {
+		deintegrateBundle(config, *deintegrateFile, *configFilePath)
+		os.Exit(0)
+	}
+
 	probeInterval := time.Duration(config.Options.ProbeInterval) * time.Second
 	for {
 		processBundle(config, usr.HomeDir, *configFilePath)
@@ -96,7 +108,7 @@ func loadConfig(configPath string, homeDir string) Config {
 			ProbeInterval:       90,
 			IconDir:             filepath.Join(homeDir, ".local/share/icons"),
 			AppDir:              filepath.Join(homeDir, ".local/share/applications"),
-			ProbeExtensions:     []string{".AppBundle", ".blob", ".AppIBundle"},
+			ProbeExtensions:     []string{".AppBundle", ".blob", ".AppIBundle", ".AppImage", ".NixAppImage"},
 			CorrectDesktopFiles: true,
 		},
 		Tracker: make(map[string]*BundleEntry),
@@ -212,6 +224,77 @@ func processBundle(config Config, homeDir string, configFilePath string) {
 	}
 }
 
+func processBundleForFile(config Config, filePath string, homeDir string, configFilePath string) {
+	options := config.Options
+	entries := config.Tracker
+	changed := false
+
+	// Helper function to refresh bundles
+	refreshBundle := func(bundle, b3sum string) bool {
+		if isExecutable(bundle) {
+			processBundles(bundle, b3sum, entries, options.IconDir, options.AppDir, config)
+			return true
+		}
+		entries[bundle] = nil
+		return false
+	}
+
+	bundle := filePath
+	b3sum := computeB3SUM(bundle)
+
+	if entry, checked := entries[bundle]; checked && entry != nil {
+		// Only refresh if B3SUM has changed
+		if entry.B3SUM != b3sum {
+			log.Println(tml.Sprintf("<yellow><bold>WRN:</yellow></red> The B3SUM of <blue>%s</blue> has changed. Refreshing entry and files...", filepath.Base(bundle)))
+			changed = refreshBundle(bundle, b3sum) || changed
+		} else {
+			// If the B3SUM hasn't changed, skip the file checks and no refresh
+			log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> The B3SUM of <green>%s</green> has not changed. Skipping file checks.", filepath.Base(bundle)))
+		}
+
+		// Check if the bundle's thumbnail has been removed
+		if entry.Thumbnail != "" && !fileExists(entry.Thumbnail) {
+			log.Println(tml.Sprintf("<yellow><bold>WRN:</yellow></red> The thumbnail file for <blue>%s</blue> doesn't exist anymore. Generating new thumbnail...", filepath.Base(bundle)))
+			thumbnailPath, err := generateThumbnail(bundle, entry.Png)
+			if err != nil {
+				log.Println(tml.Sprintf("<red><bold>ERR:</bold></red> Failed to create thumbnail file: <yellow>%v</yellow>", err))
+			} else {
+				entry.Thumbnail = thumbnailPath
+				log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> A new thumbnail for <green>%s</green> was created", filepath.Base(bundle)))
+				changed = true
+			}
+		}
+	} else {
+		// New bundle detected
+		log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> New bundle detected: <green>%s</green>", filepath.Base(bundle)))
+		changed = refreshBundle(bundle, b3sum) || changed
+	}
+
+	// Save config if any changes were made
+	if changed {
+		log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> Updating <green>%s</green>", configFilePath))
+		saveConfig(config, configFilePath)
+	}
+}
+
+func deintegrateBundle(config Config, filePath string, configFilePath string) {
+	entries := config.Tracker
+	changed := false
+
+	if entry, checked := entries[filePath]; checked && entry != nil {
+		cleanupBundle(filePath, entries)
+		changed = true
+	} else {
+		log.Println(tml.Sprintf("<yellow><bold>WRN:</yellow></red> Bundle <blue>%s</blue> is not integrated.", filePath))
+	}
+
+	// Save config if any changes were made
+	if changed {
+		log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> Updating <green>%s</green>", configFilePath))
+		saveConfig(config, configFilePath)
+	}
+}
+
 func isExecutable(path string) bool {
 	info, err := os.Stat(path)
 	if err != nil {
@@ -243,9 +326,14 @@ func processBundles(path, b3sum string, entries map[string]*BundleEntry, iconPat
 	entry := &BundleEntry{Path: path, B3SUM: b3sum, HasMetadata: false} // Initialize HasMetadata to false
 	baseName := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
 
-	entry.Png = executeBundle(path, "--pbundle_pngIcon", filepath.Join(iconPath, baseName+".png"))
-	entry.Svg = executeBundle(path, "--pbundle_svgIcon", filepath.Join(iconPath, baseName+".svg"))
-	entry.Desktop = executeBundle(path, "--pbundle_desktop", filepath.Join(appPath, baseName+".desktop"))
+	if strings.HasSuffix(path, ".AppImage") || strings.HasSuffix(path, ".NixAppImage") {
+		entry.Png = extractAppImageMetadata("icon", path, filepath.Join(iconPath, baseName+".png"))
+		entry.Desktop = extractAppImageMetadata("desktop", path, filepath.Join(appPath, baseName+".desktop"))
+	} else if strings.HasSuffix(path, ".AppBundle") {
+		entry.Png = executeBundle(path, "--pbundle_pngIcon", filepath.Join(iconPath, baseName+".png"))
+		entry.Svg = executeBundle(path, "--pbundle_svgIcon", filepath.Join(iconPath, baseName+".svg"))
+		entry.Desktop = executeBundle(path, "--pbundle_desktop", filepath.Join(appPath, baseName+".desktop"))
+	}
 
 	// Check if at least one of the metadata files was found
 	if entry.Png != "" || entry.Svg != "" || entry.Desktop != "" {
@@ -480,6 +568,69 @@ func CopyFile(src, dst string) error {
 	}
 
 	return nil
+}
+
+func extractAppImageMetadata(metadataType, appImagePath, outputFile string) string {
+	log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> Extracting %s from AppImage: <green>%s</green>", metadataType, appImagePath))
+
+	// Create a temporary directory for extraction
+	tempDir, err := os.MkdirTemp("", "appimage-extract-")
+	if err != nil {
+		log.Println(tml.Sprintf("<red><bold>ERR:</bold></red> Failed to create temporary directory: <yellow>%v</yellow>", err))
+		return ""
+	}
+	// Defer the removal of the tempDir to ensure it is deleted at the end of the function
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			log.Println(tml.Sprintf("<red><bold>ERR:</bold></red> Failed to remove temporary directory: <yellow>%v</yellow>", err))
+		}
+	}()
+
+	if err := os.Chdir(tempDir); err != nil {
+		log.Println(tml.Sprintf("<red><bold>ERR:</bold></red> Failed to change directory to <yellow>%s</yellow>: <yellow>%v</yellow>", tempDir, err))
+		return ""
+	}
+
+	var metadataPath string
+
+	switch metadataType {
+	case "icon":
+		cmd := exec.Command("sh", "-c", fmt.Sprintf("%s --appimage-extract .DirIcon", appImagePath))
+		if err := cmd.Run(); err != nil {
+			log.Println(tml.Sprintf("<yellow><bold>WRN:</bold></yellow> Failed to extract .DirIcon from AppImage: <blue>%s</blue>", appImagePath))
+			return ""
+		}
+		metadataPath = filepath.Join(tempDir, "squashfs-root", ".DirIcon")
+	case "desktop":
+		cmd := exec.Command("sh", "-c", fmt.Sprintf("%s --appimage-extract *.desktop", appImagePath))
+		if err := cmd.Run(); err != nil {
+			log.Println(tml.Sprintf("<yellow><bold>WRN:</bold></yellow> Failed to extract .desktop from AppImage: <blue>%s</blue>", appImagePath))
+			return ""
+		}
+		// Find the first .desktop file in the directory
+		files, err := filepath.Glob(filepath.Join(tempDir, "squashfs-root", "*.desktop"))
+		if err != nil || len(files) == 0 {
+			log.Println(tml.Sprintf("<yellow><bold>WRN:</bold></yellow> .desktop file not found in AppImage: <blue>%s</blue>", appImagePath))
+			return ""
+		}
+		metadataPath = files[0]
+	default:
+		log.Println(tml.Sprintf("<red><bold>ERR:</bold></red> Unknown metadata type: <yellow>%s</yellow>", metadataType))
+		return ""
+	}
+
+	if !fileExists(metadataPath) {
+		log.Println(tml.Sprintf("<yellow><bold>WRN:</bold></yellow> %s not found in AppImage: <blue>%s</blue>", strings.Title(metadataType), appImagePath))
+		return ""
+	}
+
+	if err := CopyFile(metadataPath, outputFile); err != nil {
+		log.Println(tml.Sprintf("<red><bold>ERR:</bold></red> Failed to copy %s file: <yellow>%v</yellow>", metadataType, err))
+		return ""
+	}
+
+	log.Println(tml.Sprintf("<blue><bold>INF:</bold></blue> Successfully extracted %s to: <green>%s</green>", metadataType, outputFile))
+	return outputFile
 }
 
 // fileExists checks if a file exists.
