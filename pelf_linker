@@ -1,23 +1,36 @@
 #!/bin/sh
 
-# Function to concatenate all *_bindir environment variables into PELF_BINDIRS
-
-vval=""
+# Initialize variables
 PELF_BINDIRS=""
 PELF_LIBDIRS=""
 
+# Function to concatenate existing directories from *_binDir environment variables into PELF_BINDIRS
 concatenate_bindirs() {
-    # Target any variable ending with _bindir
+    # Find all environment variables ending with _binDir
     vars="$(env | grep ".*_binDir=" | cut -f 1 -d '=')"
     for v in $vars; do
-        # Use eval to get the value of the variable
+        # Get the value of the variable
         eval "vval=\$$v"
-        # Append the value to PELF_BINDIRS, ensuring to add a colon if it's not the first entry
-        if [ -z "$PELF_BINDIRS" ]; then
-            PELF_BINDIRS="$vval"
-        else
-            PELF_BINDIRS="$PELF_BINDIRS:$vval"
-        fi
+
+        # Save the current IFS and change it to handle colon-separated paths
+        old_ifs="$IFS"
+        IFS=":"
+
+        # Loop through each path in the variable
+        for dir in $vval; do
+            # Check if the directory exists
+            if [ -d "$dir" ]; then
+                # Append to PELF_BINDIRS if the directory exists
+                if [ -z "$PELF_BINDIRS" ]; then
+                    PELF_BINDIRS="$dir"
+                else
+                    PELF_BINDIRS="$PELF_BINDIRS:$dir"
+                fi
+            fi
+        done
+
+        # Restore the original IFS
+        IFS="$old_ifs"
     done
 
     # Print the concatenated PELF_BINDIRS
@@ -26,19 +39,33 @@ concatenate_bindirs() {
     fi
 }
 
-# Function to concatenate all *_bindir environment variables into PELF_LIBDIRS
+# Function to concatenate existing directories from *_libDir environment variables into PELF_LIBDIRS
 concatenate_libdirs() {
-    # Target any variable ending with _bindir
+    # Find all environment variables ending with _libDir
     vars="$(env | grep ".*_libDir=" | cut -f 1 -d '=')"
     for v in $vars; do
-        # Use eval to get the value of the variable
+        # Get the value of the variable
         eval "vval=\$$v"
-        # Append the value to PELF_LIBDIRS, ensuring to add a colon if it's not the first entry
-        if [ -z "$PELF_LIBDIRS" ]; then
-            PELF_LIBDIRS="$vval"
-        else
-            PELF_LIBDIRS="$PELF_LIBDIRS:$vval"
-        fi
+
+        # Save the current IFS and change it to handle colon-separated paths
+        old_ifs="$IFS"
+        IFS=":"
+
+        # Loop through each path in the variable
+        for dir in $vval; do
+            # Check if the directory exists
+            if [ -d "$dir" ]; then
+                # Append to PELF_LIBDIRS if the directory exists
+                if [ -z "$PELF_LIBDIRS" ]; then
+                    PELF_LIBDIRS="$dir"
+                else
+                    PELF_LIBDIRS="$PELF_LIBDIRS:$dir"
+                fi
+            fi
+        done
+
+        # Restore the original IFS
+        IFS="$old_ifs"
     done
 
     # Print the concatenated PELF_LIBDIRS

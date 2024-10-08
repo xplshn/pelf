@@ -2,18 +2,19 @@
 
 [ "$DEBUG" = "1" ] && set -x
 
-#SELF_TEMPDIR="${SELF_TEMPDIR:-$(basename "$(readlink -f "$0")")}"
+# Determine the path to the script itself
 SELF=$(readlink -f "$0")
 SELF_TEMPDIR=${SELF%/*}
-[ -d "$SELF_TEMPDIR/rootfs" ] || exit 1 && BWROOTFS="$SELF_TEMPDIR/rootfs"
+
+[ -d "$SELF_TEMPDIR/rootfs" ] || exit 1
+BWROOTFS="$SELF_TEMPDIR/rootfs"
 
 if [ -z "$1" ]; then
-	ARGS="env -u LD_PRELOAD -u LD_LIBRARY_PATH -u ENV sh"
+	SELF_ARGS="env -u LD_PRELOAD -u LD_LIBRARY_PATH -u ENV sh"
 else
-	ARGS="$*"
+	SELF_ARGS="$*"
 fi
 
-# shellcheck disable=SC2086
 bwrap --bind "$BWROOTFS" / \
     --proc /proc \
     --bind /sys /sys \
@@ -33,6 +34,9 @@ bwrap --bind "$BWROOTFS" / \
     --ro-bind /etc/hosts /etc/hosts \
     --ro-bind /usr/share/fontconfig /usr/share/fontconfig \
     --ro-bind /usr/share/fonts /usr/share/fonts \
-    -- $ARGS # SC2086
+    --env SELF="$SELF" \
+    --env SELF_TEMPDIR="$SELF_TEMPDIR" \
+    --env BWROOTFS="$BWROOTFS" \
+    -- $SELF_ARGS
 
-# --uid "0" --gid "0" \
+#    --uid "0" --gid "0" \
