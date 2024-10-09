@@ -204,17 +204,17 @@ func processBundle(config Config, homeDir string, configFilePath string) {
 					// Check if files are missing and re-create them
 					if entry.Png != "" && !fileExists(entry.Png) {
 						log.Println(tml.Sprintf("<yellow><bold>WRN:</yellow></red> The PNG file for <blue>%s</blue> doesn't exist anymore. Re-creating PNG...", filepath.Base(bundle)))
-						entry.Png = executeBundle(bundle, "--pbundle_pngIcon", filepath.Join(options.IconDir, filepath.Base(bundle)+".png"))
+						entry.Png = executeBundle(bundle, "--pbundle_pngIcon", filepath.Join(options.IconDir, filepath.Base(remExtension(bundle))+".png"))
 						changed = true
 					}
 					if entry.Svg != "" && !fileExists(entry.Svg) {
 						log.Println(tml.Sprintf("<yellow><bold>WRN:</yellow></red> The SVG file for <blue>%s</blue> doesn't exist anymore. Re-creating SVG...", filepath.Base(bundle)))
-						entry.Svg = executeBundle(bundle, "--pbundle_svgIcon", filepath.Join(options.IconDir, filepath.Base(bundle)+".svg"))
+						entry.Svg = executeBundle(bundle, "--pbundle_svgIcon", filepath.Join(options.IconDir, filepath.Base(remExtension(bundle))+".svg"))
 						changed = true
 					}
 					if entry.Desktop != "" && !fileExists(entry.Desktop) {
 						log.Println(tml.Sprintf("<yellow><bold>WRN:</yellow></red> The .desktop file for <blue>%s</blue> doesn't exist anymore. Re-creating .desktop...", filepath.Base(bundle)))
-						entry.Desktop = executeBundle(bundle, "--pbundle_desktop", filepath.Join(options.AppDir, filepath.Base(bundle)+".desktop"))
+						entry.Desktop = executeBundle(bundle, "--pbundle_desktop", filepath.Join(options.AppDir, filepath.Base(remExtension(bundle))+".desktop"))
 						changed = true
 					}
 
@@ -295,17 +295,17 @@ func processBundleForFile(config Config, filePath string, homeDir string, config
 		// Check if files are missing and re-create them
 		if entry.Png != "" && !fileExists(entry.Png) {
 			log.Println(tml.Sprintf("<yellow><bold>WRN:</yellow></red> The PNG file for <blue>%s</blue> doesn't exist anymore. Re-creating PNG...", filepath.Base(bundle)))
-			entry.Png = executeBundle(bundle, "--pbundle_pngIcon", filepath.Join(options.IconDir, filepath.Base(bundle)+".png"))
+			entry.Png = executeBundle(bundle, "--pbundle_pngIcon", filepath.Join(options.IconDir, filepath.Base(remExtension(bundle))+".png"))
 			changed = true
 		}
 		if entry.Svg != "" && !fileExists(entry.Svg) {
 			log.Println(tml.Sprintf("<yellow><bold>WRN:</yellow></red> The SVG file for <blue>%s</blue> doesn't exist anymore. Re-creating SVG...", filepath.Base(bundle)))
-			entry.Svg = executeBundle(bundle, "--pbundle_svgIcon", filepath.Join(options.IconDir, filepath.Base(bundle)+".svg"))
+			entry.Svg = executeBundle(bundle, "--pbundle_svgIcon", filepath.Join(options.IconDir, filepath.Base(remExtension(bundle))+".svg"))
 			changed = true
 		}
 		if entry.Desktop != "" && !fileExists(entry.Desktop) {
 			log.Println(tml.Sprintf("<yellow><bold>WRN:</yellow></red> The .desktop file for <blue>%s</blue> doesn't exist anymore. Re-creating .desktop...", filepath.Base(bundle)))
-			entry.Desktop = executeBundle(bundle, "--pbundle_desktop", filepath.Join(options.AppDir, filepath.Base(bundle)+".desktop"))
+			entry.Desktop = executeBundle(bundle, "--pbundle_desktop", filepath.Join(options.AppDir, filepath.Base(remExtension(bundle))+".desktop"))
 			changed = true
 		}
 
@@ -698,4 +698,8 @@ func fileExists(filePath string) bool {
 	}
 	// If there's any other error, we consider that the file doesn't exist for simplicity
 	return false
+}
+
+func remExtension(filePath string) string {
+      return strings.Split(filePath, ".")[0]
 }
