@@ -97,7 +97,7 @@ while [ "$#" -gt 0 ]; do
             ;;
         --static-tools-dir)
             _VAR_CUSTOM_EMBED_DIR="$2"
-            shift 1
+            shift 2
             ;;
         *)
             echo "Unrecognized argument: $1" >&2
