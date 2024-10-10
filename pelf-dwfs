@@ -14,9 +14,141 @@ error() {
     exit 1
 }
 
-# Check if the required arguments are provided
-if [ "$#" -lt 3 ]; then
-    error "Usage: $0 [--add-appdir [AppDir] EXE_NAME]|[--output-to OUTPUT.AppBundle]|<--embed-static-tools|--static-tools-dir>]"
+# Function to display usage/help information
+print_help() {
+    cat <<EOF
+Usage: $0 [options]
+
+Options:
+  --output-to=[filepath.dwfs.AppBundle]  Specify the output file name for the bundle.
+  --compression=[MKDWARFS_COMP_OPTS]     Specify compression flags for mkdwarfs.
+  --add-appdir=[directory.AppDir]        Add an AppDir.
+  --appbundle-id=[AppBundleID]           Specify the ID of the AppBundle.
+  --embed-static-tools                   Embed static tools into the bundle.
+  --static-tools-dir=[directory]        Specify a custom directory from which to get the static tools.
+  --help                                 Display this help and exit.
+
+Examples:
+  $0 --add-appdir=/path/to/appdir --appbundle-id=myapp-date-myInternetNickName --output-to=mybundle.AppBundle --compression="--max-lookback-blocks=5 --no-history --compression zstd:level=22"
+Notes:
+  - pelf-dwfs is a utility for creating self-contained DWFS bundles.
+  - For more information, visit https://github.com/xplshn/pelf
+EOF
+}
+
+# Function to handle file/directory existence checks and operations
+check_and_process() {
+    FPATH="$1"
+    ACTION="$2"
+
+    if [ -e "$FPATH" ]; then
+        eval "$ACTION" "$FPATH"
+    else
+        echo "$FPATH does not exist." >&2
+        exit 1
+    fi
+}
+
+# Parse command-line arguments using getopt
+if ! ARGS=$(getopt -o ho:c:a:i:e:s --long help,output-to:,compression:,add-appdir:,appbundle-id:,embed-static-tools,static-tools-dir: -n "$0" -- "$@"); then
+    print_help
+    exit 1
+fi
+
+# Evaluate the arguments
+eval set -- "$ARGS"
+
+# Initialize variables
+__APPDIR=""
+_VAR_MAIN_BINARY=""
+
+# Process options
+while true; do
+    case "$1" in
+        -h | --help)
+            print_help
+            exit 0
+            ;;
+        -o | --output-to)
+            _VAR_OUT_FILE="$2"
+            shift 2
+            ;;
+        -c | --compression)
+            _VAR_COMPRESS_ARG="$2"
+            shift 2
+            ;;
+        -a | --add-appdir)
+            if [ -z "$2" ]; then
+                echo "Error: You must specify an AppDir." >&2
+                exit 1
+            fi
+
+            __APPDIR="$2"
+            shift 2
+            ;;
+        -i | --appbundle-id)
+            _VAR_MAIN_BINARY="$2"
+            shift 2
+            ;;
+        -e | --embed-static-tools)
+            EMBED_STATIC_TOOLS="1"
+            shift
+            ;;
+        -s | --static-tools-dir)
+            _VAR_CUSTOM_EMBED_DIR="$2"
+            shift 2
+            ;;
+        --)
+            shift
+            break
+            ;;
+        *)
+            echo "Unexpected option: $1" >&2
+            print_help
+            exit 1
+            ;;
+    esac
+done
+
+# Check for required arguments after parsing
+if [ -z "$__APPDIR" ] || [ -z "$_VAR_MAIN_BINARY" ] || [ -z "$_VAR_OUT_FILE" ]; then
+    echo "Error: Required arguments not provided."
+    echo "You must specify:"
+    echo "  --add-appdir <AppDir>"
+    echo "  --main-binary <MainBinaryID>"
+    echo "  --output-to <OUTPUT.AppBundle>"
+    print_help
+    exit 1
+fi
+
+# Check if the APPDIR exists and is a directory
+if [ -d "$__APPDIR" ]; then
+    # Check for the existence of the AppRun file
+    if [ ! -f "$__APPDIR/AppRun" ]; then
+        echo "This AppDir does not contain an AppRun" >&2
+
+        # Attempt to copy a generic AppRun if it exists
+        if [ -f "./AppRun.generic" ]; then
+            echo "Copying a generic AppRun" >&2
+            cp ./AppRun.generic "$__APPDIR/AppRun"
+        else
+            echo "Downloading a generic AppRun..." >&2
+            wget -q -O "$__APPDIR/AppRun" "https://raw.githubusercontent.com/Samueru-sama/deploy/main/AppRun" || {
+                echo "Failed to download AppRun." >&2
+                exit 1
+            }
+        fi
+        chmod +x "$__APPDIR/AppRun"
+    fi
+
+    # Process the directory and copy items
+    check_and_process "$__APPDIR" "true" && \
+    find "$__APPDIR" -mindepth 1 -maxdepth 1 | while IFS= read -r item; do
+        cp -a "$item" "${_VAR_TO_BE_BUNDLED}/"
+    done
+else
+    echo "[$__APPDIR] is not an existing directory" >&2
+    exit 1
 fi
 
 # Throw an error if any of these are missing
@@ -38,73 +170,6 @@ check_and_process() {
         exit 1
     fi
 }
-
-# Process arguments
-while [ "$#" -gt 0 ]; do
-    case "$1" in
-        --output-to)
-            _VAR_OUT_FILE="$2"
-            shift 2
-            ;;
-        --compression)
-            _VAR_COMPRESS_ARG="$2"
-            shift 2
-            ;;
-        --add-appdir)
-            if [ "$_VAR_APPDIR_MODE" = "true" ]; then
-                echo "--add-appdir cannot be used more than 1 time" >&2
-                exit 1
-            fi
-            __APPDIR="${2:-}"
-            if [ -d "$__APPDIR" ]; then
-                _VAR_MAIN_BINARY="$3"
-
-                if [ -z "$_VAR_MAIN_BINARY" ]; then
-                    error "You must specify an ID for this binary (usually, the name of the main program is just fine)"
-                elif [ "$_VAR_MAIN_BINARY" = "AppRun" ]; then
-                    error "The ID of this binary cannot be named 'AppRun'."
-                fi
-
-                if [ ! -f "$__APPDIR/AppRun" ]; then
-                    echo "This AppDir does not contain an AppRun" >&2
-
-                    if [ -f "./AppRun.generic" ]; then
-                        echo "Copying a generic AppRun" >&2
-                        cp ./AppRun.generic "$__APPDIR/AppRun"
-                    else
-                        echo "Downloading a generic AppRun..." >&2
-                        wget -q -O "$__APPDIR/AppRun" "https://raw.githubusercontent.com/Samueru-sama/deploy/main/AppRun" || {
-                            error "Failed to download AppRun."
-                        }
-
-                    fi
-                    chmod +x "$__APPDIR/AppRun"
-                fi
-
-                _VAR_APPDIR_MODE="true"
-                check_and_process "$__APPDIR" "true" && \
-                find "$__APPDIR" -mindepth 1 -maxdepth 1 | while IFS= read -r item; do
-                    cp -a "$item" "${_VAR_TO_BE_BUNDLED}/"
-                done
-                shift 3
-            else
-                error "[$__APPDIR] is not an existing directory"
-            fi
-            ;;
-        --embed-static-tools)
-            EMBED_STATIC_TOOLS="1"
-            shift 1
-            ;;
-        --static-tools-dir)
-            _VAR_CUSTOM_EMBED_DIR="$2"
-            shift 2
-            ;;
-        *)
-            echo "Unrecognized argument: $1" >&2
-            exit 1
-            ;;
-    esac
-done
 
 [ "$EMBED_STATIC_TOOLS" != 1 ] && [ "$_VAR_CUSTOM_EMBED_DIR" != "" ] && {
     echo "Unable to specify static-tools-dir without passing --embed-static-tools"
