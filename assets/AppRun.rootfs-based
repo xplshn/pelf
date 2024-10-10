@@ -12,10 +12,8 @@ BWROOTFS="$SELF_TEMPDIR/rootfs"
 if [ "$1" = "--Xbwrap" ]; then
     shift
     SELF_ARGS="$*"
-elif [ -f "$BWROOTFS/entrypoint" ]; then
-    SELF_ARGS="-- env -u LD_PRELOAD -u LD_LIBRARY_PATH $(cat "$BWROOTFS/entrypoint") $*"
 else
-    SELF_ARGS="-- env -u LD_PRELOAD -u LD_LIBRARY_PATH $(grep -e '^Exec=.*' "${HERE}"/*.desktop | head -n 1 | cut -d "=" -f 2- | sed -e 's|%.||g') $*"
+    SELF_ARGS="-- env -u LD_PRELOAD -u LD_LIBRARY_PATH $(cat "$BWROOTFS/entrypoint") $*"
 fi
 
 if [ -x "$SELF_TEMPDIR/usr/bin/bwrap" ]; then
