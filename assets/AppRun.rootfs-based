@@ -16,28 +16,29 @@ else
     SELF_ARGS="-- env -u LD_PRELOAD -u LD_LIBRARY_PATH $(cat "$BWROOTFS/entrypoint") $*"
 fi
 
-bwrap --bind "$BWROOTFS" / \
+bwrap --die-with-parent \
+    --setenv TMPDIR /tmp \
+    --setenv HOME "$SELF_TEMPDIR/home" \
+    --setenv ARGV0 "$(basename "$SELF")" \
+    --setenv APPDIR "/tmp/.mount_$(basename "$SELF")" \
+    --setenv APPIMAGE "$SELF" \
+    --dir /tmp \
+    --dir /app \
     --proc /proc \
-    --bind /sys /sys \
-    --bind /run /run \
-    --bind /media /media \
-    --bind /mnt /mnt \
-    --bind /home /home \
-    --bind /tmp /tmp \
     --dev-bind /dev /dev \
-    --ro-bind /etc/passwd /etc/passwd \
-    --ro-bind /etc/group /etc/group \
-    --share-net \
-    --ro-bind /etc/hostname /etc/hostname \
-    --ro-bind /etc/localtime /etc/localtime \
-    --ro-bind /etc/nsswitch.conf /etc/nsswitch.conf \
-    --ro-bind /etc/resolv.conf /etc/resolv.conf \
-    --ro-bind /etc/hosts /etc/hosts \
-    --ro-bind /usr/share/fontconfig /usr/share/fontconfig \
-    --setenv SELF "$SELF" \
-    --setenv SELF_TEMPDIR "$SELF_TEMPDIR" \
-    --setenv BWROOTFS "$BWROOTFS" \
-    --ro-bind /usr/share/fonts /usr/share/fonts \
-    $SELF_ARGS
+    --ro-bind-try "$BWROOTFS/opt" /opt \
+    --ro-bind-try "$BWROOTFS/bin" /bin \
+    --ro-bind-try "$BWROOTFS/sbin" /sbin \
+    --ro-bind-try "$BWROOTFS/lib" /lib \
+    --ro-bind-try "$BWROOTFS/lib32" /lib32 \
+    --ro-bind-try "$BWROOTFS/lib64" /lib64 \
+    --ro-bind-try "$BWROOTFS/usr/bin" /usr/bin \
+    --ro-bind-try "$BWROOTFS/usr/sbin" /usr/sbin \
+    --ro-bind-try "$BWROOTFS/usr/lib" /usr/lib \
+    --ro-bind-try "$BWROOTFS/usr/lib32" /usr/lib32 \
+    --ro-bind-try "$BWROOTFS/usr/lib64" /usr/lib64 \
+    --bind "$SELF" "/app/$(basename "$SELF")" \
+    -- $SELF_ARGS
 
+#    --perms 0700 \
 #    --uid "0" --gid "0" \
