@@ -1,4 +1,7 @@
 #!/bin/sh
 
+# For converting a .NixAppImage to the .AppBundle format, also for AppDirs that have been patched away with patchelf
+# Move original AppRun over to ./AppRun_original and put this script at ./AppRun
+
 SELF_TEMPDIR="$(dirname "$(readlink -f "${0}")")"
 exec env -u LD_LIBRARY_PATH -u LD_PRELOAD "${SELF_TEMPDIR}/AppRun_original" "$@"
