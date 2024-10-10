@@ -34,17 +34,16 @@ $BWRAP_BIN --bind "$BWROOTFS" / \
     --ro-bind /etc/passwd /etc/passwd \
     --ro-bind /etc/group /etc/group \
     --share-net \
-    --ro-bind-try /etc/hostname /etc/hostname \
-    --ro-bind-try /etc/localtime /etc/localtime \
-    --ro-bind-try /etc/nsswitch.conf /etc/nsswitch.conf \
-    --ro-bind-try /etc/resolv.conf /etc/resolv.conf \
-    --ro-bind-try /etc/hosts /etc/hosts \
-    --ro-bind-try /usr/share/fontconfig /usr/share/fontconfig \
+    --ro-bind /etc/hostname /etc/hostname \
+    --ro-bind /etc/localtime /etc/localtime \
+    --ro-bind /etc/nsswitch.conf /etc/nsswitch.conf \
+    --ro-bind /etc/resolv.conf /etc/resolv.conf \
+    --ro-bind /etc/hosts /etc/hosts \
+    --ro-bind /usr/share/fontconfig /usr/share/fontconfig \
     --setenv SELF "$SELF" \
     --setenv SELF_TEMPDIR "$SELF_TEMPDIR" \
     --setenv BWROOTFS "$BWROOTFS" \
     --ro-bind /usr/share/fonts /usr/share/fonts \
     $SELF_ARGS
 
-#    --perms 0700 \
 #    --uid "0" --gid "0" \
