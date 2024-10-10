@@ -1,5 +1,7 @@
 #!/bin/sh
 
+# LAST UPDATED: Thu Oct 10 07:30:35 -03 2024
+
 [ "$DEBUG" = "1" ] && set -x
 
 # Determine the path to the script itself
