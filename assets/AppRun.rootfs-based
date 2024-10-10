@@ -16,7 +16,13 @@ else
     SELF_ARGS="-- env -u LD_PRELOAD -u LD_LIBRARY_PATH $(cat "$BWROOTFS/entrypoint") $*"
 fi
 
-bwrap --die-with-parent \
+if [ -x "$SELF_TEMPDIR/usr/bin/bwrap" ]; then
+    BWRAP_BIN="$SELF_TEMPDIR/usr/bin/bwrap"
+else
+    BWRAP_BIN="bwrap"
+fi
+
+$BWRAP_BIN --die-with-parent \
     --setenv TMPDIR /tmp \
     --setenv HOME "$SELF_TEMPDIR/home" \
     --setenv ARGV0 "$(basename "$SELF")" \
