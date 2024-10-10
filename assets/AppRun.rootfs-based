@@ -35,9 +35,9 @@ bwrap --bind "$BWROOTFS" / \
     --ro-bind /etc/hosts /etc/hosts \
     --ro-bind /usr/share/fontconfig /usr/share/fontconfig \
     --ro-bind /usr/share/fonts /usr/share/fonts \
-    --env SELF="$SELF" \
-    --env SELF_TEMPDIR="$SELF_TEMPDIR" \
-    --env BWROOTFS="$BWROOTFS" \
+    --setenv SELF="$SELF" \
+    --setenv SELF_TEMPDIR="$SELF_TEMPDIR" \
+    --setenv BWROOTFS="$BWROOTFS" \
     $SELF_ARGS
 
 #    --uid "0" --gid "0" \
