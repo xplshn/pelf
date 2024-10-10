@@ -38,7 +38,7 @@ bwrap --die-with-parent \
     --ro-bind-try "$BWROOTFS/usr/lib32" /usr/lib32 \
     --ro-bind-try "$BWROOTFS/usr/lib64" /usr/lib64 \
     --bind "$SELF" "/app/$(basename "$SELF")" \
-    -- $SELF_ARGS
+    $SELF_ARGS
 
 #    --perms 0700 \
 #    --uid "0" --gid "0" \
