@@ -16,7 +16,7 @@ error() {
 
 # Check if the required arguments are provided
 if [ "$#" -lt 3 ]; then
-    error "Usage: $0 [--add-appdir [AppDir] EXE_NAME]|[--output-to OUTPUT.AppBundle]|<--embed-static-tools>]"
+    error "Usage: $0 [--add-appdir [AppDir] EXE_NAME]|[--output-to OUTPUT.AppBundle]|<--embed-static-tools|--static-tools-dir>]"
 fi
 
 # Throw an error if any of these are missing
@@ -95,12 +95,21 @@ while [ "$#" -gt 0 ]; do
             EMBED_STATIC_TOOLS="1"
             shift 1
             ;;
+        --static-tools-dir)
+            _VAR_CUSTOM_EMBED_DIR="$2"
+            shift 1
+            ;;
         *)
             echo "Unrecognized argument: $1" >&2
             exit 1
             ;;
     esac
 done
+
+[ "$EMBED_STATIC_TOOLS" != 1 ] && [ "$_VAR_CUSTOM_EMBED_DIR" != "" ] && {
+    echo "Unable to specify static-tools-dir without passing --embed-static-tools"
+    exit 55
+}
 
 # Create a DWFS archive of the executable, libraries and additional files
 [ -n "$_VAR_COMPRESS_ARG" ] || _VAR_COMPRESS_ARG="--max-lookback-blocks=5 --no-history --compression zstd:level=22" #_VAR_COMPRESS_ARG="--max-lookback-blocks=5 --categorize=pcmaudio --compression pcmaudio/waveform::flac:level=8"
@@ -344,9 +353,22 @@ embed_static_tools() {
     # Create the static tools directory
     mkdir -p "$_VAR_STATIC_TOOLS_DIR" || error "Failed to create directory $_VAR_WORKDIR/static"
 
-    # Copy static tools to the directory
-    if ! cp "$(which fusermount)" "$(which dwarfs)" "$_VAR_STATIC_TOOLS_DIR"; then
-        error "Failed to copy static tools"
+    # Check if _VAR_CUSTOM_EMBED_DIR is set and use it; otherwise, use `which` to find the tools
+    if [ -n "$_VAR_CUSTOM_EMBED_DIR" ]; then
+        # Ensure the custom embed directory exists
+        if [ ! -d "$_VAR_CUSTOM_EMBED_DIR" ]; then
+            error "Custom embed directory $_VAR_CUSTOM_EMBED_DIR does not exist"
+        fi
+
+        # Copy the tools from the custom embed directory
+        if ! cp "$_VAR_CUSTOM_EMBED_DIR/fusermount" "$_VAR_CUSTOM_EMBED_DIR/dwarfs" "$_VAR_STATIC_TOOLS_DIR"; then
+            error "Failed to copy static tools from custom embed directory"
+        fi
+    else
+        # Copy static tools using `which`
+        if ! cp "$(which fusermount)" "$(which dwarfs)" "$_VAR_STATIC_TOOLS_DIR"; then
+            error "Failed to copy static tools"
+        fi
     fi
 
     # Create the tar archive
