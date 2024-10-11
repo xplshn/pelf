@@ -1,0 +1,11 @@
+#!/bin/sh
+
+[ "$DEBUG" = "1" ] && set -x
+
+PATH="/app/rootfs/usr/local/sbin:/app/rootfs/usr/local/bin:/app/rootfs/usr/sbin:/app/rootfs/usr/bin:/app/rootfs/sbin:/bin:$PATH"
+
+if ! command -v "$ARG0" >/dev/null 2>&1; then
+    echo "No arguments were passed or the command does not match any binaries in bin/ or usr/bin/"
+else
+    "$ARG0" "$@"
+fi

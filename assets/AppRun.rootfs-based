@@ -45,6 +45,8 @@ $BWRAP_BIN --bind "$BWROOTFS" / \
     --ro-bind-try /etc/localtime /etc/localtime \
     --ro-bind-try /etc/hostname /etc/hostname \
     --ro-bind-try /usr/share/fontconfig /usr/share/fontconfig \
+    --ro-bind-try "$SELF_TEMPDIR" /app \
+    --setenv ARG0 "${0##*/}" \
     --setenv SELF "$SELF" \
     --setenv SELF_TEMPDIR "$SELF_TEMPDIR" \
     --setenv BWROOTFS "$BWROOTFS" \
