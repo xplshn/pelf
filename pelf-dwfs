@@ -34,8 +34,7 @@ check_and_process() {
     if [ -e "$FPATH" ]; then
         eval "$ACTION" "$FPATH"
     else
-        echo "$FPATH does not exist." >&2
-        exit 1
+        error "$FPATH does not exist."
     fi
 }
 
@@ -52,8 +51,7 @@ while [ "$#" -gt 0 ]; do
             ;;
         --add-appdir)
             if [ "$_VAR_APPDIR_MODE" = "true" ]; then
-                echo "--add-appdir cannot be used more than 1 time" >&2
-                exit 1
+                error "--add-appdir cannot be used more than 1 time"
             fi
             __APPDIR="${2:-}"
             if [ -d "$__APPDIR" ]; then
@@ -66,14 +64,14 @@ while [ "$#" -gt 0 ]; do
                 fi
 
                 if [ ! -f "$__APPDIR/AppRun" ]; then
-                    echo "This AppDir does not contain an AppRun" >&2
+                    log "This AppDir does not contain an AppRun"
 
                     if [ -f "./AppRun.generic" ]; then
-                        echo "Copying a generic AppRun" >&2
+                        log "Copying a generic AppRun"
                         cp ./AppRun.generic "$__APPDIR/AppRun"
                     else
-                        echo "Downloading a generic AppRun..." >&2
-                        wget -q -O "$__APPDIR/AppRun" "https://raw.githubusercontent.com/Samueru-sama/deploy/main/AppRun" || {
+                        log "Downloading a generic AppRun..."
+                        wget -q -O "$__APPDIR/AppRun" "https://raw.githubusercontent.com/xplshn/pelf/refs/heads/pelf-ng/assets/AppRun.generic" || {
                             error "Failed to download AppRun."
                         }
 
@@ -100,8 +98,7 @@ while [ "$#" -gt 0 ]; do
             shift 2
             ;;
         *)
-            echo "Unrecognized argument: $1" >&2
-            exit 1
+            error "Unrecognized argument: $1"
             ;;
     esac
 done
@@ -244,9 +241,7 @@ mount_dwarfs() {
                 exit 1
                 ;;
             --pbundle_list)
-                ls -FAl "$_VAR_MOUNT_DIR" && \
-                ls -FAl "$_BIN_DIRs" && \
-                test -d "$_LIB_DIRs" && ls -FAl "$_LIB_DIRs"
+                find "$_VAR_MOUNT_DIR" && exit 0
                 exit 1
                 ;;
             --pbundle_link)
@@ -295,10 +290,10 @@ mount_dwarfs() {
                         "$_BIN_DIRs/.pelf_thumbgen" "$0" "$_VAR_MOUNT_DIR/.DirIcon"
                         exit 0
                     else
-                        echo "$_VAR_MOUNT_DIR/.DirIcon does not exist"
+                        log "$_VAR_MOUNT_DIR/.DirIcon does not exist"
                     fi
                 else
-                    echo "Sorry, this bundle does not contain .pelf_thumbgen, add that binary if you wish to enable this functionality. (github.com/xplshn/pelf/tree/master/cmd/misc/thumbgen)"
+                    log "Sorry, this bundle does not contain .pelf_thumbgen, add that binary if you wish to enable this functionality. (github.com/xplshn/pelf/tree/master/cmd/misc/thumbgen)"
                 fi
                 exit 1
                 ;;

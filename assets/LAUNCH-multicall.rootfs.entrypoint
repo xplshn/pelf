@@ -1,11 +1,15 @@
 #!/bin/sh
 
 [ "$DEBUG" = "1" ] && set -x
+ARGS="$(echo $ARGS | cut -c2-)"
 
-PATH="/app/rootfs/usr/local/sbin:/app/rootfs/usr/local/bin:/app/rootfs/usr/sbin:/app/rootfs/usr/bin:/app/rootfs/sbin:/bin:$PATH"
-
-if ! command -v "$ARG0" >/dev/null 2>&1; then
-    echo "No arguments were passed or the command does not match any binaries in bin/ or usr/bin/"
-else
+# Check if ARG0 is available as a command
+if command -v "$ARG0" >/dev/null 2>&1; then
+    # If ARG0 is available, launch ARG0 with the arguments
     "$ARG0" "$@"
+elif [ -n "$ARGS" ] && command -v "$ARGS" >/dev/null 2>&1; then
+    # If ARG0 is not available but ARGS is, launch ARGS with the arguments
+    "$ARGS" "$@"
+else
+    echo "No command was passed as argument (nor symlink) or the command does not match any binaries in the \$PATH within the rootfs"
 fi

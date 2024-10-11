@@ -88,7 +88,7 @@ COMPRESSION_OPTS="--compress-level=9 --categorize=pcmaudio" # Adjust compression
 
 [ "$VERBOSE" = "1" ] && TAR_OPTS="xzfv" || TAR_OPTS="xzf"
 
-mkdir -p "$APPDIR/usr/bin" "$APPDIR/rootfs"
+mkdir -p "$APPDIR/usr/bin" "$APPDIR/rootfs/app"
 
 # shellcheck disable=SC2086 # Double quote $TAR_OPTS to prevent globbing and word splitting.
 # Download and extract rootfs

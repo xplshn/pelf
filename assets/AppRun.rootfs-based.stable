@@ -54,4 +54,3 @@ $BWRAP_BIN --bind "$BWROOTFS" / \
 #    --bind-try /usr/lib/locale /usr/lib/locale \
 #    --perms 0700 \
 #    --uid "0" --gid "0" \
-
