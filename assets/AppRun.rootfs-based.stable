@@ -16,7 +16,7 @@ else
     SELF_ARGS="-- env -u LD_PRELOAD -u LD_LIBRARY_PATH $(cat "$BWROOTFS/entrypoint") $*"
 fi
 
-if [ -x "$SELF_TEMPDIR/usr/bin/bwrap" ]; then
+if [ -f "$SELF_TEMPDIR/usr/bin/bwrap" ]; then
     BWRAP_BIN="$SELF_TEMPDIR/usr/bin/bwrap"
 else
     BWRAP_BIN="bwrap"
@@ -32,8 +32,8 @@ $BWRAP_BIN --bind "$BWROOTFS" / \
     --bind-try /media /media \
     --bind-try /mnt /mnt \
     --bind-try /opt /opt \
-    --bind-try /usr/share/fonts /usr/share/fonts \
-    --bind-try /usr/share/themes /usr/share/themes \
+    --ro-bind-try /usr/share/fonts /usr/share/fonts \
+    --ro-bind-try /usr/share/themes /usr/share/themes \
     --ro-bind-try /sys /sys \
     --ro-bind-try /etc/resolv.conf /etc/resolv.conf \
     --ro-bind-try /etc/hosts /etc/hosts \
@@ -54,3 +54,4 @@ $BWRAP_BIN --bind "$BWROOTFS" / \
 #    --bind-try /usr/lib/locale /usr/lib/locale \
 #    --perms 0700 \
 #    --uid "0" --gid "0" \
+
