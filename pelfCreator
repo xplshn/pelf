@@ -92,7 +92,7 @@ mkdir -p "$APPDIR/usr/bin" "$APPDIR/rootfs"
 
 # shellcheck disable=SC2086 # Double quote $TAR_OPTS to prevent globbing and word splitting.
 # Download and extract rootfs
-if ! wget -qO- https://pub.ajam.dev/utils/alpine-mini-x86_64/rootfs.tar.gz | tar $TAR_OPTS - -C "$APPDIR/rootfs"; then
+if ! wget -qO- "https://pub.ajam.dev/utils/alpine-mini-$(uname -m)/rootfs.tar.gz" | tar $TAR_OPTS - -C "$APPDIR/rootfs"; then
     echo "Failed to download or extract musl toolchain"
     exit 1
 fi
