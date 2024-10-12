@@ -1,0 +1,198 @@
+#!/bin/sh
+
+print_help() {
+    cat <<EOF
+ Usage: $0 [|-m|-n|-p|-e|-r|-c|] <|-v|-h|>
+ 
+ Options:
+   -m, --maintainer   Set the maintainer (required)
+   -n, --name         Set the name of the app (required)
+   -p, --pkg-add      Packages to add with APK (required)
+   -e, --entrypoint   Set the entrypoint (required unless using --multicall)
+   -r, --rootfs-url   Provide a custom URL for downloading rootfs.tgz
+   -c, --multicall    Use multicall setup (downloads and sets LAUNCH as entrypoint)
+   -v, --verbose      Enable verbose mode
+   -h, --help         Display this help and exit
+ 
+ Examples:
+   # With .desktop file (enabled integration with pelfd)
+     $0 --maintainer animecowgirl79 --name mousepad --pkg-add mousepad --entrypoint org.xfce.mousepad.desktop
+   # With binary name (disables integration with pelfd unless you manually add a .DirIcon or .desktop or both)
+     $0 --maintainer animecowgirl79 --name mousepad --pkg-add mousepad --entrypoint mousepad
+   # Using a custom rootfs URL
+     $0 --maintainer animecowgirl79 --name mousepad --pkg-add mousepad --rootfs-url http://example.com/rootfs.tgz
+   # Using multicall
+     $0 --maintainer animecowgirl79 --name xfce-multicall --pkg-add "mousepad thunar ristretto xfce4-terminal" --multicall
+ Notes:
+     - [pelfCreator](https://github.com/xplshn/pelf/blob/pelf-ng/pelfCreator) is an experimental tool, part of the pelf project & ecosystem
+     - Learn more about [pelf](https://github.com/xplshn/pelf)
+EOF
+}
+
+# Initialize variables
+VERBOSE=0
+ROOTFS_URL="https://pub.ajam.dev/utils/alpine-mini-$(uname -m)/rootfs.tar.gz"
+MULTICALL=0
+
+# Parse arguments using getopt
+if ! ARGS=$(getopt -o m:n:p:e:r:cvh --long maintainer:,name:,pkg-add:,entrypoint:,rootfs-url:,multicall,verbose,help -n "$0" -- "$@"); then
+    echo "Failed to parse arguments." >&2
+    exit 1
+fi
+
+eval set -- "$ARGS"
+
+# Extract options and their arguments
+while true; do
+    case "$1" in
+        -m|--maintainer)
+            MAINTAINER="$2"
+            shift 2
+            ;;
+        -n|--name)
+            NAME="$2"
+            shift 2
+            ;;
+        -p|--pkg-add)
+            PKG_ADD="$2"
+            shift 2
+            ;;
+        -e|--entrypoint)
+            ENTRYPOINT="$2"
+            shift 2
+            ;;
+        -r|--rootfs-url)
+            ROOTFS_URL="$2"
+            shift 2
+            ;;
+        -c|--multicall)
+            MULTICALL=1
+            shift
+            ;;
+        -v|--verbose)
+            VERBOSE=1
+            shift
+            ;;
+        -h|--help)
+            print_help
+            exit 0
+            ;;
+        --)
+            shift
+            break
+            ;;
+        *)
+            echo "Unexpected option: $1"
+            print_help
+            exit 1
+            ;;
+    esac
+done
+
+# Check for required arguments
+if [ -z "$MAINTAINER" ] || [ -z "$NAME" ] || [ -z "$PKG_ADD" ]; then
+    echo "Error: --maintainer, --name, and --pkg-add are required." >&2
+    print_help
+    exit 1
+fi
+
+# Check if ENTRYPOINT is required
+if [ -z "$ENTRYPOINT" ] && [ "$MULTICALL" -eq 0 ]; then
+    echo "Error: --entrypoint is required unless using --multicall." >&2
+    print_help
+    exit 1
+fi
+
+DATE="$(date +%Y_%m_%d)"
+APPBUNDLE_ID="$NAME-$DATE-$MAINTAINER"
+APPDIR="$NAME-$DATE.AppDir"
+OUTPUT_TO="$NAME-$DATE.dwfs.AppBundle"
+COMPRESSION_OPTS="--compress-level=4 --categorize=pcmaudio" # Adjust compression options as needed
+
+[ "$VERBOSE" = "1" ] && TAR_OPTS="xzfv" || TAR_OPTS="xzf"
+
+mkdir -p "$APPDIR/usr/bin" "$APPDIR/rootfs/app"
+
+# shellcheck disable=SC2086 # Double quote $TAR_OPTS to prevent globbing and word splitting.
+# Download and extract rootfs
+if ! wget -qO- "$ROOTFS_URL" | tar $TAR_OPTS - -C "$APPDIR/rootfs"; then
+    echo "Failed to download or extract rootfs"
+    exit 1
+fi
+
+# Download and install bwrap
+if ! wget -qO "$APPDIR/usr/bin/bwrap" "https://bin.ajam.dev/$(uname -m)/bwrap"; then
+    echo "Unable to install bwrap to $APPDIR/usr/bin/bwrap"
+    exit 1
+fi
+chmod +x "$APPDIR/usr/bin/bwrap"
+
+# Download AppRun
+if ! wget -qO "$APPDIR/AppRun" https://raw.githubusercontent.com/xplshn/pelf/refs/heads/pelf-ng/assets/AppRun.rootfs-based; then
+    echo "Failed to download AppRun.rootfs-based"
+    exit 1
+fi
+chmod +x "$APPDIR/AppRun"
+
+# Set the entrypoint
+echo "$ENTRYPOINT" > "$APPDIR/rootfs/entrypoint"
+chmod +x "$APPDIR/rootfs/entrypoint"
+
+# Install packages with APK
+"$APPDIR/AppRun" --Xbwrap --uid "0" --gid "0" -- apk -X "https://dl-cdn.alpinelinux.org/alpine/latest-stable/main" -U --allow-untrusted --initdb add "$PKG_ADD"
+
+# Handle .desktop file and icon if applicable. (resets entrypoint based on Exec= line and creates .DirIcon based on Icon= line)
+if [ "${ENTRYPOINT##*.}" = "desktop" ]; then
+    if [ -f "$APPDIR/rootfs/usr/share/applications/$ENTRYPOINT" ]; then
+        if ! ln -Tf "$APPDIR/rootfs/usr/share/applications/$ENTRYPOINT" "$APPDIR/$ENTRYPOINT"; then
+            echo "Failed to link $APPDIR/rootfs/usr/share/applications/$ENTRYPOINT to $APPDIR/$ENTRYPOINT"
+            exit 1
+        fi
+
+        ICON_NAME="$(awk -F"=" '/Icon/ {print $2; exit}' "$APPDIR/rootfs/usr/share/applications/$ENTRYPOINT" 2>/dev/null)"
+        ENTRYPOINT=$(awk -F"=| " '/Exec=/ {print $2; exit}' "$APPDIR/rootfs/usr/share/applications/$ENTRYPOINT" 2>/dev/null)
+        echo "$ENTRYPOINT" > "$APPDIR/rootfs/entrypoint"
+        chmod +x "$APPDIR/rootfs/entrypoint"
+
+        if [ -n "$ICON_NAME" ]; then
+            ICON_PATH=$(find "$APPDIR/rootfs/usr/share/icons" -type f -name "$ICON_NAME.*" -print -quit 2>/dev/null)
+            if [ -n "$ICON_PATH" ]; then
+                if ! cp "$ICON_PATH" "$APPDIR/.DirIcon"; then
+                    echo "Failed to copy the icon $ICON_PATH to $APPDIR/.DirIcon"
+                    exit 1
+                fi
+                echo "Icon $ICON_NAME copied to $APPDIR/.DirIcon"
+            else
+                echo "Icon $ICON_NAME not found in $APPDIR/rootfs/usr/share/icons/"
+                exit 1
+            fi
+        else
+            echo "No Icon entry found in $APPDIR/rootfs/usr/share/applications/$ENTRYPOINT"
+            exit 1
+        fi
+    else
+        echo "$ENTRYPOINT does not exist in $APPDIR/rootfs/usr/share/applications/"
+        exit 1
+    fi
+fi
+
+# Handle multicall setup
+set -x
+if [ "$MULTICALL" -eq "1" ]; then
+    echo "LAUNCH" > "$APPDIR/rootfs/entrypoint"
+
+    mkdir -p "$APPDIR/rootfs/usr/local/bin"
+    # Download LAUNCH and set as entrypoint
+    if ! wget -qO "$APPDIR/rootfs/usr/local/bin/LAUNCH" "https://raw.githubusercontent.com/xplshn/pelf/refs/heads/pelf-ng/assets/LAUNCH-multicall.rootfs.entrypoint"; then
+        echo "Failed to download LAUNCH for multicall"
+        exit 1
+    fi
+    chmod +x "$APPDIR/rootfs/usr/local/bin/LAUNCH"
+fi
+set +x
+
+# Final packaging
+if ! wget -qO- "https://raw.githubusercontent.com/xplshn/pelf/refs/heads/pelf-ng/pelf-dwfs" | sh -s -- --add-appdir "$APPDIR" "$APPBUNDLE_ID" --output-to "$OUTPUT_TO" --embed-static-tools --compression "$COMPRESSION_OPTS"; then
+    echo "Final packaging failed"
+    exit 1
+fi

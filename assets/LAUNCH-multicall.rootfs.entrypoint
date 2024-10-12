@@ -9,6 +9,7 @@ if command -v "$ARG0" >/dev/null 2>&1; then
     "$ARG0" "$@"
 elif [ -n "$ARGS" ] && command -v "$ARGS" >/dev/null 2>&1; then
     # If ARG0 is not available but ARGS is, launch ARGS with the arguments
+    shift
     "$ARGS" "$@"
 else
     echo "No command was passed as argument (nor symlink) or the command does not match any binaries in the \$PATH within the rootfs"
