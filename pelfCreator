@@ -107,7 +107,7 @@ DATE="$(date +%d_%m_%Y)"
 APPBUNDLE_ID="$NAME-$DATE-$MAINTAINER"
 APPDIR="$NAME-$DATE.AppDir"
 OUTPUT_TO="$NAME-$DATE.dwfs.AppBundle"
-COMPRESSION_OPTS="--compress-level=4 --categorize=pcmaudio" # Adjust compression options as needed
+COMPRESSION_OPTS="--max-lookback-blocks=5 --no-history --categorize=pcmaudio --compression pcmaudio/waveform::flac:level=8" #COMPRESSION_OPTS="--compress-level=4 --categorize=pcmaudio" # Adjust compression options as needed
 
 [ "$VERBOSE" = "1" ] && TAR_OPTS="xzfv" || TAR_OPTS="xzf"
 mkdir -p "$APPDIR/usr/bin" "$APPDIR/rootfs/app"
@@ -143,7 +143,7 @@ chmod +x "$APPDIR/rootfs/entrypoint"
 # Handle .desktop file and icon if applicable. (resets entrypoint based on Exec= line and creates .DirIcon based on Icon= line)
 if [ "${ENTRYPOINT##*.}" = "desktop" ]; then
     if [ -f "$APPDIR/rootfs/usr/share/applications/$ENTRYPOINT" ]; then
-        if ! ln -Tf "$APPDIR/rootfs/usr/share/applications/$ENTRYPOINT" "$APPDIR/$ENTRYPOINT"; then
+        if ! ln -f "$APPDIR/rootfs/usr/share/applications/$ENTRYPOINT" "$APPDIR/$ENTRYPOINT"; then
             echo "Failed to link $APPDIR/rootfs/usr/share/applications/$ENTRYPOINT to $APPDIR/$ENTRYPOINT"
             exit 1
         fi
@@ -154,7 +154,9 @@ if [ "${ENTRYPOINT##*.}" = "desktop" ]; then
         chmod +x "$APPDIR/rootfs/entrypoint"
 
         if [ -n "$ICON_NAME" ]; then
-            ICON_PATH=$(find "$APPDIR/rootfs/usr/share/icons" -type f -name "$ICON_NAME.*" -print -quit 2>/dev/null)
+            # Find all matches, sort them, and pick the first one
+            ICON_PATH=$(find "$APPDIR/rootfs/usr/share/icons" -type f -name "$ICON_NAME.*" 2>/dev/null | sort | head -n 1)
+            
             if [ -n "$ICON_PATH" ]; then
                 if ! cp "$ICON_PATH" "$APPDIR/.DirIcon"; then
                     echo "Failed to copy the icon $ICON_PATH to $APPDIR/.DirIcon"
