@@ -1,16 +1,24 @@
 #!/bin/sh
 
 [ "$DEBUG" = "1" ] && set -x
-ARGS="$(echo $ARGS | cut -c2-)"
 
-# Check if ARG0 is available as a command
-if command -v "$ARG0" >/dev/null 2>&1; then
-    # If ARG0 is available, launch ARG0 with the arguments
-    env -u ARGV0 "$ARG0" "$@"
-elif [ -n "$ARGS" ] && command -v "$ARGS" >/dev/null 2>&1; then
-    # If ARG0 is not available but ARGS is, launch ARGS with the arguments
-    shift
-    env -u ARGV0 -u ARGS "$ARGS" "$@"
+# Strip the first character from ARGS and ARGV0 (assuming it's '!')
+ARGS="$(echo "$ARGS" | cut -c2-)"
+ARGV0="$(echo "$ARGV0" | cut -c2-)"
+
+# Split ARGS into command and its arguments
+set -- $ARGS
+CMD="$1"
+shift # Remove the command from the list, leaving the arguments in $@
+
+# Check if ARGV0 is available as a command
+if command -v "$ARGV0" >/dev/null 2>&1; then
+    # If ARGV0 is available, execute ARGV0 with its arguments
+    exec "$ARGV0" "$ARGS" # Because ARGS' first element was not in fact the CMD
+elif command -v "$CMD" >/dev/null 2>&1; then
+    # If CMD (the first part of ARGS) is available, execute it with remaining arguments
+    exec "$CMD" "$@"
 else
-    echo "No command was passed as argument (nor symlink) or the command does not match any binaries in the \$PATH within the rootfs"
+    echo "Error: Neither ARGV0 ('$ARGV0') nor ARGS ('$CMD') are available in \$PATH"
+    exit 1
 fi
