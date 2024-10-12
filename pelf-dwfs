@@ -109,7 +109,7 @@ done
 }
 
 # Create a DWFS archive of the executable, libraries and additional files
-[ -n "$_VAR_COMPRESS_ARG" ] || _VAR_COMPRESS_ARG="--max-lookback-blocks=5 --no-history --compression zstd:level=22" #_VAR_COMPRESS_ARG="--max-lookback-blocks=5 --categorize=pcmaudio --compression pcmaudio/waveform::flac:level=8"
+[ -n "$_VAR_COMPRESS_ARG" ] || _VAR_COMPRESS_ARG="--max-lookback-blocks=5 --no-history --compression zstd:level=22" #_VAR_COMPRESS_ARG="--max-lookback-blocks=5 --no-history --categorize=pcmaudio --compression pcmaudio/waveform::flac:level=8"
 # shellcheck disable=SC2086
 if ! mkdwarfs --input "$_VAR_TO_BE_BUNDLED" --output "$_VAR_WORKDIR/archive.dwfs" --progress=ascii $_VAR_COMPRESS_ARG; then
     error "Compression failed"
