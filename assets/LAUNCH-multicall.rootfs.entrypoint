@@ -6,11 +6,11 @@ ARGS="$(echo $ARGS | cut -c2-)"
 # Check if ARG0 is available as a command
 if command -v "$ARG0" >/dev/null 2>&1; then
     # If ARG0 is available, launch ARG0 with the arguments
-    "$ARG0" "$@"
+    env -u ARGV0 "$ARG0" "$@"
 elif [ -n "$ARGS" ] && command -v "$ARGS" >/dev/null 2>&1; then
     # If ARG0 is not available but ARGS is, launch ARGS with the arguments
     shift
-    "$ARGS" "$@"
+    env -u ARGV0 -u ARGS "$ARGS" "$@"
 else
     echo "No command was passed as argument (nor symlink) or the command does not match any binaries in the \$PATH within the rootfs"
 fi
