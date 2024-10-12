@@ -4,7 +4,7 @@
 
 # Strip the first character from ARGS and ARGV0 (assuming it's '!')
 ARGS="$(echo "$ARGS" | cut -c2-)"
-ARGV0="$(echo "$ARGV0" | cut -c2-)"
+#ARGV0="$(echo "$ARGV0" | cut -c2-)"
 
 # Split ARGS into command and its arguments
 set -- $ARGS

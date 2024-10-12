@@ -48,7 +48,7 @@ $BWRAP_BIN --bind "$BWROOTFS" / \
     --setenv SELF "$SELF" \
     --setenv SELF_TEMPDIR "$SELF_TEMPDIR" \
     --setenv BWROOTFS "$BWROOTFS" \
-    --setenv ARG0 "${0##*/}" \
+    --setenv ARGV0 "$ARGV0" \
     --setenv ARGS "!$*" \
     $SELF_ARGS
 
