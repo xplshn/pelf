@@ -14,6 +14,11 @@ error() {
     exit 1
 }
 
+# Log to STDERR
+log() {
+    printf >&2 "%s\n" "$*"
+}
+
 # Check if the required arguments are provided
 if [ "$#" -lt 3 ]; then
     error "Usage: $0 [--add-appdir [AppDir] EXE_NAME]|[--output-to OUTPUT.AppBundle]|<--embed-static-tools|--static-tools-dir>]"
