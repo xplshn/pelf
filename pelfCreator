@@ -29,7 +29,6 @@ print_help() {
 EOF
 }
 
-# Initialize variables
 VERBOSE=0
 ROOTFS_URL="https://pub.ajam.dev/utils/alpine-mini-$(uname -m)/rootfs.tar.gz"
 MULTICALL=0
@@ -111,6 +110,8 @@ COMPRESSION_OPTS="--max-lookback-blocks=5 --no-history --categorize=pcmaudio --c
 
 [ "$VERBOSE" = "1" ] && TAR_OPTS="xzfv" || TAR_OPTS="xzf"
 mkdir -p "$APPDIR/usr/bin" "$APPDIR/rootfs/app"
+# The command that was used to generate the AppBundle should be saved to a ".gen" file
+echo "${0##*/} $ARGS" > "$APPDIR/.gen" && chmod +x "$APPDIR/.gen"
 
 # shellcheck disable=SC2086 # Double quote $TAR_OPTS to prevent globbing and word splitting.
 # Download and extract rootfs
@@ -178,7 +179,6 @@ if [ "${ENTRYPOINT##*.}" = "desktop" ]; then
 fi
 
 # Handle multicall setup
-set -x
 if [ "$MULTICALL" -eq "1" ]; then
     echo "LAUNCH" > "$APPDIR/rootfs/entrypoint"
 
@@ -190,7 +190,6 @@ if [ "$MULTICALL" -eq "1" ]; then
     fi
     chmod +x "$APPDIR/rootfs/usr/local/bin/LAUNCH"
 fi
-set +x
 
 # Final packaging
 if ! wget -qO- "https://raw.githubusercontent.com/xplshn/pelf/refs/heads/pelf-ng/pelf-dwfs" | sh -s -- --add-appdir "$APPDIR" "$APPBUNDLE_ID" --output-to "$OUTPUT_TO" --embed-static-tools --compression "$COMPRESSION_OPTS"; then
