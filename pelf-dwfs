@@ -196,7 +196,12 @@ mount_dwarfs() {
     check_fuse
     # Mount the embedded DwarFS archive using the offset
     mkdir -p "$_VAR_MOUNT_DIR" && \
-    dwarfs -o offset="auto",ro "$0" "$_VAR_MOUNT_DIR" >/dev/null 2>&1 || error "Failed to mount DwarFS archive."
+    dwarfs -o offset="auto",ro "$(realpath "$0")" "$_VAR_MOUNT_DIR" >/dev/null 2>&1 || {
+        error "Failed to mount DwarFS archive."
+        echo "DEBUG INFO:"
+        echo "  \$0 is set to $0"
+        echo "  The realpath to \$0 is "$(realpath "$0")""
+    }
 }
 # Main function to handle the logic
         main() {
