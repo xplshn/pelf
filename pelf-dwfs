@@ -197,10 +197,11 @@ mount_dwarfs() {
     # Mount the embedded DwarFS archive using the offset
     mkdir -p "$_VAR_MOUNT_DIR" && \
     dwarfs -o offset="auto",ro "$(realpath "$0")" "$_VAR_MOUNT_DIR" >/dev/null 2>&1 || {
-        error "Failed to mount DwarFS archive."
-        echo "DEBUG INFO:"
-        echo "  \$0 is set to $0"
-        echo "  The realpath to \$0 is "$(realpath "$0")""
+        log "ERROR: Failed to mount DwarFS archive."
+        log "W: DEBUG INFO:"
+        log "  \$0 is set to $0"
+        log "  The realpath to \$0 is "$(realpath "$0")""
+        exit 1
     }
 }
 # Main function to handle the logic
