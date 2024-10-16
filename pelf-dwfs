@@ -118,7 +118,7 @@ if [ -z "$__APPDIR" ] || [ -z "$_VAR_MAIN_BINARY" ] || [ -z "$_VAR_OUT_FILE" ]; 
     echo "Error: Required arguments not provided."
     echo "You must specify:"
     echo "  --add-appdir <AppDir>"
-    echo "  --main-binary <MainBinaryID>"
+    echo "  --appbundle-id <PROGRAM-DATE-MAINTAINER>"
     echo "  --output-to <OUTPUT.AppBundle>"
     print_help
     exit 1
