@@ -17,7 +17,7 @@ PELF can serve as a drop-in replacement for AppImages. Both PELF and AppImages u
 
 ### Usage
 ```
-pelf --add-appdir ./myApp.AppDir myApp-28-09-2024-xplshn --output-to ./myApp.AppBundle --embed-static-tools
+pelf --add-appdir ./myApp.AppDir --appbundle-id myApp-16-10-2024-xplshn --output-to ./myApp.AppBundle --embed-static-tools
 ```
 ### Usage of the Resulting `.AppBundle`
 > By using the `--pbundle_link` option, you can access files contained within the `./bin` or `./usr/bin` directories of an `.AppBundle`, inheriting environment variables like `PATH`. This allows multiple AppBundles to stack on top of each other, sharing libraries and binaries across "parent" bundles.
