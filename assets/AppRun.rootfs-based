@@ -51,6 +51,7 @@ $BWRAP_BIN --bind "$BWROOTFS" / \
     --setenv BWROOTFS "$BWROOTFS" \
     --setenv ARGV0 "$ARGV0" \
     --setenv ARGS "!$*" \
+    --cap-add CAP_SYS_ADMIN \
     $SELF_ARGS
 
 #    --bind-try /usr/lib/locale /usr/lib/locale \
