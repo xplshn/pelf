@@ -35,7 +35,7 @@ ROOTFS_URL="https://pub.ajam.dev/utils/alpine-mini-$(uname -m)/rootfs.tar.gz"
 MULTICALL=0
 
 # Parse arguments using getopt
-if ! ARGS=$(getopt -o m:n:p:e:r:cvh --long maintainer:,name:,pkg-add:,entrypoint:,rootfs-url:,multicall,verbose,help -n "$0" -- "$@"); then
+if ! ARGS=$(getopt -o m:n:p:e:r:czvh --long maintainer:,name:,pkg-add:,entrypoint:,rootfs-url:,multicall,verbose,help -n "$0" -- "$@"); then
 	echo "Failed to parse arguments." >&2
 	exit 1
 fi
