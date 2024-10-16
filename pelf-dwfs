@@ -21,7 +21,7 @@ log() {
 
 # Check if the required arguments are provided
 if [ "$#" -lt 3 ]; then
-    error "Usage: $0 [--add-appdir [AppDir] EXE_NAME]|[--output-to OUTPUT.AppBundle]|<--embed-static-tools|--static-tools-dir>]"
+    error "Usage: $0 [--add-appdir [AppDir] --appbundle-id EXE_NAME-DATE-MAINTAINER]|[--output-to OUTPUT.AppBundle]|<--embed-static-tools|--static-tools-dir>]"
 fi
 
 # Throw an error if any of these are missing
@@ -60,39 +60,15 @@ while [ "$#" -gt 0 ]; do
             fi
             __APPDIR="${2:-}"
             if [ -d "$__APPDIR" ]; then
-                _VAR_MAIN_BINARY="$3"
-
-                if [ -z "$_VAR_MAIN_BINARY" ]; then
-                    error "You must specify an ID for this binary (usually, the name of the main program is just fine)"
-                elif [ "$_VAR_MAIN_BINARY" = "AppRun" ]; then
-                    error "The ID of this binary cannot be named 'AppRun'."
-                fi
-
-                if [ ! -f "$__APPDIR/AppRun" ]; then
-                    log "This AppDir does not contain an AppRun"
-
-                    if [ -f "./AppRun.generic" ]; then
-                        log "Copying a generic AppRun"
-                        cp ./AppRun.generic "$__APPDIR/AppRun"
-                    else
-                        log "Downloading a generic AppRun..."
-                        wget -q -O "$__APPDIR/AppRun" "https://raw.githubusercontent.com/xplshn/pelf/refs/heads/pelf-ng/assets/AppRun.generic" || {
-                            error "Failed to download AppRun."
-                        }
-
-                    fi
-                    chmod +x "$__APPDIR/AppRun"
-                fi
-
                 _VAR_APPDIR_MODE="true"
-                check_and_process "$__APPDIR" "true" && \
-                find "$__APPDIR" -mindepth 1 -maxdepth 1 | while IFS= read -r item; do
-                    cp -a "$item" "${_VAR_TO_BE_BUNDLED}/"
-                done
-                shift 3
+                shift 2
             else
                 error "[$__APPDIR] is not an existing directory"
             fi
+            ;;
+        --appbundle-id)
+            _VAR_MAIN_BINARY="$2"
+            shift 2
             ;;
         --embed-static-tools)
             EMBED_STATIC_TOOLS="1"
@@ -107,6 +83,36 @@ while [ "$#" -gt 0 ]; do
             ;;
     esac
 done
+
+# Ensure an App ID is specified
+if [ -z "$_VAR_MAIN_BINARY" ]; then
+    error "You must specify an ID for this binary (usually, the name of the main program is just fine)"
+elif [ "$_VAR_MAIN_BINARY" = "AppRun" ]; then
+    error "The ID of this binary cannot be named 'AppRun'."
+fi
+
+# Process AppDir after all checks
+if [ "$_VAR_APPDIR_MODE" = "true" ]; then
+    if [ ! -f "$__APPDIR/AppRun" ]; then
+        log "This AppDir does not contain an AppRun"
+
+        if [ -f "./AppRun.generic" ]; then
+            log "Copying a generic AppRun"
+            cp ./AppRun.generic "$__APPDIR/AppRun"
+        else
+            log "Downloading a generic AppRun..."
+            wget -q -O "$__APPDIR/AppRun" "https://raw.githubusercontent.com/xplshn/pelf/refs/heads/pelf-ng/assets/AppRun.generic" || {
+                error "Failed to download AppRun."
+            }
+        fi
+        chmod +x "$__APPDIR/AppRun"
+    fi
+
+    check_and_process "$__APPDIR" "true" && \
+    find "$__APPDIR" -mindepth 1 -maxdepth 1 | while IFS= read -r item; do
+        cp -a "$item" "${_VAR_TO_BE_BUNDLED}/"
+    done
+fi
 
 [ "$EMBED_STATIC_TOOLS" != 1 ] && [ "$_VAR_CUSTOM_EMBED_DIR" != "" ] && {
     echo "Unable to specify static-tools-dir without passing --embed-static-tools"
