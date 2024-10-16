@@ -14,6 +14,11 @@ error() {
     exit 1
 }
 
+# Log to STDERR
+log() {
+    printf >&2 "%s\n" "$*"
+}
+
 # Function to display usage/help information
 print_help() {
     cat <<EOF
@@ -44,8 +49,7 @@ check_and_process() {
     if [ -e "$FPATH" ]; then
         eval "$ACTION" "$FPATH"
     else
-        echo "$FPATH does not exist." >&2
-        exit 1
+        error "$FPATH does not exist."
     fi
 }
 
@@ -82,7 +86,6 @@ while true; do
                 echo "Error: You must specify an AppDir." >&2
                 exit 1
             fi
-
             __APPDIR="$2"
             shift 2
             ;;
@@ -133,7 +136,7 @@ if [ -d "$__APPDIR" ]; then
             cp ./AppRun.generic "$__APPDIR/AppRun"
         else
             echo "Downloading a generic AppRun..." >&2
-            wget -q -O "$__APPDIR/AppRun" "https://raw.githubusercontent.com/Samueru-sama/deploy/main/AppRun" || {
+            wget -q -O "$__APPDIR/AppRun" "https://raw.githubusercontent.com/xplshn/pelf/refs/heads/pelf-ng/assets/AppRun.generic" || {
                 echo "Failed to download AppRun." >&2
                 exit 1
             }
@@ -177,7 +180,7 @@ check_and_process() {
 }
 
 # Create a DWFS archive of the executable, libraries and additional files
-[ -n "$_VAR_COMPRESS_ARG" ] || _VAR_COMPRESS_ARG="--max-lookback-blocks=5 --no-history --compression zstd:level=22" #_VAR_COMPRESS_ARG="--max-lookback-blocks=5 --categorize=pcmaudio --compression pcmaudio/waveform::flac:level=8"
+[ -n "$_VAR_COMPRESS_ARG" ] || _VAR_COMPRESS_ARG="--max-lookback-blocks=5 --no-history --compression zstd:level=22" #_VAR_COMPRESS_ARG="--max-lookback-blocks=5 --no-history --categorize=pcmaudio --compression pcmaudio/waveform::flac:level=8"
 # shellcheck disable=SC2086
 if ! mkdwarfs --input "$_VAR_TO_BE_BUNDLED" --output "$_VAR_WORKDIR/archive.dwfs" --progress=ascii $_VAR_COMPRESS_ARG; then
     error "Compression failed"
@@ -259,7 +262,13 @@ mount_dwarfs() {
     check_fuse
     # Mount the embedded DwarFS archive using the offset
     mkdir -p "$_VAR_MOUNT_DIR" && \
-    dwarfs -o offset="auto",ro "$0" "$_VAR_MOUNT_DIR" >/dev/null 2>&1 || error "Failed to mount DwarFS archive."
+    dwarfs -o offset="auto",ro "$(realpath "$0")" "$_VAR_MOUNT_DIR" >/dev/null 2>&1 || {
+        log "ERROR: Failed to mount DwarFS archive."
+        log "W: DEBUG INFO:"
+        log "  \$0 is set to $0"
+        log "  The realpath to \$0 is "$(realpath "$0")""
+        exit 1
+    }
 }
 # Main function to handle the logic
         main() {
@@ -309,9 +318,7 @@ mount_dwarfs() {
                 exit 1
                 ;;
             --pbundle_list)
-                ls -FAl "$_VAR_MOUNT_DIR" && \
-                ls -FAl "$_BIN_DIRs" && \
-                test -d "$_LIB_DIRs" && ls -FAl "$_LIB_DIRs"
+                find "$_VAR_MOUNT_DIR" && exit 0
                 exit 1
                 ;;
             --pbundle_link)
@@ -360,10 +367,10 @@ mount_dwarfs() {
                         "$_BIN_DIRs/.pelf_thumbgen" "$0" "$_VAR_MOUNT_DIR/.DirIcon"
                         exit 0
                     else
-                        echo "$_VAR_MOUNT_DIR/.DirIcon does not exist"
+                        log "$_VAR_MOUNT_DIR/.DirIcon does not exist"
                     fi
                 else
-                    echo "Sorry, this bundle does not contain .pelf_thumbgen, add that binary if you wish to enable this functionality. (github.com/xplshn/pelf/tree/master/cmd/misc/thumbgen)"
+                    log "Sorry, this bundle does not contain .pelf_thumbgen, add that binary if you wish to enable this functionality. (github.com/xplshn/pelf/tree/master/cmd/misc/thumbgen)"
                 fi
                 exit 1
                 ;;
@@ -391,7 +398,8 @@ mount_dwarfs() {
 
         # Utility variables for scripting/AppRuns/wrappers
         export SELF_TEMPDIR="$_VAR_MOUNT_DIR"
-        export SELF="$0" # Like ARGV0 in AppImages
+        export SELF="$(realpath "$0")"
+        export ARGV0="${0##*/}" # Lots of AppDirs for AppImages expect this, it should containthe basename of "$0"
 
         if ! command -v "$_VAR_EXEC_FILE" >/dev/null 2>&1; then
             error "[$2] does NOT exist. It is not contained here nor is it available in the user's PATH"
