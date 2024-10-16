@@ -22,6 +22,10 @@ else
     BWRAP_BIN="bwrap"
 fi
 
+if [ -z "$ARGV0" ]; then
+    ARGV0="${0##*/}"
+fi
+
 $BWRAP_BIN --bind "$BWROOTFS" / \
     --share-net \
     --proc /proc \
