@@ -65,9 +65,19 @@ while [ "$#" -gt 0 ]; do
             else
                 error "[$__APPDIR] is not an existing directory"
             fi
+            
+            # Check if the next argument is a word not starting with '-'
+            if [ "$#" -gt 0 ] && [ "${1#-}" = "$1" ]; then
+                __VAR_MAIN_BINARY="$1"
+                shift 1
+            fi
+
+            if [ -z "$__VAR_MAIN_BINARY" ]; then
+                unset __VAR_MAIN_BINARY
+            fi
             ;;
         --appbundle-id)
-            _VAR_MAIN_BINARY="$2"
+            __VAR_MAIN_BINARY="$2"
             shift 2
             ;;
         --embed-static-tools)
@@ -85,9 +95,9 @@ while [ "$#" -gt 0 ]; do
 done
 
 # Ensure an App ID is specified
-if [ -z "$_VAR_MAIN_BINARY" ]; then
+if [ -z "$__VAR_MAIN_BINARY" ]; then
     error "You must specify an ID for this binary (usually, the name of the main program is just fine)"
-elif [ "$_VAR_MAIN_BINARY" = "AppRun" ]; then
+elif [ "$__VAR_MAIN_BINARY" = "AppRun" ]; then
     error "The ID of this binary cannot be named 'AppRun'."
 fi
 
@@ -131,7 +141,7 @@ _VAR_HOST_INFO="$(uname -mrspv)"
 CONST_VERSION="1.8_dwfs_raw" # (vanilla)
 
 # Generate the loader script with conditional LD_LIBRARY_PATH replacements
-LOADER_SCRIPT=$(sed -e "s|__ENTRY_POINT__|${_VAR_MAIN_BINARY##*/}|g" \
+LOADER_SCRIPT=$(sed -e "s|__ENTRY_POINT__|${__VAR_MAIN_BINARY##*/}|g" \
                         -e "s|__PELF_VERSION__|${CONST_VERSION}|g" \
                         -e "s|__PELF_HOST__|${_VAR_HOST_INFO}|g" <<'_END_OF_LOADER_SCRIPT'
 #!/bin/sh

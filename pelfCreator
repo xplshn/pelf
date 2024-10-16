@@ -196,7 +196,7 @@ if [ "$MULTICALL" -eq "1" ]; then
 	chmod +x "$APPDIR/rootfs/usr/local/bin/LAUNCH"
 fi
 
-if [ "$DONTPACK" -ne "1" ]; then
+if [ "$DONTPACK" != "1" ]; then
     # Final packaging
     if ! wget -qO- "https://raw.githubusercontent.com/xplshn/pelf/refs/heads/pelf-ng/pelf-dwfs" | sh -s -- --add-appdir "$APPDIR" "$APPBUNDLE_ID" --output-to "$OUTPUT_TO" --embed-static-tools --compression "$COMPRESSION_OPTS"; then
     	echo "Final packaging failed"
