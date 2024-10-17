@@ -22,6 +22,14 @@ else
     BWRAP_BIN="bwrap"
 fi
 
+if [ -z "$ARGV0" ]; then
+    ARGV0="${0##*/}"
+fi
+
+if [ "$WITHIN_BWRAP" = 1 ] && [ -f "/entrypoint" ]; then
+    "/entrypoint"
+fi
+
 $BWRAP_BIN --bind "$BWROOTFS" / \
     --share-net \
     --proc /proc \
@@ -50,6 +58,7 @@ $BWRAP_BIN --bind "$BWROOTFS" / \
     --setenv BWROOTFS "$BWROOTFS" \
     --setenv ARGV0 "$ARGV0" \
     --setenv ARGS "!$*" \
+    --setenv WITHIN_BWRAP "1" \
     $SELF_ARGS
 
 #    --bind-try /usr/lib/locale /usr/lib/locale \
