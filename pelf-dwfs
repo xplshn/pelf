@@ -212,16 +212,17 @@ _VAR_BWORK_DIR="${_VAR_BUNDLE_DIR}/pbundle_${rEXE_NAME}$(date '+%s%M%S')_${RANDO
 _VAR_MOUNT_DIR="$_VAR_BWORK_DIR/mounted"                                            # Temporary directory for mounting
 _VAR_ARCHIVE="$_VAR_BWORK_DIR/archive.dwfs"                                         # The DwarFS archive in case we do base64 thingies
 _VAR_EXEC_FILE="${_VAR_MOUNT_DIR}/AppRun"                                           # The file to execute
-
+SELF="$(realpath "$0")"                                                             # Path to the .AppBundle itself
 mkdir -p "$_VAR_BWORK_DIR"
-# Log messages to stderr
-log() {
-    echo >&2 "$*"
-}
 
-# Exit with error message
+__RED="\033[0;31m"
+__YELLOW="\033[0;33m"
+__RESET="\033[0m"
+log() {
+    printf >&2 "AppBundle Runtime ${__YELLOW}Warning${__RESET}: %s\n" "$*"
+}
 error() {
-    printf >&2 "ERROR: %s\n" "$*"
+    printf >&2 "AppBundle Runtime ${__RED}Error${__RESET}: %s\n" "$*"
     exit 1
 }
 
@@ -262,11 +263,11 @@ mount_dwarfs() {
     check_fuse
     # Mount the embedded DwarFS archive using the offset
     mkdir -p "$_VAR_MOUNT_DIR" && \
-    dwarfs -o offset="auto",ro "$(realpath "$0")" "$_VAR_MOUNT_DIR" >/dev/null 2>&1 || {
+    dwarfs -o offset="auto",ro,auto_unmount "$_SELF" "$_VAR_MOUNT_DIR" >/dev/null 2>&1 || {
         log "ERROR: Failed to mount DwarFS archive."
         log "W: DEBUG INFO:"
         log "  \$0 is set to $0"
-        log "  The realpath to \$0 is "$(realpath "$0")""
+        log "  The realpath to \$0 is "$_SELF""
         exit 1
     }
 }
@@ -398,7 +399,7 @@ mount_dwarfs() {
 
         # Utility variables for scripting/AppRuns/wrappers
         export SELF_TEMPDIR="$_VAR_MOUNT_DIR"
-        export SELF="$(realpath "$0")"
+        export SELF
         export ARGV0="${0##*/}" # Lots of AppDirs for AppImages expect this, it should containthe basename of "$0"
 
         if ! command -v "$_VAR_EXEC_FILE" >/dev/null 2>&1; then
