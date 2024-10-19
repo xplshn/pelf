@@ -126,7 +126,7 @@ if ! wget -qO- "$ROOTFS_URL" | tar $TAR_OPTS - -C "$APPDIR/rootfs"; then
 fi
 
 # Download and install bwrap
-if ! wget -qO "$APPDIR/usr/bin/bwrap" "https://bin.ajam.dev/$(uname -m)/bwrap"; then
+if ! wget -qO "$APPDIR/usr/bin/bwrap" "https://bin.ajam.dev/$(uname -m)/bwrap-patched"; then
 	echo "Unable to install bwrap to $APPDIR/usr/bin/bwrap"
 	exit 1
 fi

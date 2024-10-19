@@ -155,7 +155,7 @@ else
 fi
 
 # Throw an error if any of these are missing
-for cmd in mkdwarfs dwarfs fusermount; do
+for cmd in mkdwarfs dwarfs fusermount3; do
     if ! command -v "$cmd" >/dev/null 2>&1; then
         error "$cmd could not be found. Please install it and try again"
     fi
@@ -228,8 +228,8 @@ error() {
 
 # Check if dwarfs is available
 check_fuse() {
-    # Check if dwarfs AND fusermount is available in the system PATH
-    if command -v dwarfs >/dev/null && command -v fusermount >/dev/null; then
+    # Check if dwarfs AND fusermount3 is available in the system PATH
+    if command -v dwarfs >/dev/null && command -v fusermount3 >/dev/null; then
         return
     fi
 
