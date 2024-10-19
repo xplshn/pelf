@@ -252,10 +252,10 @@ check_fuse() {
     PATH="$PATH:$_VAR_STATIC_TOOLS_DIR" || error "Failed to update PATH with the extracted tools."
 
     # Check again if either dwarfs or fusermount is available
-   if command -v dwarfs >/dev/null || command -v fusermount >/dev/null; then
+   if command -v dwarfs >/dev/null || command -v fusermount3 >/dev/null; then
         return
    fi
-   error "Neither dwarfs nor fusermount are available in the system and were not found in the bundled archive."
+   error "Neither dwarfs nor fusermount3 are available in the system and were not found in the bundled archive."
 }
 
 # Mount the DwarFS archive from an offset in the script
@@ -289,7 +289,7 @@ mount_dwarfs() {
             ## If the process that created & mounted the "$_VAR_MOUNT_DIR" is not this one (us), refuse to clean up
             #_OWNER_OF_MOUNT_DIR="$(basename ""$(dirname "$_VAR_MOUNT_DIR")"/.$$")" # PID OF THE OWNER OF THE MOUNT_DIR
             #if [ "$_OWNER_OF_MOUNT_DIR" = "$$" ]; then
-                fusermount -uz "$_VAR_MOUNT_DIR" 2>/dev/null
+                fusermount3 -uz "$_VAR_MOUNT_DIR" 2>/dev/null
                 rm -rf "$_VAR_BWORK_DIR" 2>/dev/null || true
                 # Check if .pelfbundles is empty and remove it if so
                 if [ -d "$_VAR_BUNDLE_DIR" ] && [ "$(count "$_VAR_BUNDLE_DIR")" -eq 0 ]; then
@@ -435,12 +435,12 @@ embed_static_tools() {
         fi
 
         # Copy the tools from the custom embed directory
-        if ! cp "$_VAR_CUSTOM_EMBED_DIR/fusermount" "$_VAR_CUSTOM_EMBED_DIR/dwarfs" "$_VAR_STATIC_TOOLS_DIR"; then
+        if ! cp "$_VAR_CUSTOM_EMBED_DIR/fusermount3" "$_VAR_CUSTOM_EMBED_DIR/dwarfs" "$_VAR_STATIC_TOOLS_DIR"; then
             error "Failed to copy static tools from custom embed directory"
         fi
     else
         # Copy static tools using `which`
-        if ! cp "$(which fusermount)" "$(which dwarfs)" "$_VAR_STATIC_TOOLS_DIR"; then
+        if ! cp "$(which fusermount3)" "$(which dwarfs)" "$_VAR_STATIC_TOOLS_DIR"; then
             error "Failed to copy static tools"
         fi
     fi
