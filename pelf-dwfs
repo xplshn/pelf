@@ -263,7 +263,7 @@ mount_dwarfs() {
     check_fuse
     # Mount the embedded DwarFS archive using the offset
     mkdir -p "$_VAR_MOUNT_DIR" && \
-    dwarfs -o offset="auto",ro,auto_unmount "$_SELF" "$_VAR_MOUNT_DIR" >/dev/null 2>&1 || {
+    dwarfs -o offset="auto",ro,auto_unmount "$_SELF" "$_VAR_MOUNT_DIR" || {
         log "ERROR: Failed to mount DwarFS archive."
         log "W: DEBUG INFO:"
         log "  \$0 is set to $0"
