@@ -204,4 +204,4 @@ if [ "$DONTPACK" != "1" ]; then
     fi
 fi
 
-echo "pelf-dwfs --add-appdir "$APPDIR" --appbundle-id "$APPBUNDLE_ID" --output-to "$OUTPUT_TO" --embed-static-tools --compression "$COMPRESSION_OPTS"" >"$APPDIR/.gen" && chmod +x "$APPDIR/.gen"
+echo "\"pelf-dwfs --add-appdir \"$APPDIR\" --appbundle-id \"$APPBUNDLE_ID\" --output-to \"$OUTPUT_TO\" --embed-static-tools --compression \"$COMPRESSION_OPTS\"\"" >"$APPDIR/.gen" && chmod +x "$APPDIR/.gen"
