@@ -219,194 +219,187 @@ __RED="\033[0;31m"
 __YELLOW="\033[0;33m"
 __RESET="\033[0m"
 log() {
-    printf >&2 "AppBundle Runtime ${__YELLOW}Warning${__RESET}: %s\n" "$*"
+	printf >&2 "AppBundle Runtime ${__YELLOW}Warning${__RESET}: %s\n" "$*"
 }
 error() {
-    printf >&2 "AppBundle Runtime ${__RED}Error${__RESET}: %s\n" "$*"
-    exit 1
+	printf >&2 "AppBundle Runtime ${__RED}Error${__RESET}: %s\n" "$*"
+	exit 1
 }
 
 # Check if dwarfs is available
 check_fuse() {
-    # Check if dwarfs AND fusermount3 is available in the system PATH
-    if command -v dwarfs >/dev/null && command -v fusermount3 >/dev/null; then
-        return
-    fi
+	# Check if dwarfs AND fusermount3 is available in the system PATH
+	if command -v dwarfs >/dev/null && command -v fusermount3 >/dev/null; then
+		return
+	fi
 
-    # If either dwarfs or fusermount is not available, check if they are bundled in the script
-    __STATIC_TOOLS_ARCHIVE_MARKER=$(awk '/^__STATIC_TOOLS__/ { print NR + 1; exit }' "$0") || error "Failed to locate static tools marker in the script."
+	# If either dwarfs or fusermount is not available, check if they are bundled in the script
+	__STATIC_TOOLS_ARCHIVE_MARKER=$(awk '/^__STATIC_TOOLS__/ { print NR + 1; exit }' "$0") || error "Failed to locate static tools marker in the script."
 
-    if [ -z "$__STATIC_TOOLS_ARCHIVE_MARKER" ]; then
-        error "Failed to locate static tools marker in the script. No static tools where bundled and your system lacks dwarfs"
-    fi
+	if [ -z "$__STATIC_TOOLS_ARCHIVE_MARKER" ]; then
+		error "Failed to locate static tools marker in the script. No static tools where bundled and your system lacks dwarfs"
+	fi
 
-    _VAR_STATIC_TOOLS_DIR="$_VAR_BWORK_DIR/static/$(uname -om | tr ' ' '_')"
+	_VAR_STATIC_TOOLS_DIR="$_VAR_BWORK_DIR/static/$(uname -om | tr ' ' '_')"
 
-    # Ensure the directory for extracted tools exists
-    mkdir -p "$_VAR_STATIC_TOOLS_DIR" || error "Failed to create directory $_VAR_STATIC_TOOLS_DIR"
+	# Ensure the directory for extracted tools exists
+	mkdir -p "$_VAR_STATIC_TOOLS_DIR" || error "Failed to create directory $_VAR_STATIC_TOOLS_DIR"
 
-    # Extract the bundled tar archive
-    tail -n +"$__STATIC_TOOLS_ARCHIVE_MARKER" "$0" | base64 -d 2>/dev/null | tar -xzf - -C "$_VAR_STATIC_TOOLS_DIR" || error "Failed to extract tar archive."
+	# Extract the bundled tar archive
+	tail -n +"$__STATIC_TOOLS_ARCHIVE_MARKER" "$0" | base64 -d 2>/dev/null | tar -xzf - -C "$_VAR_STATIC_TOOLS_DIR" || error "Failed to extract tar archive."
 
-    # Add the extracted tools to PATH
-    PATH="$PATH:$_VAR_STATIC_TOOLS_DIR" || error "Failed to update PATH with the extracted tools."
+	# Add the extracted tools to PATH
+	PATH="$PATH:$_VAR_STATIC_TOOLS_DIR" || error "Failed to update PATH with the extracted tools."
 
-    # Check again if either dwarfs or fusermount is available
-   if command -v dwarfs >/dev/null || command -v fusermount3 >/dev/null; then
-        return
-   fi
-   error "Neither dwarfs nor fusermount3 are available in the system and were not found in the bundled archive."
+	# Check again if either dwarfs or fusermount is available
+	if command -v dwarfs >/dev/null || command -v fusermount3 >/dev/null; then
+		return
+	fi
+	error "Neither dwarfs nor fusermount3 are available in the system and were not found in the bundled archive."
 }
 
 # Mount the DwarFS archive from an offset in the script
 mount_dwarfs() {
-    check_fuse
-    # Mount the embedded DwarFS archive using the offset
-    mkdir -p "$_VAR_MOUNT_DIR" && \
-    dwarfs -o offset="auto",ro,auto_unmount "$SELF" "$_VAR_MOUNT_DIR" > "${_VAR_BWORK_DIR}/.dwarfs.log" || {
-        log "ERROR: Failed to mount DwarFS archive."
-        log "W: DEBUG INFO:"
-        log "  \$0 is set to $0"
-        log "  The realpath to \$0 is "$SELF""
-        exit 1
-    }
+	check_fuse
+	# Mount the embedded DwarFS archive using the offset
+	mkdir -p "$_VAR_MOUNT_DIR" && {
+		dwarfs -o offset="auto",ro,auto_unmount "$SELF" "$_VAR_MOUNT_DIR" >"${_VAR_BWORK_DIR}/.dwarfs.log" 2>&1 || {
+			log "ERROR: Failed to mount DwarFS archive."
+			log "W: DEBUG INFO:"
+			log "  \$0 is set to $0"
+			log "  The realpath to \$0 is $SELF"
+			exit 1
+		}
+	}
 }
+
 # Main function to handle the logic
-        main() {
+main() {
+	mount_dwarfs && touch "${_VAR_BWORK_DIR}/.$$"
+    # shellcheck disable=SC2317 # Command appears to be unreachable. Check usage (or *ignore* if invoked indirectly)
+	cleanup() {
+		count() {
+			[ -e "$1" ] &&
+				printf '%s\n' "$#" ||
+				printf '%s\n' 0
+		}
+		fusermount3 -uz "$_VAR_MOUNT_DIR" 2>/dev/null
+		rm -rf "$_VAR_BWORK_DIR" 2>/dev/null || true
+		# Check if .pelfbundles is empty and remove it if so
+		if [ -d "$_VAR_BUNDLE_DIR" ] && [ "$(count "$_VAR_BUNDLE_DIR")" -eq 0 ]; then
+			rmdir "$_VAR_BUNDLE_DIR"
+		fi
+	}
+	# Set up cleanup trap
+	trap 'cleanup' INT TERM HUP QUIT EXIT
 
-        mount_dwarfs && touch "${_VAR_BWORK_DIR}/.$$"
-        cleanup() {
-            count() {
-                [ -e "$1" ] \
-                    && printf '%s\n' "$#" \
-                    || printf '%s\n' 0
-            }
+	_BIN_DIRs="$_VAR_MOUNT_DIR/bin:$_VAR_MOUNT_DIR/usr/bin"
+	_LIB_DIRs="$_VAR_MOUNT_DIR/lib:$_VAR_MOUNT_DIR/usr/lib:$_VAR_MOUNT_DIR/lib64:$_VAR_MOUNT_DIR/usr/lib64:$_VAR_MOUNT_DIR/lib32:$_VAR_MOUNT_DIR/usr/lib32:$_VAR_MOUNT_DIR/libx32:$_VAR_MOUNT_DIR/usr/libx32"
 
-            ## If the process that created & mounted the "$_VAR_MOUNT_DIR" is not this one (us), refuse to clean up
-            #_OWNER_OF_MOUNT_DIR="$(basename ""$(dirname "$_VAR_MOUNT_DIR")"/.$$")" # PID OF THE OWNER OF THE MOUNT_DIR
-            #if [ "$_OWNER_OF_MOUNT_DIR" = "$$" ]; then
-                fusermount3 -uz "$_VAR_MOUNT_DIR" 2>/dev/null
-                rm -rf "$_VAR_BWORK_DIR" 2>/dev/null || true
-                # Check if .pelfbundles is empty and remove it if so
-                if [ -d "$_VAR_BUNDLE_DIR" ] && [ "$(count "$_VAR_BUNDLE_DIR")" -eq 0 ]; then
-                    rmdir "$_VAR_BUNDLE_DIR"
-                fi
-            #fi
-        }
-        # Set up cleanup trap
-        trap 'cleanup' INT TERM HUP QUIT EXIT
-    
-        _BIN_DIRs="$_VAR_MOUNT_DIR/bin:$_VAR_MOUNT_DIR/usr/bin"
-        _LIB_DIRs="$_VAR_MOUNT_DIR/lib:$_VAR_MOUNT_DIR/usr/lib:$_VAR_MOUNT_DIR/lib64:$_VAR_MOUNT_DIR/usr/lib64:$_VAR_MOUNT_DIR/lib32:$_VAR_MOUNT_DIR/usr/lib32:$_VAR_MOUNT_DIR/libx32:$_VAR_MOUNT_DIR/usr/libx32"
+	# Add extra binaries to the PATH if they exist
+	if [ "$_VAR_FOUND_RUNNING_INSTANCE" != "1" ]; then
+		# Export directories with transformed variable names
+		export "${rEXE_NAME}_binDir=$_BIN_DIRs"
+		export "${rEXE_NAME}_libDir=$_LIB_DIRs"
+		export "${rEXE_NAME}_mountDir=$_VAR_MOUNT_DIR"
+	fi
 
-        # Add extra binaries to the PATH if they exist
-        if [ "$_VAR_FOUND_RUNNING_INSTANCE" != "1" ]; then
-            # Export directories with transformed variable names
-            export "${rEXE_NAME}_binDir=$_BIN_DIRs"
-            export "${rEXE_NAME}_libDir=$_LIB_DIRs"
-            export "${rEXE_NAME}_mountDir=$_VAR_MOUNT_DIR"
-        fi
+	# Figure out what we do
+	case "$1" in
+	--pbundle_help)
+		printf "This bundle was generated automatically by PELF __PELF_VERSION__, the machine on which it was created has the following \"uname -mrspv\":\n %s \n" "__PELF_HOST__"
+		printf "Usage:\n <|--pbundle_help|--pbundle_list|--pbundle_link <binary>|--pbundle_pngIcon|--pbundle_svgIcon|--pbundle_desktop|--pbundle_genThumbnail|--pbundle_mount|> <args...>\n"
+		exit 1
+		;;
+	--pbundle_list)
+		find "$_VAR_MOUNT_DIR" && exit 0
+		exit 1
+		;;
+	--pbundle_link)
+		# NOTE: This would be under execute_file, except LD_LIBRARY_PATH MUSTN'T be set when using an AppRun, but we do need this var in order to run a binary manually
+		if [ "$PELF_NO_LD_VAR" != "1" ]; then
+			if [ -z "$LD_LIBRARY_PATH" ]; then
+				LD_LIBRARY_PATH="$_LIB_DIRs"
+			else
+				LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$_LIB_DIRs"
+			fi
+			export LD_LIBRARY_PATH
+		fi
+		_VAR_EXEC_FILE="$2"
+		shift 2
+		;;
+	--pbundle_pngIcon)
+		if [ -f "$_VAR_MOUNT_DIR/.DirIcon" ]; then
+			base64 "$_VAR_MOUNT_DIR/.DirIcon"
+			exit 0
+		else
+			exit 1
+		fi
+		;;
+	--pbundle_svgIcon)
+		if [ -f "$_VAR_MOUNT_DIR/.DirIcon.svg" ]; then
+			base64 "$_VAR_MOUNT_DIR/.DirIcon.svg"
+			exit 0
+		else
+			exit 1
+		fi
+		;;
+	--pbundle_desktop)
+		for file in "$_VAR_MOUNT_DIR"/*.desktop; do
+			if [ -e "$file" ]; then
+				base64 "$file"
+				exit 0
+			fi
+		done
+		exit 1
+		;;
+	--pbundle_genThumbnail)
+		if [ -f "$_BIN_DIRs/.pelf_thumbgen" ]; then
+			if [ -f "$_VAR_MOUNT_DIR/.DirIcon" ]; then
+				"$_BIN_DIRs/.pelf_thumbgen" "$0" "$_VAR_MOUNT_DIR/.DirIcon"
+				exit 0
+			else
+				log "$_VAR_MOUNT_DIR/.DirIcon does not exist"
+			fi
+		else
+			log "Sorry, this bundle does not contain .pelf_thumbgen, add that binary if you wish to enable this functionality. (github.com/xplshn/pelf/tree/master/cmd/misc/thumbgen)"
+		fi
+		exit 1
+		;;
+	esac
 
-        # Figure out what we do
-        case "$1" in
-            --pbundle_help)
-                printf "This bundle was generated automatically by PELF __PELF_VERSION__, the machine on which it was created has the following \"uname -mrspv\":\n %s \n" "__PELF_HOST__"
-                printf "Usage:\n <|--pbundle_help|--pbundle_list|--pbundle_link <binary>|--pbundle_pngIcon|--pbundle_svgIcon|--pbundle_desktop|--pbundle_genThumbnail|--pbundle_mount|> <args...>\n"
-                exit 1
-                ;;
-            --pbundle_list)
-                find "$_VAR_MOUNT_DIR" && exit 0
-                exit 1
-                ;;
-            --pbundle_link)
-                # NOTE: This would be under execute_file, except LD_LIBRARY_PATH MUSTN'T be set when using an AppRun, but we do need this var in order to run a binary manually
-                if [ "$PELF_NO_LD_VAR" != "1" ]; then
-                    if [ -z "$LD_LIBRARY_PATH" ] ; then
-                        LD_LIBRARY_PATH="$_LIB_DIRs"
-                    else
-                        LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$_LIB_DIRs"
-                    fi
-                    export LD_LIBRARY_PATH
-                fi
-                _VAR_EXEC_FILE="$2"
-                shift 2
-                ;;
-            --pbundle_pngIcon)
-                if [ -f "$_VAR_MOUNT_DIR/.DirIcon" ]; then
-                    base64 "$_VAR_MOUNT_DIR/.DirIcon"
-                    exit 0
-                else
-                    exit 1
-                fi
-                ;;
-            --pbundle_svgIcon)
-                if [ -f "$_VAR_MOUNT_DIR/.DirIcon.svg" ]; then
-                    base64 "$_VAR_MOUNT_DIR/.DirIcon.svg"
-                    exit 0
-                else
-                    exit 1
-                fi
-                ;;
-            --pbundle_desktop)
-            desktop_found=false
-            for file in "$_VAR_MOUNT_DIR"/*.desktop; do
-                if [ -e "$file" ]; then
-                    desktop_found=true
-                    base64 "$file"
-                    exit 0
-                fi
-            done
-            exit 1
-            ;;
-            --pbundle_genThumbnail)
-                if [ -f "$_BIN_DIRs/.pelf_thumbgen" ]; then
-                    if [ -f "$_VAR_MOUNT_DIR/.DirIcon" ]; then
-                        "$_BIN_DIRs/.pelf_thumbgen" "$0" "$_VAR_MOUNT_DIR/.DirIcon"
-                        exit 0
-                    else
-                        log "$_VAR_MOUNT_DIR/.DirIcon does not exist"
-                    fi
-                else
-                    log "Sorry, this bundle does not contain .pelf_thumbgen, add that binary if you wish to enable this functionality. (github.com/xplshn/pelf/tree/master/cmd/misc/thumbgen)"
-                fi
-                exit 1
-                ;;
-        esac
+	# Execute the specified file from the mounted directory
+	execute_file() {
+		# Add directories to that do exists to the xPATH
+		[ -d "$_VAR_MOUNT_DIR/bin" ] && xPATH="${xPATH:+$xPATH:}$_VAR_MOUNT_DIR/bin"
+		[ -d "$_VAR_MOUNT_DIR/usr/bin" ] && xPATH="$_VAR_MOUNT_DIR/usr/bin"
+		# Update PATH based on PBUNDLE_OVERTAKE_PATH
+		if [ "$PBUNDLE_OVERTAKE_PATH" = 1 ]; then
+			PATH="$xPATH${PATH:+:$PATH}"
+		else
+			PATH="${PATH:+$PATH:}$xPATH"
+		fi
+		export PATH
 
-    # Execute the specified file from the mounted directory
-    execute_file() {
-        # Add directories to that do exists to the xPATH
-        [ -d "$_VAR_MOUNT_DIR/bin" ] && xPATH="${xPATH:+$xPATH:}$_VAR_MOUNT_DIR/bin"
-        [ -d "$_VAR_MOUNT_DIR/usr/bin" ] && xPATH="$_VAR_MOUNT_DIR/usr/bin"
-        # Update PATH based on PBUNDLE_OVERTAKE_PATH
-        if [ "$PBUNDLE_OVERTAKE_PATH" = 1 ]; then
-            PATH="$xPATH${PATH:+:$PATH}"
-        else
-            PATH="${PATH:+$PATH:}$xPATH"
-        fi
-        export PATH
+		# Append to XDG_DATA_DIRS if it exists and we have ./share || ./usr/share directories
+		if [ -n "$XDG_DATA_DIRS" ]; then
+			[ -d "$_VAR_MOUNT_DIR/share" ] && XDG_DATA_DIRS="$XDG_DATA_DIRS:$_VAR_MOUNT_DIR/share"
+			[ -d "$_VAR_MOUNT_DIR/usr/share" ] && XDG_DATA_DIRS="$XDG_DATA_DIRS:$_VAR_MOUNT_DIR/usr/share"
+		fi
+		export XDG_DATA_DIRS
 
-        # Append to XDG_DATA_DIRS if it exists and we have ./share || ./usr/share directories
-        if [ -n "$XDG_DATA_DIRS" ]; then
-            [ -d "$_VAR_MOUNT_DIR/share" ] && XDG_DATA_DIRS="$XDG_DATA_DIRS:$_VAR_MOUNT_DIR/share"
-            [ -d "$_VAR_MOUNT_DIR/usr/share" ] && XDG_DATA_DIRS="$XDG_DATA_DIRS:$_VAR_MOUNT_DIR/usr/share"
-        fi
-        export XDG_DATA_DIRS
+		# Utility variables for scripting/AppRuns/wrappers
+		export SELF_TEMPDIR="$_VAR_MOUNT_DIR"
+		export SELF
+		export ARGV0="${0##*/}" # Lots of AppDirs for AppImages expect this, it should containthe basename of "$0"
 
-        # Utility variables for scripting/AppRuns/wrappers
-        export SELF_TEMPDIR="$_VAR_MOUNT_DIR"
-        export SELF
-        export ARGV0="${0##*/}" # Lots of AppDirs for AppImages expect this, it should containthe basename of "$0"
-
-        if ! command -v "$_VAR_EXEC_FILE" >/dev/null 2>&1; then
-            error "[$2] does NOT exist. It is not contained here nor is it available in the user's PATH"
-        fi
-
-        # Proceed to execute the packed ENTRY POINT binary
-        "$_VAR_EXEC_FILE" "$@"
-        EXE_NAME_PID="$!"
-    }
-    execute_file "$@"
+		if ! command -v "$_VAR_EXEC_FILE" >/dev/null 2>&1; then
+			error "[$2] does NOT exist. It is not contained here nor is it available in the user's PATH"
+		fi
+		# Proceed to execute the packed ENTRY POINT binary
+		"$_VAR_EXEC_FILE" "$@"
+	}
+	execute_file "$@"
 }
 
 main "$@"
