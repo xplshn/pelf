@@ -185,11 +185,11 @@ fi
 
 # Handle multicall setup
 if [ "$MULTICALL" -eq "1" ]; then
-	echo "LAUNCH" >"$APPDIR/rootfs/entrypoint"
+	echo "/usr/local/bin/LAUNCH" >"$APPDIR/rootfs/entrypoint"
 
 	mkdir -p "$APPDIR/rootfs/usr/local/bin"
 	# Download LAUNCH and set as entrypoint
-	if ! wget -qO "$APPDIR/rootfs/usr/local/bin/LAUNCH" "https://raw.githubusercontent.com/xplshn/pelf/refs/heads/pelf-ng/assets/LAUNCH-multicall.rootfs.entrypoint"; then
+	if ! wget -qO "$APPDIR/rootfs/usr/local/bin/LAUNCH" "https://raw.githubusercontent.com/xplshn/pelf/refs/heads/dev/assets/LAUNCH-multicall.rootfs.entrypoint"; then
 		echo "Failed to download LAUNCH for multicall"
 		exit 1
 	fi
