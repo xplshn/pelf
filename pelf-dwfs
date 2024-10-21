@@ -203,21 +203,22 @@ LOADER_SCRIPT=$(sed -e "s|__ENTRY_POINT__|${_VAR_MAIN_BINARY##*/}|g" \
 
 # Get the binary's name
 [ -n "$EXE_NAME" ] || EXE_NAME="__ENTRY_POINT__"
-# rEXE_NAME can be used as a variable name :)
-rEXE_NAME="$(echo "$EXE_NAME" | tr -dc '[:alnum:]_' | tr '[:upper:]' '[:lower:]')"
+# rEXE_NAME can be used as a variable name, and it is also used for creating the work dir
+rEXE_NAME="$(echo "$EXE_NAME" | tr -dc '[:alnum:]_')"
 
 # Important variables
-_VAR_BUNDLE_DIR="${TMPDIR:-/tmp}/.pelfbundles"                                      # Temporary pool directory
-_VAR_BWORK_DIR="${_VAR_BUNDLE_DIR}/pbundle_${rEXE_NAME}$(date '+%s%M%S')_${RANDOM}" # Temporary work directory
+_VAR_POOL_DIR="${TMPDIR:-/tmp}/.pelfbundles"                                        # Temporary pool directory
+_VAR_BWORK_DIR="${_VAR_POOL_DIR}/pbundle_${rEXE_NAME}$(date '+%s%M%S')_${RANDOM}"   # Temporary work directory
 _VAR_MOUNT_DIR="$_VAR_BWORK_DIR/mounted"                                            # Temporary directory for mounting
-_VAR_ARCHIVE="$_VAR_BWORK_DIR/archive.dwfs"                                         # The DwarFS archive in case we do base64 thingies
 _VAR_EXEC_FILE="${_VAR_MOUNT_DIR}/AppRun"                                           # The file to execute
 SELF="$(realpath "$0")"                                                             # Path to the .AppBundle itself
 mkdir -p "$_VAR_BWORK_DIR"
 
+# Nice variables
 __RED="\033[0;31m"
 __YELLOW="\033[0;33m"
 __RESET="\033[0m"
+# Functions that are called when things aren't going well
 log() {
 	printf >&2 "AppBundle Runtime ${__YELLOW}Warning${__RESET}: %s\n" "$*"
 }
@@ -286,8 +287,8 @@ main() {
 		fusermount3 -uz "$_VAR_MOUNT_DIR" 2>/dev/null
 		rm -rf "$_VAR_BWORK_DIR" 2>/dev/null || true
 		# Check if .pelfbundles is empty and remove it if so
-		if [ -d "$_VAR_BUNDLE_DIR" ] && [ "$(count "$_VAR_BUNDLE_DIR")" -eq 0 ]; then
-			rmdir "$_VAR_BUNDLE_DIR"
+		if [ -d "$_VAR_POOL_DIR" ] && [ "$(count "$_VAR_POOL_DIR")" -eq 0 ]; then
+			rmdir "$_VAR_POOL_DIR"
 		fi
 	}
 	# Set up cleanup trap
