@@ -263,7 +263,7 @@ mount_dwarfs() {
     check_fuse
     # Mount the embedded DwarFS archive using the offset
     mkdir -p "$_VAR_MOUNT_DIR" && \
-    dwarfs -o offset="auto",ro,auto_unmount "$SELF" "$_VAR_MOUNT_DIR" || {
+    dwarfs -o offset="auto",ro,auto_unmount "$SELF" "$_VAR_MOUNT_DIR" > "${_VAR_BWORK_DIR}/.dwarfs.log" || {
         log "ERROR: Failed to mount DwarFS archive."
         log "W: DEBUG INFO:"
         log "  \$0 is set to $0"
@@ -274,11 +274,7 @@ mount_dwarfs() {
 # Main function to handle the logic
         main() {
 
-        # Check if we need to mount the dwarfs archive
-#       if [ "$_VAR_FOUND_RUNNING_INSTANCE" != "1" ] && [ "$PELF_REUSE_INSTANCES" != "1" ]; then
-            mount_dwarfs && touch "${_VAR_BWORK_DIR}/.$$"
-#       fi
-
+        mount_dwarfs && touch "${_VAR_BWORK_DIR}/.$$"
         cleanup() {
             count() {
                 [ -e "$1" ] \
