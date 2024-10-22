@@ -1,0 +1,66 @@
+#!/bin/sh
+
+# Function to display help information
+show_help() {
+    printf "Usage: %s -d output_dir -a app_dir file1 [file2 ...]\n" "$0"
+    printf "\nOptions:\n"
+    printf "  -d output_dir  Specify the new output directory\n"
+    printf "  -a app_dir     Specify the rootfs-based AppDir\n"
+    printf "  -h             Show this help message\n"
+}
+
+# Initialize variables
+OUTPUT_DIR=""
+APP_DIR=""
+
+# Parse command-line options
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -h)
+            show_help
+            exit 0
+            ;;
+        -d)
+            shift
+            OUTPUT_DIR="$1"
+            shift
+            ;;
+        -a)
+            shift
+            APP_DIR="$1"
+            shift
+            ;;
+        -*)
+            printf "Invalid option: %s\n" "$1" >&2
+            show_help
+            exit 1
+            ;;
+        *)
+            break
+            ;;
+    esac
+done
+
+# Check if both OUTPUT_DIR and APP_DIR are specified
+if [ -z "$OUTPUT_DIR" ] || [ -z "$APP_DIR" ]; then
+    printf "Error: Both output directory and AppDir must be specified.\n" >&2
+    show_help
+    exit 1
+fi
+
+# Check if at least one filename is specified
+if [ "$#" -eq 0 ]; then
+    printf "Error: No files specified. Please provide at least one file.\n" >&2
+    show_help
+    exit 1
+fi
+
+mkdir -p "$OUTPUT_DIR"
+# Loop through each file passed as argument
+for FILE in "$@"; do
+    if [ -e "$APP_DIR/rootfs/usr/bin/$(basename "$FILE")" ]; then
+        lib4bin --dst-dir "$OUTPUT_DIR" "$FILE"
+    else
+        printf "%s does not exist in %s/rootfs/usr/bin/\n" "$(basename "$FILE")" "$APP_DIR"
+    fi
+done
