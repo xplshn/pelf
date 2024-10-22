@@ -171,11 +171,9 @@ if [ "${ENTRYPOINT##*.}" = "desktop" ]; then
 				echo "Icon $ICON_NAME copied to $APPDIR/.DirIcon"
 			else
 				echo "Icon $ICON_NAME not found in $APPDIR/rootfs/usr/share/icons/"
-				exit 1
 			fi
 		else
 			echo "No Icon entry found in $APPDIR/rootfs/usr/share/applications/$ENTRYPOINT"
-			exit 1
 		fi
 	else
 		echo "$ENTRYPOINT does not exist in $APPDIR/rootfs/usr/share/applications/"
@@ -196,6 +194,8 @@ if [ "$MULTICALL" -eq "1" ]; then
 	chmod +x "$APPDIR/rootfs/usr/local/bin/LAUNCH"
 fi
 
+echo "pelf-dwfs --add-appdir \"$APPDIR\" --appbundle-id \"$APPBUNDLE_ID\" --output-to \"$OUTPUT_TO\" --embed-static-tools --compression \"$COMPRESSION_OPTS\"" >"$APPDIR/.gen" && chmod +x "$APPDIR/.gen"
+
 if [ "$DONTPACK" != "1" ]; then
     # Final packaging
     if ! wget -qO- "https://raw.githubusercontent.com/xplshn/pelf/refs/heads/dev/pelf-dwfs" | sh -s -- --add-appdir "$APPDIR" --appbundle-id "$APPBUNDLE_ID" --output-to "$OUTPUT_TO" --embed-static-tools --compression "$COMPRESSION_OPTS"; then
@@ -204,4 +204,3 @@ if [ "$DONTPACK" != "1" ]; then
     fi
 fi
 
-echo "pelf-dwfs --add-appdir \"$APPDIR\" --appbundle-id \"$APPBUNDLE_ID\" --output-to \"$OUTPUT_TO\" --embed-static-tools --compression \"$COMPRESSION_OPTS\"" >"$APPDIR/.gen" && chmod +x "$APPDIR/.gen"
