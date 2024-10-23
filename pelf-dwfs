@@ -286,10 +286,7 @@ main() {
 		}
 		fusermount3 -uz "$_VAR_MOUNT_DIR" 2>/dev/null
 		rm -rf "$_VAR_BWORK_DIR" 2>/dev/null || true
-		# Check if .pelfbundles is empty and remove it if so
-		if [ -d "$_VAR_POOL_DIR" ] && [ "$(count "$_VAR_POOL_DIR")" -eq 0 ]; then
-			rmdir "$_VAR_POOL_DIR"
-		fi
+		rm -rf "$_VAR_POOL_DIR" 2>/dev/null || true
 	}
 	# Set up cleanup trap
 	trap 'cleanup' INT TERM HUP QUIT EXIT
