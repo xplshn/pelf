@@ -1,4 +1,3 @@
-// TODO: Get the ld.so using the output of `ldd` instead of checking in /lib
 package main
 
 import (
