@@ -79,7 +79,7 @@ while true; do
 		TOBEKEPT="$2"
 		shift 2
 		if [ -z "$TOBEKEPT" ]; then
-            echo "Error: You should specify the names of the binaries to be kept like this (example): \"usr/bin/wezterm\" \"usr/bin/wezterm-gui\"" >&2
+			echo 'Error: You should specify the names of the binaries to be kept like this (example): "usr/bin/wezterm" "usr/bin/wezterm-gui"' >&2
 		fi
 		;;
 	-v | --verbose)
@@ -149,8 +149,13 @@ fi
 chmod +x "$APPDIR/AppRun"
 
 # Set the entrypoint
-echo "$ENTRYPOINT" >"$APPDIR/rootfs/entrypoint"
-chmod +x "$APPDIR/rootfs/entrypoint"
+if [ "$NOROOTFS" = 1 ]; then
+	echo "$ENTRYPOINT" >"$APPDIR/entrypoint"
+	chmod +x "$APPDIR/entrypoint"
+else
+	echo "$ENTRYPOINT" >"$APPDIR/rootfs/entrypoint"
+	chmod +x "$APPDIR/rootfs/entrypoint"
+fi
 
 # Install packages with APK
 "$APPDIR/AppRun" --Xbwrap --uid "0" --gid "0" -- apk -X "https://dl-cdn.alpinelinux.org/alpine/latest-stable/main" -U --allow-untrusted --initdb add "$PKG_ADD"
@@ -204,32 +209,31 @@ if [ "$MULTICALL" -eq "1" ]; then
 fi
 
 if [ "$NOROOTFS" = 1 ]; then
-    AUXTOBEKEPT=""
-    # Prepend $APPDIR/ to each word in $TOBEKEPT and overwrite the original
-    for ITEM in $TOBEKEPT; do
-        AUXTOBEKEPT="$AUXTOBEKEPT $APPDIR/rootfs/$ITEM"
-    done
+	AUXTOBEKEPT=""
+	# Prepend $APPDIR/ to each word in $TOBEKEPT and overwrite the original
+	for ITEM in $TOBEKEPT; do
+		AUXTOBEKEPT="$AUXTOBEKEPT $APPDIR/rootfs/$ITEM"
+	done
 
-    TOBEKEPT="$AUXTOBEKEPT"
+	TOBEKEPT="$AUXTOBEKEPT"
 
-    # shellcheck disable=SC2086 # Word-splitting is intentional here
-    LD_LIBRARY_PATH="$APPDIR/rootfs/lib:$APPDIR/rootfs/usr/lib" lib4bin --dst-dir "$APPDIR" $TOBEKEPT && {
-        rm -rf "${APPDIR:?}/usr" "${APPDIR:?}/rootfs"
-        # Download LAUNCH and set as entrypoint
-        if ! wget -qO "$APPDIR/AppRun" "https://raw.githubusercontent.com/xplshn/pelf/refs/heads/dev/assets/AppRun.sharun"; then
-            echo "Failed to download AppRun.sharun, unable to proceed with the NOROOTFS procedure"
-            exit 1
-        fi
-        chmod +x "$APPDIR/AppRun"
-    }
+	# shellcheck disable=SC2086 # Word-splitting is intentional here
+	LD_LIBRARY_PATH="$APPDIR/rootfs/lib:$APPDIR/rootfs/usr/lib" lib4bin --dst-dir "$APPDIR" $TOBEKEPT && {
+		rm -rf "${APPDIR:?}/usr" "${APPDIR:?}/rootfs"
+		# Download LAUNCH and set as entrypoint
+		if ! wget -qO "$APPDIR/AppRun" "https://raw.githubusercontent.com/xplshn/pelf/refs/heads/dev/assets/AppRun.sharun"; then
+			echo "Failed to download AppRun.sharun, unable to proceed with the NOROOTFS procedure"
+			exit 1
+		fi
+		chmod +x "$APPDIR/AppRun"
+	}
 fi
 
 echo "pelf-dwfs --add-appdir \"$APPDIR\" --appbundle-id \"$APPBUNDLE_ID\" --output-to \"$OUTPUT_TO\" --embed-static-tools --compression \"$COMPRESSION_OPTS\"" >"$APPDIR/.gen" && chmod +x "$APPDIR/.gen"
 if [ "$DONTPACK" != "1" ]; then
-    # Final packaging
-    if ! wget -qO- "https://raw.githubusercontent.com/xplshn/pelf/refs/heads/dev/pelf-dwfs" | sh -s -- --add-appdir "$APPDIR" --appbundle-id "$APPBUNDLE_ID" --output-to "$OUTPUT_TO" --embed-static-tools --compression "$COMPRESSION_OPTS"; then
-    	echo "Final packaging failed"
-    	exit 1
-    fi
+	# Final packaging
+	if ! wget -qO- "https://raw.githubusercontent.com/xplshn/pelf/refs/heads/dev/pelf-dwfs" | sh -s -- --add-appdir "$APPDIR" --appbundle-id "$APPBUNDLE_ID" --output-to "$OUTPUT_TO" --embed-static-tools --compression "$COMPRESSION_OPTS"; then
+		echo "Final packaging failed"
+		exit 1
+	fi
 fi
-
