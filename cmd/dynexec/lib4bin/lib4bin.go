@@ -45,27 +45,20 @@ func tryStrip(filePath string) error {
 	return nil
 }
 
-func isDynamicExecutable(binaryPath string) (bool, string, error) {
+func isDynamicExecutable(binaryPath string) (bool, error) {
 	cmd := exec.Command("ldd", binaryPath)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return false, "", fmt.Errorf("ldd command failed: %v", err)
+		return false, fmt.Errorf("ldd command failed: %v", err)
 	}
 	outputStr := strings.TrimSpace(string(output))
 
 	// Check if the binary is static
 	outputLower := strings.ToLower(outputStr)
 	if strings.Contains(outputLower, "not a dynamic executable") || strings.Contains(outputLower, "not a valid dynamic program") {
-		return false, "", nil // It's static
+		return false, nil // It's static
 	}
-
-	// Get the linker path from the first line
-	lines := strings.Split(outputStr, "\n")
-	if len(lines) > 0 {
-		linkerPath := strings.Fields(lines[0])[0] // First word is the linker path
-		return true, linkerPath, nil
-	}
-	return true, "", nil
+	return true, nil
 }
 
 // copyFile copies a file from source to destination
