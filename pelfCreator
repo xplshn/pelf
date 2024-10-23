@@ -32,8 +32,8 @@ EOF
 }
 
 VERBOSE=0
-: "${ROOTFS_URL:=https://pub.ajam.dev/utils/alpine-mini-$(uname -m)/rootfs.tar.gz}"
 MULTICALL=0
+: "${ROOTFS_URL:=https://pub.ajam.dev/utils/alpine-mini-$(uname -m)/rootfs.tar.gz}"
 
 # Parse arguments using getopt
 if ! ARGS=$(getopt -o m:n:p:e:r:x:czvh --long maintainer:,name:,pkg-add:,entrypoint:,rootfs-url:,norootfs:,multicall,dontpack,verbose,help -n "$0" -- "$@"); then
@@ -149,16 +149,11 @@ fi
 chmod +x "$APPDIR/AppRun"
 
 # Install packages with APK
-"$APPDIR/AppRun" --Xbwrap --uid "0" --gid "0" -- apk -U --allow-untrusted --initdb add "$PKG_ADD" # #"$APPDIR/AppRun" --Xbwrap --uid "0" --gid "0" -- apk -X "http://dl-cdn.alpinelinux.org/alpine/edge/main" -U --allow-untrusted --initdb add "$PKG_ADD" # "$APPDIR/AppRun" --Xbwrap --uid "0" --gid "0" -- apk -X "https://dl-cdn.alpinelinux.org/alpine/edge/main" -U --allow-untrusted --initdb add "$PKG_ADD"
+"$APPDIR/AppRun" --Xbwrap --uid "0" --gid "0" -- apk -X "http://dl-cdn.alpinelinux.org/alpine/edge/main" -U --allow-untrusted --initdb add "$PKG_ADD" # "$APPDIR/AppRun" --Xbwrap --uid "0" --gid "0" -- apk -X "https://dl-cdn.alpinelinux.org/alpine/edge/main" -U --allow-untrusted --initdb add "$PKG_ADD"
 
 # Create entrypoint file
-if [ "$NOROOTFS" = 1 ]; then
-	echo "$ENTRYPOINT" >"$APPDIR/entrypoint"
-	chmod +x "$APPDIR/entrypoint"
-else
-	echo "$ENTRYPOINT" >"$APPDIR/rootfs/entrypoint"
-	chmod +x "$APPDIR/rootfs/entrypoint"
-fi
+echo "$ENTRYPOINT" >"$APPDIR/rootfs/entrypoint"
+chmod +x "$APPDIR/rootfs/entrypoint"
 
 # Handle .desktop file and icon if applicable. (resets entrypoint based on Exec= line and creates .DirIcon based on Icon= line)
 if [ "${ENTRYPOINT##*.}" = "desktop" ]; then
@@ -170,7 +165,7 @@ if [ "${ENTRYPOINT##*.}" = "desktop" ]; then
 
 		ICON_NAME="$(awk -F"=" '/Icon/ {print $2; exit}' "$APPDIR/rootfs/usr/share/applications/$ENTRYPOINT" 2>/dev/null)"
 		ENTRYPOINT=$(awk -F"=| " '/Exec=/ {print $2; exit}' "$APPDIR/rootfs/usr/share/applications/$ENTRYPOINT" 2>/dev/null)
-        echo "$ENTRYPOINT" >"$APPDIR/rootfs/entrypoint"
+		echo "$ENTRYPOINT" >"$APPDIR/rootfs/entrypoint"
 
 		if [ -n "$ICON_NAME" ]; then
 			# Find all matches, sort them, and pick the first one
@@ -225,6 +220,7 @@ if [ "$NOROOTFS" = 1 ]; then
 			exit 1
 		fi
 		chmod +x "$APPDIR/AppRun"
+		mv "$APPDIR/rootfs/entrypoint" "$APPDIR/entrypoint"
 	}
 fi
 
