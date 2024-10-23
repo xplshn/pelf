@@ -149,7 +149,16 @@ fi
 chmod +x "$APPDIR/AppRun"
 
 # Install packages with APK
-"$APPDIR/AppRun" --Xbwrap --uid "0" --gid "0" -- apk -X "https://dl-cdn.alpinelinux.org/alpine/latest-stable/main" -U --allow-untrusted --initdb add "$PKG_ADD"
+"$APPDIR/AppRun" --Xbwrap --uid "0" --gid "0" -- apk -X "http://dl-cdn.alpinelinux.org/alpine/edge/main" -U --allow-untrusted --initdb add "$PKG_ADD" # "$APPDIR/AppRun" --Xbwrap --uid "0" --gid "0" -- apk -X "https://dl-cdn.alpinelinux.org/alpine/edge/main" -U --allow-untrusted --initdb add "$PKG_ADD"
+
+# Create entrypoint file
+		if [ "$NOROOTFS" = 1 ]; then
+			echo "$ENTRYPOINT" >"$APPDIR/entrypoint"
+			chmod +x "$APPDIR/entrypoint"
+		else
+			echo "$ENTRYPOINT" >"$APPDIR/rootfs/entrypoint"
+			chmod +x "$APPDIR/rootfs/entrypoint"
+		fi
 
 # Handle .desktop file and icon if applicable. (resets entrypoint based on Exec= line and creates .DirIcon based on Icon= line)
 if [ "${ENTRYPOINT##*.}" = "desktop" ]; then
@@ -161,14 +170,6 @@ if [ "${ENTRYPOINT##*.}" = "desktop" ]; then
 
 		ICON_NAME="$(awk -F"=" '/Icon/ {print $2; exit}' "$APPDIR/rootfs/usr/share/applications/$ENTRYPOINT" 2>/dev/null)"
 		ENTRYPOINT=$(awk -F"=| " '/Exec=/ {print $2; exit}' "$APPDIR/rootfs/usr/share/applications/$ENTRYPOINT" 2>/dev/null)
-		# Create entrypoint file
-		if [ "$NOROOTFS" = 1 ]; then
-			echo "$ENTRYPOINT" >"$APPDIR/entrypoint"
-			chmod +x "$APPDIR/entrypoint"
-		else
-			echo "$ENTRYPOINT" >"$APPDIR/rootfs/entrypoint"
-			chmod +x "$APPDIR/rootfs/entrypoint"
-		fi
 
 		if [ -n "$ICON_NAME" ]; then
 			# Find all matches, sort them, and pick the first one
