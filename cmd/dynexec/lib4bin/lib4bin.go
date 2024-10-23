@@ -49,7 +49,7 @@ func isDynamicExecutable(binaryPath string) (bool, error) {
 	cmd := exec.Command("ldd", binaryPath)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return false, fmt.Errorf("ldd command failed: %v", err)
+		return false, nil
 	}
 	outputStr := strings.TrimSpace(string(output))
 
