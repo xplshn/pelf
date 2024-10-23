@@ -1,3 +1,4 @@
+// TODO: Get the ld.so using the output of `ldd` instead of checking in /lib
 package main
 
 import (
@@ -44,15 +45,27 @@ func tryStrip(filePath string) error {
 	return nil
 }
 
-func isDynamicExecutable(binaryPath string) (bool, error) {
+func isDynamicExecutable(binaryPath string) (bool, string, error) {
 	cmd := exec.Command("ldd", binaryPath)
-	output, _ := cmd.CombinedOutput()
-	outputStr := strings.TrimSpace(string(output)) // Trim whitespace from output
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return false, "", fmt.Errorf("ldd command failed: %v", err)
+	}
+	outputStr := strings.TrimSpace(string(output))
+
+	// Check if the binary is static
 	outputLower := strings.ToLower(outputStr)
 	if strings.Contains(outputLower, "not a dynamic executable") || strings.Contains(outputLower, "not a valid dynamic program") {
-		return false, nil // Its static
+		return false, "", nil // It's static
 	}
-	return true, nil // Its dynamic, sadly
+
+	// Get the linker path from the first line
+	lines := strings.Split(outputStr, "\n")
+	if len(lines) > 0 {
+		linkerPath := strings.Fields(lines[0])[0] // First word is the linker path
+		return true, linkerPath, nil
+	}
+	return true, "", nil
 }
 
 // copyFile copies a file from source to destination
@@ -78,7 +91,6 @@ func findDynExec() (string, error) {
 	return path, nil
 }
 
-// processBinary processes a binary file
 func processBinary(binaryPath string) error {
 	fileInfo, err := os.Stat(binaryPath)
 	if err != nil {
@@ -100,9 +112,8 @@ func processBinary(binaryPath string) error {
 		return err
 	}
 
-	// Handle static (non-dynamic) binaries
 	if !isDynamic {
-		// Move binary to ./bin (not shared)
+		// Handle static binaries
 		binDir := filepath.Join(*dstDirPath, defaultBinDir)
 		if err := os.MkdirAll(binDir, 0755); err != nil {
 			return err
@@ -111,95 +122,79 @@ func processBinary(binaryPath string) error {
 		if err := copyFile(binaryPath, dstBinaryPath); err != nil {
 			return err
 		}
-
-		// Optionally strip the binary
 		if err := tryStrip(dstBinaryPath); err != nil {
 			return err
 		}
-
-		// Make the binary executable
 		if err := os.Chmod(dstBinaryPath, 0755); err != nil {
 			return err
 		}
-
 		fmt.Printf("Processed static binary: %s\n", fileInfo.Name())
 		return nil
-	} else {
-		// For dynamic binaries, continue the existing behavior
-		// Find and copy the dynexec file from the user's $PATH
-		dynexecPath, err := findDynExec()
-		if err != nil {
-			return err
-		}
-
-		dstDynExec := filepath.Join(*dstDirPath, "sharun")
-		if err := copyFile(dynexecPath, dstDynExec); err != nil {
-			return err
-		}
-
-		// Make dynexec executable
-		if err := os.Chmod(dstDynExec, 0755); err != nil {
-			return err
-		}
-
-		// Create the bin directory and the symlink
-		binDir := filepath.Join(*dstDirPath, defaultBinDir)
-		if err := os.MkdirAll(binDir, 0755); err != nil {
-			return err
-		}
-
-		symlinkPath := filepath.Join(binDir, fileInfo.Name())
-		if *createLinks {
-			// Create symlink for dynamic binaries
-			if err := createSymlink("../sharun", symlinkPath); err != nil {
-				return err
-			}
-		}
-
-		// Create the shared directory structure
-		sharedDir := filepath.Join(*dstDirPath, defaultSharedDir)
-		sharedBinDir := filepath.Join(sharedDir, defaultBinDir)
-		sharedLibDir := filepath.Join(sharedDir, defaultLibDir)
-
-		if err := os.MkdirAll(sharedBinDir, 0755); err != nil {
-			return err
-		}
-
-		if err := os.MkdirAll(sharedLibDir, 0755); err != nil {
-			return err
-		}
-
-		// Copy the binary to the shared bin directory
-		sharedBinaryPath := filepath.Join(sharedBinDir, fileInfo.Name())
-		if err := copyFile(binaryPath, sharedBinaryPath); err != nil {
-			return err
-		}
-
-		// Optionally strip the binary
-		if err := tryStrip(sharedBinaryPath); err != nil {
-			return err
-		}
-
-		// Get the list of libraries the binary depends on
-		libPaths, err := getLibs(binaryPath)
-		if err != nil {
-			return err
-		}
-
-		// Copy libraries to the shared lib directory
-		for _, libPath := range libPaths {
-			dstLibPath := filepath.Join(sharedLibDir, filepath.Base(libPath))
-			if err := copyFile(libPath, dstLibPath); err != nil {
-				return err
-			}
-
-			// Strip libraries if the strip flag is set
-			if err := tryStrip(dstLibPath); err != nil {
-				return err
-			}
-		}
-		fmt.Printf("Processed dynamic binary: %s\n", fileInfo.Name())
 	}
+
+	// Process dynamic binaries
+	dynexecPath, err := findDynExec()
+	if err != nil {
+		return err
+	}
+
+	dstDynExec := filepath.Join(*dstDirPath, "sharun")
+	if err := copyFile(dynexecPath, dstDynExec); err != nil {
+		return err
+	}
+	if err := os.Chmod(dstDynExec, 0755); err != nil {
+		return err
+	}
+
+	binDir := filepath.Join(*dstDirPath, defaultBinDir)
+	if err := os.MkdirAll(binDir, 0755); err != nil {
+		return err
+	}
+
+	symlinkPath := filepath.Join(binDir, fileInfo.Name())
+	if *createLinks {
+		if err := createSymlink("../sharun", symlinkPath); err != nil {
+			return err
+		}
+	}
+
+	sharedDir := filepath.Join(*dstDirPath, defaultSharedDir)
+	sharedBinDir := filepath.Join(sharedDir, defaultBinDir)
+	sharedLibDir := filepath.Join(sharedDir, defaultLibDir)
+
+	if err := os.MkdirAll(sharedBinDir, 0755); err != nil {
+		return err
+	}
+
+	if err := os.MkdirAll(sharedLibDir, 0755); err != nil {
+		return err
+	}
+
+	sharedBinaryPath := filepath.Join(sharedBinDir, fileInfo.Name())
+	if err := copyFile(binaryPath, sharedBinaryPath); err != nil {
+		return err
+	}
+	if err := tryStrip(sharedBinaryPath); err != nil {
+		return err
+	}
+
+	// Get the list of libraries, including the dynamic linker
+	libPaths, err := getLibs(binaryPath)
+	if err != nil {
+		return err
+	}
+
+	// Copy libraries to the shared lib directory
+	for _, libPath := range libPaths {
+		dstLibPath := filepath.Join(sharedLibDir, filepath.Base(libPath))
+		if err := copyFile(libPath, dstLibPath); err != nil {
+			return err
+		}
+		if err := tryStrip(dstLibPath); err != nil {
+			return err
+		}
+	}
+	fmt.Printf("Processed dynamic binary: %s\n", fileInfo.Name())
 	return nil
 }
 
