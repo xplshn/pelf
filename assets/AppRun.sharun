@@ -3,6 +3,7 @@
 SELF="$(readlink -f "$ARGV0")" && export SELF
 ARGV0="$(basename "$0")"
 export SELF_TEMPDIR="${SELF%/*}"
+FALLBACK="$(cat "$SELF_TEMPDIR/entrypoint")"
 
 # LAUNCH helper
 CMD="$1"
@@ -17,6 +18,8 @@ if command -v "${ARGV0%.*}" >/dev/null 2>&1; then
 elif command -v "$CMD" >/dev/null 2>&1; then
     # If CMD (the first part of ARGS) is available, execute it with remaining arguments
     exec "$CMD" "$@"
+elif command -v "$FALLBACK" >/dev/null 2>&1; then
+    "$FALLBACK"
 else
     echo "Error: Neither ARGV0 ('${ARGV0%.*}') nor ARGS ('$CMD') are available in \$PATH"
     exit 1

@@ -2,7 +2,7 @@
 
 print_help() {
 	cat <<EOF
- Usage: $0 [|-m|-n|-p|-e|-r|-c|] <|-v|-h|>
+ Usage: $0 [|-m|-n|-p|-e|-r|-c|-z|-x|] <|-v|-h|>
  
  Options:
    -m, --maintainer   Set the maintainer (required)
@@ -12,6 +12,7 @@ print_help() {
    -r, --rootfs-url   Provide a custom URL for downloading rootfs.tgz
    -c, --multicall    Use multicall setup (downloads and sets LAUNCH as entrypoint)
    -z, --dontpack     Disables .dwfs.AppBundle packaging, thus leaving only the AppDir
+   -x, --norootfs     Ditches the rootfs and packs only the desired executables
    -v, --verbose      Enable verbose mode
    -h, --help         Display this help and exit
  
@@ -35,7 +36,7 @@ ROOTFS_URL="https://pub.ajam.dev/utils/alpine-mini-$(uname -m)/rootfs.tar.gz"
 MULTICALL=0
 
 # Parse arguments using getopt
-if ! ARGS=$(getopt -o m:n:p:e:r:czvh --long maintainer:,name:,pkg-add:,entrypoint:,rootfs-url:,multicall,verbose,help -n "$0" -- "$@"); then
+if ! ARGS=$(getopt -o m:n:p:e:r:x:czvh --long maintainer:,name:,pkg-add:,entrypoint:,rootfs-url:,multicall,dontpack,norootfs,verbose,help -n "$0" -- "$@"); then
 	echo "Failed to parse arguments." >&2
 	exit 1
 fi
@@ -71,6 +72,10 @@ while true; do
 		;;
 	-z | --dontpack)
 		DONTPACK=1
+		shift
+		;;
+	-x | --norootfs)
+		NOROOTFS=1
 		shift
 		;;
 	-v | --verbose)
@@ -194,8 +199,20 @@ if [ "$MULTICALL" -eq "1" ]; then
 	chmod +x "$APPDIR/rootfs/usr/local/bin/LAUNCH"
 fi
 
-echo "pelf-dwfs --add-appdir \"$APPDIR\" --appbundle-id \"$APPBUNDLE_ID\" --output-to \"$OUTPUT_TO\" --embed-static-tools --compression \"$COMPRESSION_OPTS\"" >"$APPDIR/.gen" && chmod +x "$APPDIR/.gen"
+if [ "$NOROOTFS" = 1 ]; then
+    # shellcheck disable=SC2086 # Word-splitting is intentional in the line where $TOBEKEPT is used
+    LD_LIBRARY_PATH="$APPDIR/rootfs/lib:$APPDIR/rootfs/usr/lib" lib4bin --dst-dir "$APPDIR" $TOBEKEPT && {
+        rm -rf "${APPDIR:?}/usr" "${APPDIR:?}/rootfs"
+        # Download LAUNCH and set as entrypoint
+        if ! wget -qO "$APPDIR/AppRun" "https://raw.githubusercontent.com/xplshn/pelf/refs/heads/dev/assets/AppRun.sharun"; then
+        	echo "Failed to download AppRun.sharun, unable to proceed with the NOROOTFS proceure"
+        	exit 1
+        fi
+        chmod +x "$APPDIR/AppRun"
+    }
+fi
 
+echo "pelf-dwfs --add-appdir \"$APPDIR\" --appbundle-id \"$APPBUNDLE_ID\" --output-to \"$OUTPUT_TO\" --embed-static-tools --compression \"$COMPRESSION_OPTS\"" >"$APPDIR/.gen" && chmod +x "$APPDIR/.gen"
 if [ "$DONTPACK" != "1" ]; then
     # Final packaging
     if ! wget -qO- "https://raw.githubusercontent.com/xplshn/pelf/refs/heads/dev/pelf-dwfs" | sh -s -- --add-appdir "$APPDIR" --appbundle-id "$APPBUNDLE_ID" --output-to "$OUTPUT_TO" --embed-static-tools --compression "$COMPRESSION_OPTS"; then
