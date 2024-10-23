@@ -148,15 +148,6 @@ if ! wget -qO "$APPDIR/AppRun" https://raw.githubusercontent.com/xplshn/pelf/ref
 fi
 chmod +x "$APPDIR/AppRun"
 
-# Set the entrypoint
-if [ "$NOROOTFS" = 1 ]; then
-	echo "$ENTRYPOINT" >"$APPDIR/entrypoint"
-	chmod +x "$APPDIR/entrypoint"
-else
-	echo "$ENTRYPOINT" >"$APPDIR/rootfs/entrypoint"
-	chmod +x "$APPDIR/rootfs/entrypoint"
-fi
-
 # Install packages with APK
 "$APPDIR/AppRun" --Xbwrap --uid "0" --gid "0" -- apk -X "https://dl-cdn.alpinelinux.org/alpine/latest-stable/main" -U --allow-untrusted --initdb add "$PKG_ADD"
 
@@ -170,8 +161,14 @@ if [ "${ENTRYPOINT##*.}" = "desktop" ]; then
 
 		ICON_NAME="$(awk -F"=" '/Icon/ {print $2; exit}' "$APPDIR/rootfs/usr/share/applications/$ENTRYPOINT" 2>/dev/null)"
 		ENTRYPOINT=$(awk -F"=| " '/Exec=/ {print $2; exit}' "$APPDIR/rootfs/usr/share/applications/$ENTRYPOINT" 2>/dev/null)
-		echo "$ENTRYPOINT" >"$APPDIR/rootfs/entrypoint"
-		chmod +x "$APPDIR/rootfs/entrypoint"
+		# Create entrypoint file
+		if [ "$NOROOTFS" = 1 ]; then
+			echo "$ENTRYPOINT" >"$APPDIR/entrypoint"
+			chmod +x "$APPDIR/entrypoint"
+		else
+			echo "$ENTRYPOINT" >"$APPDIR/rootfs/entrypoint"
+			chmod +x "$APPDIR/rootfs/entrypoint"
+		fi
 
 		if [ -n "$ICON_NAME" ]; then
 			# Find all matches, sort them, and pick the first one

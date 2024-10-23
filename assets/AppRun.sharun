@@ -1,8 +1,8 @@
 #!/bin/sh
 [ "$DEBUG" = "1" ] && set -x
-SELF="$(readlink -f "$ARGV0")" && export SELF
+SELF="$(readlink -f "$0")" && export SELF
+SELF_TEMPDIR="${SELF%/*}" && export SELF_TEMPDIR
 ARGV0="$(basename "$0")"
-export SELF_TEMPDIR="${SELF%/*}"
 FALLBACK="$(cat "$SELF_TEMPDIR/entrypoint")"
 
 # LAUNCH helper
