@@ -149,7 +149,7 @@ fi
 chmod +x "$APPDIR/AppRun"
 
 # Install packages with APK
-"$APPDIR/AppRun" --Xbwrap --uid "0" --gid "0" -- apk -X "http://dl-cdn.alpinelinux.org/alpine/edge/main" -U --allow-untrusted --initdb add "$PKG_ADD" # "$APPDIR/AppRun" --Xbwrap --uid "0" --gid "0" -- apk -X "https://dl-cdn.alpinelinux.org/alpine/edge/main" -U --allow-untrusted --initdb add "$PKG_ADD"
+"$APPDIR/AppRun" --Xbwrap --uid "0" --gid "0" -- apk -U --allow-untrusted --initdb add "$PKG_ADD" # #"$APPDIR/AppRun" --Xbwrap --uid "0" --gid "0" -- apk -X "http://dl-cdn.alpinelinux.org/alpine/edge/main" -U --allow-untrusted --initdb add "$PKG_ADD" # "$APPDIR/AppRun" --Xbwrap --uid "0" --gid "0" -- apk -X "https://dl-cdn.alpinelinux.org/alpine/edge/main" -U --allow-untrusted --initdb add "$PKG_ADD"
 
 # Create entrypoint file
 		if [ "$NOROOTFS" = 1 ]; then
