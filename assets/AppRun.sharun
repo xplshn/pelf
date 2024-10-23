@@ -19,7 +19,7 @@ elif command -v "$CMD" >/dev/null 2>&1; then
     # If CMD (the first part of ARGS) is available, execute it with remaining arguments
     exec "$CMD" "$@"
 elif command -v "$FALLBACK" >/dev/null 2>&1; then
-    "$FALLBACK"
+    "$FALLBACK" "$@"
 else
     echo "Error: Neither ARGV0 ('${ARGV0%.*}') nor ARGS ('$CMD') are available in \$PATH"
     exit 1
