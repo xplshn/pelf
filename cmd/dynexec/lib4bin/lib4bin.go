@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 
 	"github.com/u-root/u-root/pkg/ldd"
 )
@@ -44,20 +43,13 @@ func tryStrip(filePath string) error {
 	return nil
 }
 
-func isDynamicExecutable(binaryPath string) (bool, error) {
-	cmd := exec.Command("ldd", binaryPath)
-	output, err := cmd.CombinedOutput()
+// getLibs retrieves the list of libraries that a binary depends on
+func getLibs(binaryPath string) ([]string, error) {
+	dependencies, err := ldd.FList(binaryPath)
 	if err != nil {
-		return false, nil
+		return nil, err
 	}
-	outputStr := strings.TrimSpace(string(output))
-
-	// Check if the binary is static
-	outputLower := strings.ToLower(outputStr)
-	if strings.Contains(outputLower, "not a dynamic executable") || strings.Contains(outputLower, "not a valid dynamic program") {
-		return false, nil // It's static
-	}
-	return true, nil
+	return dependencies, nil
 }
 
 // copyFile copies a file from source to destination
@@ -83,6 +75,7 @@ func findDynExec() (string, error) {
 	return path, nil
 }
 
+// processBinary processes a binary file
 func processBinary(binaryPath string) error {
 	fileInfo, err := os.Stat(binaryPath)
 	if err != nil {
@@ -93,38 +86,12 @@ func processBinary(binaryPath string) error {
 		return fmt.Errorf("skipped: %s is not a regular file", binaryPath)
 	}
 
-	// Check if the binary is dynamic
-	isDynamic, err := isDynamicExecutable(binaryPath)
-	if err != nil {
-		return err
-	}
-
 	// Create the main destination directory
 	if err := os.MkdirAll(*dstDirPath, 0755); err != nil {
 		return err
 	}
 
-	if !isDynamic {
-		// Handle static binaries
-		binDir := filepath.Join(*dstDirPath, defaultBinDir)
-		if err := os.MkdirAll(binDir, 0755); err != nil {
-			return err
-		}
-		dstBinaryPath := filepath.Join(binDir, fileInfo.Name())
-		if err := copyFile(binaryPath, dstBinaryPath); err != nil {
-			return err
-		}
-		if err := tryStrip(dstBinaryPath); err != nil {
-			return err
-		}
-		if err := os.Chmod(dstBinaryPath, 0755); err != nil {
-			return err
-		}
-		fmt.Printf("Processed static binary: %s\n", fileInfo.Name())
-		return nil
-	}
-
-	// Process dynamic binaries
+	// Find and copy the dynexec file from the user's $PATH
 	dynexecPath, err := findDynExec()
 	if err != nil {
 		return err
@@ -134,22 +101,33 @@ func processBinary(binaryPath string) error {
 	if err := copyFile(dynexecPath, dstDynExec); err != nil {
 		return err
 	}
+
+	// Make dynexec executable
 	if err := os.Chmod(dstDynExec, 0755); err != nil {
 		return err
 	}
 
+	// Create the bin directory and the symlink
 	binDir := filepath.Join(*dstDirPath, defaultBinDir)
 	if err := os.MkdirAll(binDir, 0755); err != nil {
 		return err
 	}
 
 	symlinkPath := filepath.Join(binDir, fileInfo.Name())
-	if *createLinks {
-		if err := createSymlink("../sharun", symlinkPath); err != nil {
+	if *createLinks { // Ugly as fuck. TODO: Find a better way or prettify
+		oPWD, err := os.Getwd()
+		if err != nil {
 			return err
 		}
+		os.Chdir(filepath.Dir(symlinkPath))
+		if err := createSymlink("../sharun", filepath.Join("../", defaultBinDir, filepath.Base(symlinkPath))); err != nil {
+			os.Chdir(oPWD)
+			return err
+		}
+		os.Chdir(oPWD)
 	}
 
+	// Create the shared directory structure
 	sharedDir := filepath.Join(*dstDirPath, defaultSharedDir)
 	sharedBinDir := filepath.Join(sharedDir, defaultBinDir)
 	sharedLibDir := filepath.Join(sharedDir, defaultLibDir)
@@ -162,15 +140,18 @@ func processBinary(binaryPath string) error {
 		return err
 	}
 
+	// Copy the binary to the shared bin directory
 	sharedBinaryPath := filepath.Join(sharedBinDir, fileInfo.Name())
 	if err := copyFile(binaryPath, sharedBinaryPath); err != nil {
 		return err
 	}
+
+	// Strip the binary if the strip flag is set
 	if err := tryStrip(sharedBinaryPath); err != nil {
 		return err
 	}
 
-	// Get the list of libraries, including the dynamic linker
+	// Get the list of libraries the binary depends on
 	libPaths, err := getLibs(binaryPath)
 	if err != nil {
 		return err
@@ -182,21 +163,15 @@ func processBinary(binaryPath string) error {
 		if err := copyFile(libPath, dstLibPath); err != nil {
 			return err
 		}
+
+		// Strip libraries if the strip flag is set
 		if err := tryStrip(dstLibPath); err != nil {
 			return err
 		}
 	}
-	fmt.Printf("Processed dynamic binary: %s\n", fileInfo.Name())
-	return nil
-}
 
-// getLibs retrieves the list of libraries that a binary depends on
-func getLibs(binaryPath string) ([]string, error) {
-	dependencies, err := ldd.FList(binaryPath)
-	if err != nil {
-		return nil, err
-	}
-	return dependencies, nil
+	fmt.Printf("Processed: %s\n", fileInfo.Name())
+	return nil
 }
 
 func main() {
