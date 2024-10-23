@@ -36,7 +36,7 @@ ROOTFS_URL="https://pub.ajam.dev/utils/alpine-mini-$(uname -m)/rootfs.tar.gz"
 MULTICALL=0
 
 # Parse arguments using getopt
-if ! ARGS=$(getopt -o m:n:p:e:r:czxvh --long maintainer:,name:,pkg-add:,entrypoint:,rootfs-url:,multicall,dontpack,norootfs,verbose,help -n "$0" -- "$@"); then
+if ! ARGS=$(getopt -o m:n:p:e:r:x:czvh --long maintainer:,name:,pkg-add:,entrypoint:,rootfs-url:,multicall,dontpack,norootfs,verbose,help -n "$0" -- "$@"); then
 	echo "Failed to parse arguments." >&2
 	exit 1
 fi
@@ -76,7 +76,11 @@ while true; do
 		;;
 	-x | --norootfs)
 		NOROOTFS=1
-		shift
+		TOBEKEPT="$2"
+		shift 2
+		if [ -z "$TOBEKEPT" ]; then
+            echo "Error: You should specify the names of the binaries to be kept like this (example): \"usr/bin/wezterm\" \"usr/bin/wezterm-gui\"" >&2
+		fi
 		;;
 	-v | --verbose)
 		VERBOSE=1
@@ -200,13 +204,21 @@ if [ "$MULTICALL" -eq "1" ]; then
 fi
 
 if [ "$NOROOTFS" = 1 ]; then
-    # shellcheck disable=SC2086 # Word-splitting is intentional in the line where $TOBEKEPT is used
+    AUXTOBEKEPT=""
+    # Prepend $APPDIR/ to each word in $TOBEKEPT and overwrite the original
+    for ITEM in $TOBEKEPT; do
+        AUXTOBEKEPT="$AUXTOBEKEPT $APPDIR/rootfs/$ITEM"
+    done
+
+    TOBEKEPT="$AUXTOBEKEPT"
+
+    # shellcheck disable=SC2086 # Word-splitting is intentional here
     LD_LIBRARY_PATH="$APPDIR/rootfs/lib:$APPDIR/rootfs/usr/lib" lib4bin --dst-dir "$APPDIR" $TOBEKEPT && {
         rm -rf "${APPDIR:?}/usr" "${APPDIR:?}/rootfs"
         # Download LAUNCH and set as entrypoint
         if ! wget -qO "$APPDIR/AppRun" "https://raw.githubusercontent.com/xplshn/pelf/refs/heads/dev/assets/AppRun.sharun"; then
-        	echo "Failed to download AppRun.sharun, unable to proceed with the NOROOTFS proceure"
-        	exit 1
+            echo "Failed to download AppRun.sharun, unable to proceed with the NOROOTFS procedure"
+            exit 1
         fi
         chmod +x "$APPDIR/AppRun"
     }
