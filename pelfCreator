@@ -213,6 +213,7 @@ if [ "$NOROOTFS" = 1 ]; then
 
 	# shellcheck disable=SC2086 # Word-splitting is intentional here
 	LD_LIBRARY_PATH="$APPDIR/rootfs/lib:$APPDIR/rootfs/usr/lib" lib4bin --dst-dir "$APPDIR" $TOBEKEPT && {
+		mv "$APPDIR/rootfs/entrypoint" "$APPDIR/entrypoint"
 		rm -rf "${APPDIR:?}/usr" "${APPDIR:?}/rootfs"
 		# Download LAUNCH and set as entrypoint
 		if ! wget -qO "$APPDIR/AppRun" "https://raw.githubusercontent.com/xplshn/pelf/refs/heads/dev/assets/AppRun.sharun"; then
@@ -220,7 +221,6 @@ if [ "$NOROOTFS" = 1 ]; then
 			exit 1
 		fi
 		chmod +x "$APPDIR/AppRun"
-		mv "$APPDIR/rootfs/entrypoint" "$APPDIR/entrypoint"
 	}
 fi
 
