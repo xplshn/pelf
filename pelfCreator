@@ -221,6 +221,8 @@ if [ "$NOROOTFS" = 1 ]; then
 			exit 1
 		fi
 		chmod +x "$APPDIR/AppRun"
+		echo "LD_LIBRARY_PATH=\"$APPDIR/rootfs/lib:$APPDIR/rootfs/usr/lib\" lib4bin --dst-dir \"$APPDIR\" $TOBEKEPT" > "$APPDIR/.genl4b"
+		chmod +x "$APPDIR/.genl4b"
 	}
 fi
 
