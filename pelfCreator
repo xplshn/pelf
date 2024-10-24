@@ -120,7 +120,7 @@ DATE="$(date +%d_%m_%Y)"
 APPBUNDLE_ID="$NAME-$DATE-$MAINTAINER"
 APPDIR="$NAME-$DATE.AppDir"
 OUTPUT_TO="$NAME-$DATE.dwfs.AppBundle"
-: "${COMPRESSION_OPTS:=--max-lookback-blocks=5 --categorize=pcmaudio --compression pcmaudio/waveform::flac:level=8:exhaustive}"
+: "${COMPRESSION_OPTS:=-l7 -C zstd:level=22 --metadata-compression null -S 21 -B 3 --order nilsimsa -W 12 -w 4}"
 
 [ "$VERBOSE" = "1" ] && TAR_OPTS="xzfv" || TAR_OPTS="xzf"
 mkdir -p "$APPDIR/usr/bin" "$APPDIR/rootfs/app"
@@ -200,6 +200,9 @@ if [ "$MULTICALL" -eq "1" ]; then
 		exit 1
 	fi
 	chmod +x "$APPDIR/rootfs/usr/local/bin/LAUNCH"
+
+	echo "$ENTRYPOINT" >"$APPDIR/rootfs/usr/local/bin/default"
+	chmod +x "$APPDIR/rootfs/usr/local/bin/default"
 fi
 
 if [ "$NOROOTFS" = 1 ]; then

@@ -18,7 +18,7 @@ fi
 DIROFTHEAPP="$(dirname "$APPIMAGE")"
 APPNAME="$(basename "$APPIMAGE" .AppImage)"
 WORKDIR="$(mktemp -d)"
-: "${COMPRESSION_OPTS:=--max-lookback-blocks=3 --block-size-bits=18 --categorize=pcmaudio --compression pcmaudio/waveform::flac:level=8:exhaustive}"
+: "${COMPRESSION_OPTS:=-l7 -C zstd:level=22 --metadata-compression null -S 21 -B 3 --order nilsimsa -W 12 -w 4}"
 
 # Clean up on exit
 cleanup() {
@@ -75,7 +75,8 @@ if [ -f squashfs-root/conty.sh ]; then
     pelf-dwfs --add-appdir ./rootfs-based.AppDir \
               --appbundle-id "$APPNAME" \
               --output-to "$DIROFTHEAPP/${APPNAME}.dwfs.AppBundle" \
-              --embed-static-tools
+              --embed-static-tools \
+              --compression "$COMPRESSION_OPTS"
 else
     echo "Packaging as a standard AppBundle..."
 
@@ -83,7 +84,8 @@ else
     pelf-dwfs --add-appdir ./squashfs-root \
               --appbundle-id "$APPNAME" \
               --output-to "$DIROFTHEAPP/${APPNAME}.dwfs.AppBundle" \
-              --embed-static-tools
+              --embed-static-tools \
+              --compression "$COMPRESSION_OPTS"
 fi
 
 echo "AppBundle created successfully in $DIROFTHEAPP."
