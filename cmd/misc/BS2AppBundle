@@ -6,11 +6,19 @@ if [ -z "$1" ]; then
     exit 1
 fi
 
-APPIMAGE="$1"
+# Ensure full path to avoid confusion with relative paths
+APPIMAGE="$(realpath "$1")"
+
+# Check if the file actually exists
+if [ ! -f "$APPIMAGE" ]; then
+    echo "Error: $APPIMAGE not found!"
+    exit 1
+fi
+
 DIROFTHEAPP="$(dirname "$APPIMAGE")"
 APPNAME="$(basename "$APPIMAGE" .AppImage)"
 WORKDIR="$(mktemp -d)"
-: "${COMPRESSION_OPTS:=--max-lookback-blocks=5 --no-history --categorize=pcmaudio --compression pcmaudio/waveform::flac:level=8:exhaustive}"
+: "${COMPRESSION_OPTS:=--max-lookback-blocks=3 --block-size-bits=18 --categorize=pcmaudio --compression pcmaudio/waveform::flac:level=8:exhaustive}"
 
 # Clean up on exit
 cleanup() {
@@ -22,9 +30,17 @@ trap cleanup EXIT
 
 cd "$WORKDIR" || exit 1
 
-# Extract the AppImage contents
+# Ensure the AppImage is executable
 chmod +x "$APPIMAGE"
+
+# Extract the AppImage contents
 "$APPIMAGE" --appimage-extract
+
+# Check if squashfs-root was created
+if [ ! -d "squashfs-root" ]; then
+    echo "Failed to extract AppImage. squashfs-root not found."
+    exit 1
+fi
 
 # Check if conty.sh exists in squashfs-root
 if [ -f squashfs-root/conty.sh ]; then
