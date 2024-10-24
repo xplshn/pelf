@@ -120,7 +120,7 @@ DATE="$(date +%d_%m_%Y)"
 APPBUNDLE_ID="$NAME-$DATE-$MAINTAINER"
 APPDIR="$NAME-$DATE.AppDir"
 OUTPUT_TO="$NAME-$DATE.dwfs.AppBundle"
-: "${COMPRESSION_OPTS:=--max-lookback-blocks=3 --block-size-bits=18 --categorize=pcmaudio --compression pcmaudio/waveform::flac:level=8:exhaustive}"
+: "${COMPRESSION_OPTS:=--max-lookback-blocks=5 --categorize=pcmaudio --compression pcmaudio/waveform::flac:level=8:exhaustive}"
 
 [ "$VERBOSE" = "1" ] && TAR_OPTS="xzfv" || TAR_OPTS="xzf"
 mkdir -p "$APPDIR/usr/bin" "$APPDIR/rootfs/app"

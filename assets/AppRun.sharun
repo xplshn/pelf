@@ -10,7 +10,18 @@ CMD="$1"
 ARGS="$*"
 set -- $ARGS
 shift
-PATH="${SELF_TEMPDIR}/bin:$PATH"
+
+if [ "$NOSHARUN" != 1 ]; then
+    PATH="${SELF_TEMPDIR}/bin:$PATH"
+else
+    PATH="${SELF_TEMPDIR}/shared/bin:$PATH"
+    if [ -z "$LD_LIBRARY_PATH" ]; then
+        LD_LIBRARY_PATH="${SELF_TEMPDIR}/shared/lib"
+    else
+        LD_LIBRARY_PATH="${SELF_TEMPDIR}/shared/lib:$LD_LIBRARY_PATH"
+    fi
+fi
+
 # Check if ARGV0 is available as a command. We remove the "./" that might prepend ARGV0
 if command -v "${ARGV0%.*}" >/dev/null 2>&1; then
     # If ARGV0 is available, execute ARGV0 with its arguments
