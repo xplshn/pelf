@@ -18,7 +18,7 @@ fi
 DIROFTHEAPP="$(dirname "$APPIMAGE")"
 APPNAME="$(basename "$APPIMAGE" .AppImage)"
 WORKDIR="$(mktemp -d)"
-: "${COMPRESSION_OPTS:=-l7 -C zstd:level=22 --metadata-compression null -S 21 -B 3 --order nilsimsa -W 12 -w 4}"
+: "${COMPRESSION_OPTS:=-l7 -C zstd:level=22 --metadata-compression null -S 21 -B 8 --order nilsimsa -W 12 -w 4}"
 
 # Clean up on exit
 cleanup() {

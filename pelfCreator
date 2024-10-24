@@ -120,7 +120,7 @@ DATE="$(date +%d_%m_%Y)"
 APPBUNDLE_ID="$NAME-$DATE-$MAINTAINER"
 APPDIR="$NAME-$DATE.AppDir"
 OUTPUT_TO="$NAME-$DATE.dwfs.AppBundle"
-: "${COMPRESSION_OPTS:=-l7 -C zstd:level=22 --metadata-compression null -S 21 -B 3 --order nilsimsa -W 12 -w 4}"
+: "${COMPRESSION_OPTS:=-l7 -C zstd:level=22 --metadata-compression null -S 19 -B 8 --order nilsimsa -W 12 -w 4}"
 
 [ "$VERBOSE" = "1" ] && TAR_OPTS="xzfv" || TAR_OPTS="xzf"
 mkdir -p "$APPDIR/usr/bin" "$APPDIR/rootfs/app"
