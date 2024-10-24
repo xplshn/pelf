@@ -93,7 +93,7 @@ func isDynamic(binaryPath string) (bool, error) {
 }
 
 // processBinary processes a binary file and decides whether to place it in the bin directory or shared/bin
-func processBinary(binaryPath string) error {
+func processBinary(binaryPath, dynExecPath string) error {
 	fileInfo, err := os.Stat(binaryPath)
 	if err != nil {
 		return err
@@ -172,11 +172,31 @@ func processBinary(binaryPath string) error {
 		}
 
 		symlinkPath := filepath.Join(binDir, fileInfo.Name())
-		if *createLinks {
-			if err := createSymlink(filepath.Join("..", defaultSharedDir, defaultBinDir, fileInfo.Name()), symlinkPath); err != nil {
+		if *createLinks { // Ugly as fuck. TODO: Find a better way or prettify
+			oPWD, err := os.Getwd()
+			if err != nil {
 				return err
 			}
+			os.Chdir(filepath.Dir(symlinkPath))
+			if err := createSymlink("../sharun", filepath.Join("../", defaultBinDir, filepath.Base(symlinkPath))); err != nil { // TODO, don't hardcode sharun
+				os.Chdir(oPWD)
+				return err
+			}
+			os.Chdir(oPWD)
 		}
+
+		//if *createLinks {
+		//	if err := createSymlink(filepath.Join("..", dynExecPath), symlinkPath); err != nil {
+		//		return err
+		//	}
+		//}
+
+		//symlinkPath := filepath.Join(binDir, fileInfo.Name())
+		//if *createLinks {
+		//	if err := createSymlink(filepath.Join("..", defaultSharedDir, defaultBinDir, fileInfo.Name()), symlinkPath); err != nil {
+		//		return err
+		//	}
+		//}
 	} else {
 		// Handle static binaries: Copy directly to the bin directory
 		binDir := filepath.Join(*dstDirPath, defaultBinDir)
@@ -214,30 +234,29 @@ func findDynExec() (string, error) {
 }
 
 // copyDynExec copies the sharun executable to the destination directory and makes it executable
-func copyDynExec() error {
-	sharunPath, err := findDynExec()
-	if err != nil {
+func copyDynExec(dynExecPath, dstDynExecPath string) error {
+	if err := copyFile(dynExecPath, dstDynExecPath); err != nil {
+		log.Fatalf("Unable to copy dynexec: %v", err)
+	}
+
+	if err := makeExecutable(dstDynExecPath); err != nil {
 		return err
 	}
 
-	dstSharunPath := filepath.Join(*dstDirPath, defaultBinDir, "sharun")
-	if err := copyFile(sharunPath, dstSharunPath); err != nil {
-		return err
-	}
-
-	if err := makeExecutable(dstSharunPath); err != nil {
-		return err
-	}
-
-	fmt.Printf("Copied and made executable: %s\n", dstSharunPath)
+	fmt.Printf("Copied and made executable: %s\n", dstDynExecPath)
 	return nil
 }
 
 func main() {
 	flag.Parse()
 
-	// First, try to find "sharun" in the PATH
-	if err := copyDynExec(); err != nil {
+	dynExecPath, err := findDynExec()
+	if err != nil {
+		log.Fatalf("%v", err)
+	}
+	dstDynExecPath := filepath.Join(*dstDirPath, "sharun")
+
+	if err := copyDynExec(dynExecPath, dstDynExecPath); err != nil {
 		log.Printf("sharun not found in PATH or failed to copy: %v\n", err)
 	}
 
@@ -253,7 +272,7 @@ func main() {
 	}
 
 	for _, binary := range binaryList {
-		if err := processBinary(binary); err != nil {
+		if err := processBinary(binary, dstDynExecPath); err != nil {
 			log.Printf("Error processing %s: %v\n", binary, err)
 		}
 	}

@@ -110,8 +110,8 @@ if [ -z "$MAINTAINER" ] || [ -z "$NAME" ] || [ -z "$PKG_ADD" ]; then
 fi
 
 # Check if ENTRYPOINT is required
-if [ -z "$ENTRYPOINT" ] && [ "$MULTICALL" -eq 0 ]; then
-	echo "Error: --entrypoint is required unless using --multicall." >&2
+if [ -z "$ENTRYPOINT" ] && [ "$MULTICALL" -eq 0 ] || [ "$NOROOTFS" -eq 0 ]; then
+	echo "Error: --entrypoint is required unless using --multicall or --norootfs." >&2
 	print_help
 	exit 1
 fi
@@ -212,7 +212,10 @@ if [ "$NOROOTFS" = 1 ]; then
 	TOBEKEPT="$AUXTOBEKEPT"
 
 	mv "$APPDIR/rootfs/entrypoint" "$APPDIR/entrypoint"
-	# shellcheck disable=SC2086 # Word-splitting is intentional here
+
+	echo "LD_LIBRARY_PATH=\"$APPDIR/rootfs/lib:$APPDIR/rootfs/usr/lib\" lib4bin --dst-dir \"$APPDIR\" $TOBEKEPT" > "$APPDIR/.genl4b"
+	chmod +x "$APPDIR/.genl4b"
+    # shellcheck disable=SC2086 # Word-splitting is intentional here
 	LD_LIBRARY_PATH="$APPDIR/rootfs/lib:$APPDIR/rootfs/usr/lib" lib4bin --dst-dir "$APPDIR" $TOBEKEPT && {
 		rm -rf "${APPDIR:?}/usr" "${APPDIR:?}/rootfs"
 		# Download LAUNCH and set as entrypoint
@@ -221,8 +224,6 @@ if [ "$NOROOTFS" = 1 ]; then
 			exit 1
 		fi
 		chmod +x "$APPDIR/AppRun"
-		echo "LD_LIBRARY_PATH=\"$APPDIR/rootfs/lib:$APPDIR/rootfs/usr/lib\" lib4bin --dst-dir \"$APPDIR\" $TOBEKEPT" > "$APPDIR/.genl4b"
-		chmod +x "$APPDIR/.genl4b"
 	}
 fi
 
