@@ -7,9 +7,6 @@ FALLBACK="$(cat "$SELF_TEMPDIR/entrypoint")"
 
 # LAUNCH helper
 CMD="$1"
-ARGS="$*"
-set -- $ARGS
-shift
 
 if [ "$NOSHARUN" != 1 ]; then
     PATH="${SELF_TEMPDIR}/bin:$PATH"
@@ -25,9 +22,10 @@ fi
 # Check if ARGV0 is available as a command. We remove the "./" that might prepend ARGV0
 if command -v "${ARGV0%.*}" >/dev/null 2>&1; then
     # If ARGV0 is available, execute ARGV0 with its arguments
-    exec "${ARGV0%.*}" "$ARGS" # Because ARGS' first element was not in fact the CMD
+    exec "${ARGV0%.*}" "$@"
 elif command -v "$CMD" >/dev/null 2>&1; then
-    # If CMD (the first part of ARGS) is available, execute it with remaining arguments
+    # If CMD ($1) is available, execute it with remaining arguments
+    shifts
     exec "$CMD" "$@"
 elif command -v "$FALLBACK" >/dev/null 2>&1; then
     "$FALLBACK" "$@"
