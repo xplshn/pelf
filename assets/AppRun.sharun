@@ -20,12 +20,12 @@ else
 fi
 
 # Check if ARGV0 is available as a command. We remove the "./" that might prepend ARGV0
-if command -v "${ARGV0%.*}" >/dev/null 2>&1; then
+if command -v "${ARGV0#./}" >/dev/null 2>&1; then
     # If ARGV0 is available, execute ARGV0 with its arguments
-    exec "${ARGV0%.*}" "$@"
+    exec "${ARGV0#./}" "$@"
 elif command -v "$CMD" >/dev/null 2>&1; then
     # If CMD ($1) is available, execute it with remaining arguments
-    shifts
+    shift
     exec "$CMD" "$@"
 elif command -v "$FALLBACK" >/dev/null 2>&1; then
     "$FALLBACK" "$@"
