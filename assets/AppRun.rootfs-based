@@ -40,6 +40,7 @@ $BWRAP_BIN --bind "$BWROOTFS" / \
     --bind-try /media /media \
     --bind-try /mnt /mnt \
     --bind-try /opt /opt \
+    --bind-try /usr/share/fontconfig /usr/share/fontconfig \
     --ro-bind-try /usr/share/fonts /usr/share/fonts \
     --ro-bind-try /usr/share/themes /usr/share/themes \
     --ro-bind-try /sys /sys \
@@ -52,7 +53,6 @@ $BWRAP_BIN --bind "$BWROOTFS" / \
     --ro-bind-try /etc/asound.conf /etc/asound.conf \
     --ro-bind-try /etc/localtime /etc/localtime \
     --ro-bind-try /etc/hostname /etc/hostname \
-    --ro-bind-try /usr/share/fontconfig /usr/share/fontconfig \
     --ro-bind-try "$SELF_TEMPDIR" /app \
     --setenv SELF "$SELF" \
     --setenv SELF_TEMPDIR "$SELF_TEMPDIR" \
