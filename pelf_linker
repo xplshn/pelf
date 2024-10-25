@@ -6,72 +6,72 @@ PELF_LIBDIRS=""
 
 # Function to concatenate existing directories from *_binDir environment variables into PELF_BINDIRS
 concatenate_bindirs() {
-    # Find all environment variables ending with _binDir
-    vars="$(env | grep ".*_binDir=" | cut -f 1 -d '=')"
-    for v in $vars; do
-        # Get the value of the variable
-        eval "vval=\$$v"
+	# Find all environment variables ending with _binDir
+	vars="$(env | grep ".*_binDir=" | cut -f 1 -d '=')"
+	for v in $vars; do
+		# Get the value of the variable
+		eval "vval=\$$v"
 
-        # Save the current IFS and change it to handle colon-separated paths
-        old_ifs="$IFS"
-        IFS=":"
+		# Save the current IFS and change it to handle colon-separated paths
+		old_ifs="$IFS"
+		IFS=":"
 
-        # Loop through each path in the variable
-        for dir in $vval; do
-            # Check if the directory exists
-            if [ -d "$dir" ]; then
-                # Append to PELF_BINDIRS if the directory exists
-                if [ -z "$PELF_BINDIRS" ]; then
-                    PELF_BINDIRS="$dir"
-                else
-                    PELF_BINDIRS="$PELF_BINDIRS:$dir"
-                fi
-            fi
-        done
+		# Loop through each path in the variable
+		for dir in $vval; do
+			# Check if the directory exists
+			if [ -d "$dir" ]; then
+				# Append to PELF_BINDIRS if the directory exists
+				if [ -z "$PELF_BINDIRS" ]; then
+					PELF_BINDIRS="$dir"
+				else
+					PELF_BINDIRS="$PELF_BINDIRS:$dir"
+				fi
+			fi
+		done
 
-        # Restore the original IFS
-        IFS="$old_ifs"
-    done
+		# Restore the original IFS
+		IFS="$old_ifs"
+	done
 
-    # Print the concatenated PELF_BINDIRS
-    if [ -z "$1" ]; then
-        echo "PELF_BINDIRS=\"$PELF_BINDIRS\""
-    fi
+	# Print the concatenated PELF_BINDIRS
+	if [ -z "$1" ]; then
+		echo "PELF_BINDIRS=\"$PELF_BINDIRS\""
+	fi
 }
 
 # Function to concatenate existing directories from *_libDir environment variables into PELF_LIBDIRS
 concatenate_libdirs() {
-    # Find all environment variables ending with _libDir
-    vars="$(env | grep ".*_libDir=" | cut -f 1 -d '=')"
-    for v in $vars; do
-        # Get the value of the variable
-        eval "vval=\$$v"
+	# Find all environment variables ending with _libDir
+	vars="$(env | grep ".*_libDir=" | cut -f 1 -d '=')"
+	for v in $vars; do
+		# Get the value of the variable
+		eval "vval=\$$v"
 
-        # Save the current IFS and change it to handle colon-separated paths
-        old_ifs="$IFS"
-        IFS=":"
+		# Save the current IFS and change it to handle colon-separated paths
+		old_ifs="$IFS"
+		IFS=":"
 
-        # Loop through each path in the variable
-        for dir in $vval; do
-            # Check if the directory exists
-            if [ -d "$dir" ]; then
-                # Append to PELF_LIBDIRS if the directory exists
-                if [ -z "$PELF_LIBDIRS" ]; then
-                    PELF_LIBDIRS="$dir"
-                else
-                    PELF_LIBDIRS="$PELF_LIBDIRS:$dir"
-                fi
-            fi
-        done
+		# Loop through each path in the variable
+		for dir in $vval; do
+			# Check if the directory exists
+			if [ -d "$dir" ]; then
+				# Append to PELF_LIBDIRS if the directory exists
+				if [ -z "$PELF_LIBDIRS" ]; then
+					PELF_LIBDIRS="$dir"
+				else
+					PELF_LIBDIRS="$PELF_LIBDIRS:$dir"
+				fi
+			fi
+		done
 
-        # Restore the original IFS
-        IFS="$old_ifs"
-    done
+		# Restore the original IFS
+		IFS="$old_ifs"
+	done
 
-    # Print the concatenated PELF_LIBDIRS
-    if [ -z "$1" ]; then
-        echo "PELF_LIBDIRS=\"$PELF_LIBDIRS\""
-    fi
+	# Print the concatenated PELF_LIBDIRS
+	if [ -z "$1" ]; then
+		echo "PELF_LIBDIRS=\"$PELF_LIBDIRS\""
+	fi
 }
 
 # Call the functions
@@ -79,8 +79,8 @@ concatenate_bindirs "$1"
 concatenate_libdirs "$1"
 
 if [ "$1" = "--export" ]; then
-    export PELF_LIBDIRS="$PELF_LIBDIRS"
-    export PELF_BINDIRS="$PELF_BINDIRS"
+	export PELF_LIBDIRS="$PELF_LIBDIRS"
+	export PELF_BINDIRS="$PELF_BINDIRS"
 else
-    LD_LIBRARY_PATH="$PELF_LIBDIRS" PATH="$PATH:$PELF_BINDIRS" "$@"
+	LD_LIBRARY_PATH="$PELF_LIBDIRS" PATH="$PATH:$PELF_BINDIRS" "$@"
 fi

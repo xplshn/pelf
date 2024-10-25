@@ -292,8 +292,8 @@ main() {
 	# Set up cleanup trap
 	trap 'cleanup' INT TERM HUP QUIT EXIT
 
-	_BIN_DIRs="$_VAR_MOUNT_DIR/bin:$_VAR_MOUNT_DIR/usr/bin"
-	_LIB_DIRs="$_VAR_MOUNT_DIR/lib:$_VAR_MOUNT_DIR/usr/lib:$_VAR_MOUNT_DIR/lib64:$_VAR_MOUNT_DIR/usr/lib64:$_VAR_MOUNT_DIR/lib32:$_VAR_MOUNT_DIR/usr/lib32:$_VAR_MOUNT_DIR/libx32:$_VAR_MOUNT_DIR/usr/libx32"
+	_BIN_DIRs="$_VAR_MOUNT_DIR/bin:$_VAR_MOUNT_DIR/usr/bin:$_VAR_MOUNT_DIR/shared/bin"
+	_LIB_DIRs="$_VAR_MOUNT_DIR/lib:$_VAR_MOUNT_DIR/usr/lib:$_VAR_MOUNT_DIR/shared/lib:$_VAR_MOUNT_DIR/lib64:$_VAR_MOUNT_DIR/usr/lib64:$_VAR_MOUNT_DIR/lib32:$_VAR_MOUNT_DIR/usr/lib32:$_VAR_MOUNT_DIR/libx32:$_VAR_MOUNT_DIR/usr/libx32"
 
 	# Add extra binaries to the PATH if they exist
 	if [ "$_VAR_FOUND_RUNNING_INSTANCE" != "1" ]; then

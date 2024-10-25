@@ -13,6 +13,7 @@ print_help() {
    -c, --multicall    Use multicall setup (downloads and sets LAUNCH as entrypoint)
    -z, --dontpack     Disables .dwfs.AppBundle packaging, thus leaving only the AppDir
    -x, --norootfs     Ditches the rootfs and packs only the desired executables
+   -o, --output-to    Set the output file name (optional, default: <name>-<date>.dwfs.AppBundle)
    -v, --verbose      Enable verbose mode
    -h, --help         Display this help and exit
  
@@ -36,7 +37,7 @@ MULTICALL=0
 : "${ROOTFS_URL:=https://pub.ajam.dev/utils/alpine-mini-$(uname -m)/rootfs.tar.gz}"
 
 # Parse arguments using getopt
-if ! ARGS=$(getopt -o m:n:p:e:r:x:czvh --long maintainer:,name:,pkg-add:,entrypoint:,rootfs-url:,norootfs:,multicall,dontpack,verbose,help -n "$0" -- "$@"); then
+if ! ARGS=$(getopt -o m:n:p:e:r:x:o:czvh --long maintainer:,name:,pkg-add:,entrypoint:,rootfs-url:,norootfs:,output:,multicall,dontpack,verbose,help -n "$0" -- "$@"); then
 	echo "Failed to parse arguments." >&2
 	exit 1
 fi
@@ -81,6 +82,10 @@ while true; do
 		if [ -z "$TOBEKEPT" ]; then
 			echo 'Error: You should specify the names of the binaries to be kept like this (example): "usr/bin/wezterm" "usr/bin/wezterm-gui"' >&2
 		fi
+		;;
+	-o | --output-to)
+		OUTPUT_TO="$2"
+		shift 2
 		;;
 	-v | --verbose)
 		VERBOSE=1
@@ -216,9 +221,9 @@ if [ "$NOROOTFS" = 1 ]; then
 
 	mv "$APPDIR/rootfs/entrypoint" "$APPDIR/entrypoint"
 
-	echo "LD_LIBRARY_PATH=\"$APPDIR/rootfs/lib:$APPDIR/rootfs/usr/lib\" lib4bin --dst-dir \"$APPDIR\" $TOBEKEPT" > "$APPDIR/.genl4b"
+	echo "LD_LIBRARY_PATH=\"$APPDIR/rootfs/lib:$APPDIR/rootfs/usr/lib\" lib4bin --dst-dir \"$APPDIR\" $TOBEKEPT" >"$APPDIR/.genl4b"
 	chmod +x "$APPDIR/.genl4b"
-    # shellcheck disable=SC2086 # Word-splitting is intentional here
+	# shellcheck disable=SC2086 # Word-splitting is intentional here
 	LD_LIBRARY_PATH="$APPDIR/rootfs/lib:$APPDIR/rootfs/usr/lib" lib4bin --dst-dir "$APPDIR" $TOBEKEPT && {
 		rm -rf "${APPDIR:?}/usr" "${APPDIR:?}/rootfs"
 		# Download LAUNCH and set as entrypoint
