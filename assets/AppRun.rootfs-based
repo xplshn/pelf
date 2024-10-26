@@ -116,7 +116,7 @@ build_bwrap_options() {
     # Conditionally add optional directories
 
     # Themes & Icons
-    if [ -z "$SHARE_LOOK" ]; then
+    if [ "$SHARE_LOOK" = "1" ]; then
         [ -d /usr/share/icons ] && BWRAP_OPTIONS="$BWRAP_OPTIONS --ro-bind-try /usr/share/icons /usr/share/icons"
         [ -d /usr/share/themes ] && BWRAP_OPTIONS="$BWRAP_OPTIONS --ro-bind-try /usr/share/themes /usr/share/themes"
     fi
