@@ -115,7 +115,7 @@ if [ -z "$MAINTAINER" ] || [ -z "$NAME" ] || [ -z "$PKG_ADD" ]; then
 fi
 
 # Check if ENTRYPOINT is required
-if [ -z "$ENTRYPOINT" ] && [ "$MULTICALL" -eq 0 ] || [ "$NOROOTFS" -eq 0 ]; then
+if [ -z "$ENTRYPOINT" ] && [ "$MULTICALL" = "0" ] || [ "$NOROOTFS" = "0" ]; then
 	echo "Error: --entrypoint is required unless using --multicall or --norootfs." >&2
 	print_help
 	exit 1
@@ -195,7 +195,7 @@ if [ "${ENTRYPOINT##*.}" = "desktop" ]; then
 fi
 
 # Handle multicall setup
-if [ "$MULTICALL" -eq "1" ]; then
+if [ "$MULTICALL" = "1" ]; then
 	echo "/usr/local/bin/LAUNCH" >"$APPDIR/rootfs/entrypoint"
 
 	mkdir -p "$APPDIR/rootfs/usr/local/bin"
