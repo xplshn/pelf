@@ -153,12 +153,12 @@ if ! wget -qO "$APPDIR/AppRun" https://raw.githubusercontent.com/xplshn/pelf/ref
 fi
 chmod +x "$APPDIR/AppRun"
 
-# Install packages with APK
-"$APPDIR/AppRun" --Xbwrap --uid "0" --gid "0" -- apk -X "http://dl-cdn.alpinelinux.org/alpine/edge/main" -U --allow-untrusted --initdb add "$PKG_ADD" # "$APPDIR/AppRun" --Xbwrap --uid "0" --gid "0" -- apk -X "https://dl-cdn.alpinelinux.org/alpine/edge/main" -U --allow-untrusted --initdb add "$PKG_ADD"
-
 # Create entrypoint file
 echo "$ENTRYPOINT" >"$APPDIR/rootfs/entrypoint"
 chmod +x "$APPDIR/rootfs/entrypoint"
+
+# Install packages with APK
+"$APPDIR/AppRun" --Xbwrap --uid "0" --gid "0" -- apk -X "http://dl-cdn.alpinelinux.org/alpine/edge/main" -U --allow-untrusted --initdb add "$PKG_ADD" # "$APPDIR/AppRun" --Xbwrap --uid "0" --gid "0" -- apk -X "https://dl-cdn.alpinelinux.org/alpine/edge/main" -U --allow-untrusted --initdb add "$PKG_ADD"
 
 # Handle .desktop file and icon if applicable. (resets entrypoint based on Exec= line and creates .DirIcon based on Icon= line)
 if [ "${ENTRYPOINT##*.}" = "desktop" ]; then
