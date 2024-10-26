@@ -5,7 +5,7 @@
 
 # Determine the path to the script itself
 SELF=$(readlink -f "$0")
-SELF_TEMPDIR="$(dirname "$(readlink -f "$0")")" #SELF_TEMPDIR=${SELF%/*}
+SELF_TEMPDIR=${SELF%/*}
 
 [ -d "$SELF_TEMPDIR/rootfs" ] || exit 1
 BWROOTFS="$SELF_TEMPDIR/rootfs"
