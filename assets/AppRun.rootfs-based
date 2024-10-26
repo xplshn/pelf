@@ -1,6 +1,7 @@
 #!/bin/sh
 
 [ "$DEBUG" = "1" ] && set -x
+[ "$DEBUG2" = "1" ] && set -v
 
 # Determine the path to the script itself
 SELF=$(readlink -f "$0")
@@ -11,10 +12,10 @@ BWROOTFS="$SELF_TEMPDIR/rootfs"
 
 file_reader() {
     files="$*"
-    for file in "$files"; do
+    for file in $files; do
         while IFS= read -r line || [ -n "$line" ]; do
             printf '%s\n' "$line"
-        done < "$file"
+        done <"$file"
     done
 }
 
@@ -32,6 +33,21 @@ BWRAP_BIN="${SELF_TEMPDIR}/usr/bin/bwrap"
 export oPATH="$PATH"
 PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
 
+bool() {
+    case "$1" in
+        false | 0)
+            echo "0"
+            ;;
+        true | 1)
+            echo "1"
+            ;;
+        *)
+            echo "Invalid boolean value: $1" >&2
+            exit 1
+            ;;
+    esac
+}
+
 # Parse other arguments
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -43,23 +59,12 @@ while [ "$#" -gt 0 ]; do
             break
             ;;
         --Xbwrap-XdgRuntimeDir)
-            SHARE_XDG_RUNTIME_DIR=1
+            SHARE_XDG_RUNTIME_DIR=$(bool "$2")
+            shift
             ;;
         --Xbwrap-audio)
-            case "$2" in
-                false|0)
-                    SHARE_AUDIO="0"
-                    shift
-                    ;;
-                true|1)
-                    SHARE_AUDIO="1"
-                    shift
-                    ;;
-                *)
-                    echo "Invalid value for --Xbwrap-audio: $2" >&2
-                    exit 1
-                    ;;
-            esac
+            SHARE_AUDIO=$(bool "$2")
+            shift
             ;;
         *)
             SELF_ARGS="$SELF_ARGS $1"
@@ -75,7 +80,7 @@ fi
 
 # Function to build bwrap options
 build_bwrap_options() {
-    BWRAP_OPTIONS="--bind \"$BWROOTFS\" / \
+    BWRAP_OPTIONS="--bind $BWROOTFS / \
         --share-net \
         --proc /proc \
         --dev-bind /dev /dev \
@@ -102,7 +107,7 @@ build_bwrap_options() {
         --setenv SELF_TEMPDIR \"$SELF_TEMPDIR\" \
         --setenv BWROOTFS \"$BWROOTFS\" \
         --setenv ARGV0 \"$ARGV0\" \
-        --setenv ARGS \"!$*\" \
+        --setenv ARGS \"$SELF_ARGS\" \
         --setenv WITHIN_BWRAP \"1\" \
         --cap-add CAP_SYS_ADMIN"
 
@@ -115,10 +120,10 @@ build_bwrap_options() {
     [ -z "$XDG_RUNTIME_DIR" ] && [ -d "/run/user/$UID" ] && XDG_RUNTIME_DIR="/run/user/$UID"
 
     # Add optional XDG_RUNTIME_DIR binding if enabled
-    [ "$SHARE_XDG_RUNTIME_DIR" -eq 1 ] && [ -n "$XDG_RUNTIME_DIR" ] && BWRAP_OPTIONS="$BWRAP_OPTIONS --bind-try $XDG_RUNTIME_DIR $XDG_RUNTIME_DIR"
+    [ "$SHARE_XDG_RUNTIME_DIR" = "1" ] && [ -n "$XDG_RUNTIME_DIR" ] && BWRAP_OPTIONS="$BWRAP_OPTIONS --bind-try $XDG_RUNTIME_DIR $XDG_RUNTIME_DIR"
 
     # Add optional audio bindings if enabled
-    if [ "$SHARE_AUDIO" -eq 1 ] && [ -n "$XDG_RUNTIME_DIR" ]; then
+    if [ "$SHARE_AUDIO" = "1" ] && [ -n "$XDG_RUNTIME_DIR" ]; then
         BWRAP_OPTIONS="$BWRAP_OPTIONS \
             $([ -f /etc/asound.conf ] && echo "--ro-bind-try /etc/asound.conf /etc/asound.conf") \
             --bind-try $XDG_RUNTIME_DIR/pulse $XDG_RUNTIME_DIR/pulse \
@@ -134,5 +139,4 @@ build_bwrap_options() {
 # Build and execute the bwrap options
 BWRAP_OPTIONS="$(build_bwrap_options "$@")"
 
-# Execute bwrap with the built options
-"$BWRAP_BIN" $BWRAP_OPTIONS $SELF_ARGS
+eval "$BWRAP_BIN $BWRAP_OPTIONS $SELF_ARGS"
