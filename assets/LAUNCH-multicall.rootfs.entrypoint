@@ -1,4 +1,5 @@
 #!/bin/sh
+
 [ "$DEBUG" = "1" ] && set -x
 [ -z "$oPATH" ] && {
     oPATH="$PATH"
@@ -16,13 +17,29 @@ _cat() {
 }
 FALLBACK="$(_cat "/usr/local/bin/default")"
 
+__RESET="\033[0m"
+log() {
+    __YELLOW="\033[0;33m"
+	printf >&2 "Traceback: AppRun -> (rootfs)/usr/local/bin/LAUNCH ${__YELLOW}INFO${__RESET}: %s\n" "$*"
+}
+error() {
+    __RED="\033[0;31m"
+	printf >&2 "Traceback: AppRun -> (rootfs)/usr/local/bin/LAUNCH ${__RED}ERROR${__RESET}: %s\n" "$*"
+	exit 1
+}
+
 # Execute the command if it exists
 execute_command() {
     _cmd="$1"
     shift
     if _cmd="$(command -v "$_cmd")" >/dev/null 2>&1; then
-        PATH="$oPATH" exec "$_cmd" "$@"
+        PATH="$oPATH"
+        shift
+        exec "$_cmd" "$@"
         return 0
+    elif [ -x "$_cmd" ]; then
+        shift
+        exec "$_cmd" "$@"
     fi
     return 1
 }
@@ -37,6 +54,12 @@ elif [ -n "$CMD" ] && execute_command "$CMD" "$@"; then
 elif [ -n "$FALLBACK" ] && execute_command "$FALLBACK" "$@"; then
     :
 else
-    echo "Error: Neither ARGV0 ('${ARGV0%.*}') nor ARGS ('$CMD') are available in \$PATH"
-    exit 1
+    log "W: DEBUG INFO:"
+    log "        \$CMD: $CMD"
+    log "         \$@: " "$@"
+    log "         \$0: $0"
+    log "       \$SELF: $SELF"
+    log "   \$FALLBACK: $FALLBACK"
+    log "  \$SELF_ARGS: $ARGS"
+    error "Error: Neither ARGV0 ('${ARGV0%.*}') nor the supplied argument ('$CMD') are available in \$PATH"
 fi
