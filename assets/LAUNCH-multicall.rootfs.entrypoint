@@ -1,5 +1,10 @@
 #!/bin/sh
 [ "$DEBUG" = "1" ] && set -x
+[ -z "$oPATH" ] && {
+    oPATH="$PATH"
+    PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+}
+
 CMD="$1"
 _cat() {
     files="$*"
@@ -16,7 +21,7 @@ execute_command() {
     _cmd="$1"
     shift
     if _cmd="$(command -v "$_cmd")" >/dev/null 2>&1; then
-        exec "$_cmd" "$@"
+        PATH="$oPATH" exec "$_cmd" "$@"
         return 0
     fi
     return 1
