@@ -9,43 +9,41 @@ SELF_TEMPDIR=${SELF%/*}
 [ -d "$SELF_TEMPDIR/rootfs" ] || exit 1
 BWROOTFS="$SELF_TEMPDIR/rootfs"
 
-SELF_ARGS="-- env -u LD_PRELOAD -u LD_LIBRARY_PATH $(cat "$BWROOTFS/entrypoint") $*"
+# Initialize default arguments
+SELF_ARGS="-- env -u LD_PRELOAD -u LD_LIBRARY_PATH $(cat "$BWROOTFS/entrypoint")"
 
 # Default option settings
 SHARE_AUDIO=1
+SHARE_XDG_RUNTIME_DIR=0
+
 while [ "$#" -gt 0 ]; do
-    # Defaults get disabled when you start using any flag
-    SHARE_AUDIO=0
-    SHARE_XDG_RUNTIME_DIR=0
     case "$1" in
         --Xbwrap-XdgRuntimeDir)
             SHARE_XDG_RUNTIME_DIR=1
-            shift
             ;;
         --Xbwrap-audio)
             SHARE_AUDIO=1
-            shift
             ;;
         --Xbwrap)
             shift
             SELF_ARGS="$*"
+            break # Exit loop, as this replaces all other options
             ;;
         *)
-            shift
+            SELF_ARGS="$SELF_ARGS $1" # Keep any additional args
             ;;
     esac
+    shift
 done
 
-if [ -f "$SELF_TEMPDIR/usr/bin/bwrap" ]; then
-    BWRAP_BIN="$SELF_TEMPDIR/usr/bin/bwrap"
-else
-    BWRAP_BIN="bwrap"
-fi
+# Find bwrap
+BWRAP_BIN="${SELF_TEMPDIR}/usr/bin/bwrap"
+[ ! -f "$BWRAP_BIN" ] && BWRAP_BIN="bwrap"
 
-if [ -z "$ARGV0" ]; then
-    ARGV0="${0##*/}"
-fi
+# Default ARGV0
+ARGV0="${0##*/}"
 
+# Check for existing entrypoint execution
 if [ "$WITHIN_BWRAP" = 1 ] && [ -f "/entrypoint" ]; then
     exec "/entrypoint"
 fi
@@ -89,17 +87,13 @@ build_bwrap_options() {
     [ -d /usr/share/fontconfig ] && BWRAP_OPTIONS="$BWRAP_OPTIONS --bind-try /usr/share/fontconfig /usr/share/fontconfig"
 
     UID="$(id -u)"
-    if [ -z "$XDG_RUNTIME_DIR" ] && [ -d "/run/user/$UID" ]; then
-        XDG_RUNTIME_DIR="/run/user/$UID"
-    fi
+    [ -z "$XDG_RUNTIME_DIR" ] && [ -d "/run/user/$UID" ] && XDG_RUNTIME_DIR="/run/user/$UID"
 
-    # Add optional XDG_RUNTIME_DIR binding if --Xbwrap-XdgRuntimeDir is enabled
-    if [ "$SHARE_XDG_RUNTIME_DIR" -eq 1 ] && [ -n "$XDG_RUNTIME_DIR" ]; then
-        BWRAP_OPTIONS="$BWRAP_OPTIONS --bind-try $XDG_RUNTIME_DIR $XDG_RUNTIME_DIR"
-    fi
+    # Add optional XDG_RUNTIME_DIR binding if enabled
+    [ "$SHARE_XDG_RUNTIME_DIR" -eq 1 ] && [ -n "$XDG_RUNTIME_DIR" ] && BWRAP_OPTIONS="$BWRAP_OPTIONS --bind-try $XDG_RUNTIME_DIR $XDG_RUNTIME_DIR"
 
-    # Add optional audio bindings if --Xbwrap-audio is enabled
-    if [ "$SHARE_AUDIO" -eq 1 ] && [ -n "$XDG_RUNTIME_DIR" ] && [ -d "$XDG_RUNTIME_DIR" ]; then
+    # Add optional audio bindings if enabled
+    if [ "$SHARE_AUDIO" -eq 1 ] && [ -n "$XDG_RUNTIME_DIR" ]; then
         BWRAP_OPTIONS="$BWRAP_OPTIONS \
             $([ -f /etc/asound.conf ] && echo "--ro-bind-try /etc/asound.conf /etc/asound.conf") \
             --bind-try $XDG_RUNTIME_DIR/pulse $XDG_RUNTIME_DIR/pulse \
@@ -115,10 +109,6 @@ build_bwrap_options() {
 # Build and execute the bwrap options
 BWRAP_OPTIONS="$(build_bwrap_options "$@")"
 
+# Execute bwrap with the built options
 PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
 "$BWRAP_BIN" $BWRAP_OPTIONS $SELF_ARGS
-
-####### MISC #####################################
-#    --bind-try /usr/lib/locale /usr/lib/locale \
-#    --perms 0700 \
-#    --uid "0" --gid "0" \
