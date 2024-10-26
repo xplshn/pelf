@@ -32,16 +32,14 @@ BWRAP_BIN="${SELF_TEMPDIR}/usr/bin/bwrap"
 export oPATH="$PATH"
 PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
 
-# Check for the --Xbwrap option before entering the loop
-if [ "$1" = "--Xbwrap" ]; then
-    shift
-    SELF_ARGS="$*"
-    exec "$BWRAP_BIN" "$SELF_ARGS"
-fi
-
 # Parse other arguments
 while [ "$#" -gt 0 ]; do
     case "$1" in
+        --Xbwrap)
+            shift
+            SELF_ARGS="$*"
+            break
+            ;;
         --Xbwrap-XdgRuntimeDir)
             SHARE_XDG_RUNTIME_DIR=1
             ;;
