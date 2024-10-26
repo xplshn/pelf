@@ -49,7 +49,7 @@ bool() {
 }
 
 # Parse other arguments
-while [ "$#" -gt 0 ]; do
+while [ "$#" -gt "0" ]; do
     case "$1" in
         --Xbwrap)
             shift
@@ -78,9 +78,9 @@ while [ "$#" -gt 0 ]; do
 done
 
 # Check for existing entrypoint execution
-if [ "$WITHIN_BWRAP" = 1 ] && [ -f "/entrypoint" ]; then
-    exec "/entrypoint"
-fi
+#if [ "$WITHIN_BWRAP" = 1 ] && [ -f "/entrypoint" ]; then
+#    exec "/entrypoint"
+#fi
 
 # Function to build bwrap options
 build_bwrap_options() {
@@ -116,7 +116,7 @@ build_bwrap_options() {
     # Conditionally add optional directories
 
     # Themes & Icons
-    if [ -z "$SHARE_LOOK" ]; then
+    if [ "$SHARE_LOOK" = "1" ]; then
         [ -d /usr/share/icons ] && BWRAP_OPTIONS="$BWRAP_OPTIONS --ro-bind-try /usr/share/icons /usr/share/icons"
         [ -d /usr/share/themes ] && BWRAP_OPTIONS="$BWRAP_OPTIONS --ro-bind-try /usr/share/themes /usr/share/themes"
     fi
