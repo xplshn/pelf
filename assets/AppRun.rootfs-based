@@ -12,36 +12,48 @@ BWROOTFS="$SELF_TEMPDIR/rootfs"
 # Initialize default arguments
 SELF_ARGS="-- env -u LD_PRELOAD -u LD_LIBRARY_PATH $(cat "$BWROOTFS/entrypoint")"
 
-# Default option settings
-SHARE_AUDIO=1
-SHARE_XDG_RUNTIME_DIR=0
+# Find bwrap
+BWRAP_BIN="${SELF_TEMPDIR}/usr/bin/bwrap"
+[ ! -f "$BWRAP_BIN" ] && BWRAP_BIN="bwrap"
 
+# Default ARGV0
+[ -z "$ARGV0" ] && ARGV0="${0##*/}"
+
+# Check for the --Xbwrap option before entering the loop
+if [ "$1" = "--Xbwrap" ]; then
+    shift
+    SELF_ARGS="$*"
+    exec "$BWRAP_BIN" "$SELF_ARGS"
+fi
+
+# Parse other arguments
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --Xbwrap-XdgRuntimeDir)
             SHARE_XDG_RUNTIME_DIR=1
             ;;
         --Xbwrap-audio)
-            SHARE_AUDIO=1
-            ;;
-        --Xbwrap)
-            shift
-            SELF_ARGS="$*"
-            break # Exit loop, as this replaces all other options
+            case "$2" in
+                false|0)
+                    SHARE_AUDIO="0"
+                    shift
+                    ;;
+                true|1)
+                    SHARE_AUDIO="1"
+                    shift
+                    ;;
+                *)
+                    echo "Invalid value for --Xbwrap-audio: $2" >&2
+                    exit 1
+                    ;;
+            esac
             ;;
         *)
-            SELF_ARGS="$SELF_ARGS $1" # Keep any additional args
+            SELF_ARGS="$SELF_ARGS $1"
             ;;
     esac
     shift
 done
-
-# Find bwrap
-BWRAP_BIN="${SELF_TEMPDIR}/usr/bin/bwrap"
-[ ! -f "$BWRAP_BIN" ] && BWRAP_BIN="bwrap"
-
-# Default ARGV0
-ARGV0="${0##*/}"
 
 # Check for existing entrypoint execution
 if [ "$WITHIN_BWRAP" = 1 ] && [ -f "/entrypoint" ]; then
