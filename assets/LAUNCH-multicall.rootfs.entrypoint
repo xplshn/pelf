@@ -2,25 +2,37 @@
 
 [ "$DEBUG" = "1" ] && set -x
 
-# Strip the first character from ARGS and ARGV0 (assuming it's '!')
-ARGS="$(echo "$ARGS" | cut -c2-)"
+# Remove the first character ('!') from ARGS for command extraction
+ARGS="${ARGS#?}" #ARGS="$(echo "$ARGS" | cut -c2-)"
 
-# shellcheck disable=SC2086 # Split ARGS into command and its arguments
+# Split ARGS into command and arguments
 set -- $ARGS
 CMD="$1"
-shift # Remove the command from the list, leaving the arguments in $@
+shift # Remove CMD, leaving arguments in $@
 
-# Force the use of the rootfs' binaries, and only after that, use the user's
-export oPATH="$PATH"
-PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
+file_reader() {
+    files="$*"
+    for file in $files; do
+        while IFS= read -r line || [ -n "$line" ]; do
+            printf '%s\n' "$line"
+        done < "$file"
+    done
+}
 
-# Check if ARGV0 is available as a command. We remove the "./" that might prepend ARGV0
-if command -v "${ARGV0%.*}" >/dev/null 2>&1; then
-    # If ARGV0 is available, execute ARGV0 with its arguments
-    exec "${ARGV0%.*}" "$ARGS" # Because ARGS' first element was not in fact the CMD
+# Define FALLBACK as content of /entrypoint if it exists
+FALLBACK_CMD=""
+[ -f "/entrypoint" ] && FALLBACK_CMD="$(file_reader "/entrypoint")"
+
+# Check for ARGV0 command availability (remove "./" if prefixed)
+ARGV0_CMD="${ARGV0#./}"
+
+# Sequentially attempt each command, and fallback to a harmless default if all fail
+if command -v "$ARGV0_CMD" >/dev/null 2>&1; then
+    exec "$ARGV0_CMD" "$@"
 elif command -v "$CMD" >/dev/null 2>&1; then
-    # If CMD (the first part of ARGS) is available, execute it with remaining arguments
     exec "$CMD" "$@"
+elif [ -n "$FALLBACK_CMD" ] && command -v "$FALLBACK_CMD" >/dev/null 2>&1; then
+    exec "$FALLBACK_CMD" "$@"
 else
     echo "Error: Neither ARGV0 ('${ARGV0%.*}') nor ARGS ('$CMD') are available in \$PATH"
     exit 1
