@@ -9,8 +9,17 @@ SELF_TEMPDIR=${SELF%/*}
 [ -d "$SELF_TEMPDIR/rootfs" ] || exit 1
 BWROOTFS="$SELF_TEMPDIR/rootfs"
 
+file_reader() {
+    files="$*"
+    for file in "$files"; do
+        while IFS= read -r line || [ -n "$line" ]; do
+            printf '%s\n' "$line"
+        done < "$file"
+    done
+}
+
 # Initialize default arguments
-SELF_ARGS="-- env -u LD_PRELOAD -u LD_LIBRARY_PATH $(cat "$BWROOTFS/entrypoint")"
+SELF_ARGS="-- env -u LD_PRELOAD -u LD_LIBRARY_PATH $(file_reader "$BWROOTFS/entrypoint")"
 
 # Find bwrap
 BWRAP_BIN="${SELF_TEMPDIR}/usr/bin/bwrap"
@@ -18,6 +27,10 @@ BWRAP_BIN="${SELF_TEMPDIR}/usr/bin/bwrap"
 
 # Default ARGV0
 [ -z "$ARGV0" ] && ARGV0="${0##*/}"
+
+# Forces the use of things contained within the rootfs
+export oPATH="$PATH"
+PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
 
 # Check for the --Xbwrap option before entering the loop
 if [ "$1" = "--Xbwrap" ]; then
@@ -122,5 +135,4 @@ build_bwrap_options() {
 BWRAP_OPTIONS="$(build_bwrap_options "$@")"
 
 # Execute bwrap with the built options
-PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
 "$BWRAP_BIN" $BWRAP_OPTIONS $SELF_ARGS
