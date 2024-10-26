@@ -10,18 +10,18 @@ trap 'rm -rf "$_VAR_WORKDIR"' INT TERM HUP QUIT EXIT
 
 # Exit with error message
 error() {
-    printf >&2 "ERROR: %s\n" "$*"
-    exit 1
+	printf >&2 "ERROR: %s\n" "$*"
+	exit 1
 }
 
 # Log to STDERR
 log() {
-    printf >&2 "%s\n" "$*"
+	printf >&2 "%s\n" "$*"
 }
 
 # Function to display usage/help information
 print_help() {
-    cat <<EOF
+	cat <<EOF
 Usage: $0 [options]
 
 Options:
@@ -30,7 +30,8 @@ Options:
   --add-appdir=[directory.AppDir]        Add an AppDir.
   --appbundle-id=[AppBundleID]           Specify the ID of the AppBundle.
   --embed-static-tools                   Embed static tools into the bundle.
-  --static-tools-dir=[directory]        Specify a custom directory from which to get the static tools.
+  --static-tools-dir=[directory]         Specify a custom directory from which to get the static tools.
+  --retrieve-runtime=[filepath]          Output the runtime to a file and exit
   --help                                 Display this help and exit.
 
 Examples:
@@ -43,20 +44,20 @@ EOF
 
 # Function to handle file/directory existence checks and operations
 check_and_process() {
-    FPATH="$1"
-    ACTION="$2"
+	FPATH="$1"
+	ACTION="$2"
 
-    if [ -e "$FPATH" ]; then
-        eval "$ACTION" "$FPATH"
-    else
-        error "$FPATH does not exist."
-    fi
+	if [ -e "$FPATH" ]; then
+		eval "$ACTION" "$FPATH"
+	else
+		error "$FPATH does not exist."
+	fi
 }
 
 # Parse command-line arguments using getopt
-if ! ARGS=$(getopt -o ho:c:a:i:e:s --long help,output-to:,compression:,add-appdir:,appbundle-id:,embed-static-tools,static-tools-dir: -n "$0" -- "$@"); then
-    print_help
-    exit 1
+if ! ARGS=$(getopt -o ho:c:a:i:e:s --long help,output-to:,compression:,add-appdir:,appbundle-id:,embed-static-tools,static-tools-dir:,retrieve-runtime: -n "$0" -- "$@"); then
+	print_help
+	exit 1
 fi
 
 # Evaluate the arguments
@@ -68,133 +69,140 @@ _VAR_MAIN_BINARY=""
 
 # Process options
 while true; do
-    case "$1" in
-        -h | --help)
-            print_help
-            exit 0
-            ;;
-        -o | --output-to)
-            _VAR_OUT_FILE="$2"
-            shift 2
-            ;;
-        -c | --compression)
-            _VAR_COMPRESS_ARG="$2"
-            shift 2
-            ;;
-        -a | --add-appdir)
-            if [ -z "$2" ]; then
-                echo "Error: You must specify an AppDir." >&2
-                exit 1
-            fi
-            __APPDIR="$2"
-            shift 2
-            ;;
-        -i | --appbundle-id)
-            _VAR_MAIN_BINARY="$2"
-            shift 2
-            ;;
-        -e | --embed-static-tools)
-            EMBED_STATIC_TOOLS="1"
-            shift
-            ;;
-        -s | --static-tools-dir)
-            _VAR_CUSTOM_EMBED_DIR="$2"
-            shift 2
-            ;;
-        --)
-            shift
-            break
-            ;;
-        *)
-            echo "Unexpected option: $1" >&2
-            print_help
-            exit 1
-            ;;
-    esac
+	case "$1" in
+	-h | --help)
+		print_help
+		exit 0
+		;;
+	-o | --output-to)
+		_VAR_OUT_FILE="$2"
+		shift 2
+		;;
+	-c | --compression)
+		_VAR_COMPRESS_ARG="$2"
+		shift 2
+		;;
+	-a | --add-appdir)
+		[ -z "$2" ] && error "You must specify an AppDir."
+		__APPDIR="$2"
+		shift 2
+		;;
+	-i | --appbundle-id)
+		[ -z "$2" ] && error "You must specify an AppBundle ID"
+		_VAR_MAIN_BINARY="$2"
+		shift 2
+		;;
+	-e | --embed-static-tools)
+		EMBED_STATIC_TOOLS="1"
+		shift
+		;;
+	-s | --static-tools-dir)
+		[ -z "$2" ] && error "You must specify a valid directory that contains the static tools"
+		_VAR_CUSTOM_EMBED_DIR="$2"
+		shift 2
+		;;
+	--retrieve-runtime)
+		[ -z "$2" ] && error "You must specify a valid filepath to which we can write the extracted runtime to"
+		_VAR_RETRIEVE_RUNTIME="$2"
+		shift 2
+		;;
+	--)
+		shift
+		break
+		;;
+	*)
+		echo "Unexpected option: $1" >&2
+		print_help
+		exit 1
+		;;
+	esac
 done
 
 # Check for required arguments after parsing
-if [ -z "$__APPDIR" ] || [ -z "$_VAR_MAIN_BINARY" ] || [ -z "$_VAR_OUT_FILE" ]; then
-    echo "Error: Required arguments not provided."
-    echo "You must specify:"
-    echo "  --add-appdir <AppDir>"
-    echo "  --appbundle-id <PROGRAM-DATE-MAINTAINER>"
-    echo "  --output-to <OUTPUT.AppBundle>"
-    print_help
-    exit 1
+if [ -z "$__APPDIR" ] || [ -z "$_VAR_MAIN_BINARY" ] || [ -z "$_VAR_OUT_FILE" ] && [ -z "$_VAR_RETRIEVE_RUNTIME" ]; then
+	echo "Error: Required arguments not provided."
+	echo "You must specify:"
+	echo "  --add-appdir <AppDir>"
+	echo "  --appbundle-id <PROGRAM-DATE-MAINTAINER>"
+	echo "  --output-to <OUTPUT.AppBundle>"
+	print_help
+	exit 1
 fi
 
-# Check if the APPDIR exists and is a directory
-if [ -d "$__APPDIR" ]; then
-    # Check for the existence of the AppRun file
-    if [ ! -f "$__APPDIR/AppRun" ]; then
-        echo "This AppDir does not contain an AppRun" >&2
+[ -z "$_VAR_RETRIEVE_RUNTIME" ] && {
+	# Check if the APPDIR exists and is a directory
+	if [ -d "$__APPDIR" ]; then
+		# Check for the existence of the AppRun file
+		if [ ! -f "$__APPDIR/AppRun" ]; then
+			echo "This AppDir does not contain an AppRun" >&2
 
-        # Attempt to copy a generic AppRun if it exists
-        if [ -f "./AppRun.generic" ]; then
-            echo "Copying a generic AppRun" >&2
-            cp ./AppRun.generic "$__APPDIR/AppRun"
-        else
-            echo "Downloading a generic AppRun..." >&2
-            wget -q -O "$__APPDIR/AppRun" "https://raw.githubusercontent.com/xplshn/pelf/refs/heads/pelf-ng/assets/AppRun.generic" || {
-                echo "Failed to download AppRun." >&2
-                exit 1
-            }
-        fi
-        chmod +x "$__APPDIR/AppRun"
-    fi
+			# Attempt to copy a generic AppRun if it exists
+			if [ -f "./AppRun.generic" ]; then
+				echo "Copying a generic AppRun" >&2
+				cp ./AppRun.generic "$__APPDIR/AppRun"
+			else
+				echo "Downloading a generic AppRun..." >&2
+				wget -q -O "$__APPDIR/AppRun" "https://raw.githubusercontent.com/xplshn/pelf/refs/heads/pelf-ng/assets/AppRun.generic" || {
+					echo "Failed to download AppRun." >&2
+					exit 1
+				}
+			fi
+			chmod +x "$__APPDIR/AppRun"
+		fi
 
-    # Process the directory and copy items
-    check_and_process "$__APPDIR" "true" && \
-    find "$__APPDIR" -mindepth 1 -maxdepth 1 | while IFS= read -r item; do
-        cp -dR "$item" "${_VAR_TO_BE_BUNDLED}/"
-    done
-else
-    echo "[$__APPDIR] is not an existing directory" >&2
-    exit 1
-fi
+		# Process the directory and copy items
+		check_and_process "$__APPDIR" "true" &&
+			find "$__APPDIR" -mindepth 1 -maxdepth 1 | while IFS= read -r item; do
+				cp -dR "$item" "${_VAR_TO_BE_BUNDLED}/"
+			done
+	else
+		echo "[$__APPDIR] is not an existing directory" >&2
+		exit 1
+	fi
 
-# Throw an error if any of these are missing
-for cmd in mkdwarfs dwarfs fusermount3; do
-    if ! command -v "$cmd" >/dev/null 2>&1; then
-        error "$cmd could not be found. Please install it and try again"
-    fi
-done
+	# Throw an error if any of these are missing
+	for cmd in mkdwarfs dwarfs fusermount3; do
+		if ! command -v "$cmd" >/dev/null 2>&1; then
+			error "$cmd could not be found. Please install it and try again"
+		fi
+	done
 
-# Function to handle file/directory existence checks and operations
-check_and_process() {
-    FPATH="$1"
-    ACTION="$2"
+	# Function to handle file/directory existence checks and operations
+	check_and_process() {
+		FPATH="$1"
+		ACTION="$2"
 
-    if [ -e "$FPATH" ]; then
-        eval "$ACTION" "$FPATH"
-    else
-        echo "$FPATH does not exist." >&2
-        exit 1
-    fi
+		if [ -e "$FPATH" ]; then
+			eval "$ACTION" "$FPATH"
+		else
+			echo "$FPATH does not exist." >&2
+			exit 1
+		fi
+	}
+
+	[ "$EMBED_STATIC_TOOLS" != 1 ] && [ "$_VAR_CUSTOM_EMBED_DIR" != "" ] && {
+		echo "Unable to specify static-tools-dir without passing --embed-static-tools"
+		exit 55
+	}
+
+	# Create a DWFS archive of the executable, libraries and additional files
+
+	[ -n "$_VAR_COMPRESS_ARG" ] || _VAR_COMPRESS_ARG="-l7 -C zstd:level=22 --metadata-compression null -S 21 -B 8 --order nilsimsa -W 12 -w 4" # --max-lookback-blocks=5 --block-size-bits=18 --compression zstd:level=22 # --max-lookback-blocks=5 --no-history --categorize=pcmaudio --compression pcmaudio/waveform::flac:level=8:exhaustive #_VAR_COMPRESS_ARG="--max-lookback-blocks=5 --categorize=pcmaudio --compression pcmaudio/waveform::flac:level=8"
+	# shellcheck disable=SC2086
+	if ! mkdwarfs --set-owner 0 --set-group 0 --no-create-timestamp --no-history --input "$_VAR_TO_BE_BUNDLED" --output "$_VAR_WORKDIR/archive.dwfs" --progress=ascii $_VAR_COMPRESS_ARG; then
+		error "Compression failed"
+	fi
 }
-
-[ "$EMBED_STATIC_TOOLS" != 1 ] && [ "$_VAR_CUSTOM_EMBED_DIR" != "" ] && {
-    echo "Unable to specify static-tools-dir without passing --embed-static-tools"
-    exit 55
-}
-
-# Create a DWFS archive of the executable, libraries and additional files
-
-[ -n "$_VAR_COMPRESS_ARG" ] || _VAR_COMPRESS_ARG="-l7 -C zstd:level=22 --metadata-compression null -S 21 -B 8 --order nilsimsa -W 12 -w 4" # --max-lookback-blocks=5 --block-size-bits=18 --compression zstd:level=22 # --max-lookback-blocks=5 --no-history --categorize=pcmaudio --compression pcmaudio/waveform::flac:level=8:exhaustive #_VAR_COMPRESS_ARG="--max-lookback-blocks=5 --categorize=pcmaudio --compression pcmaudio/waveform::flac:level=8"
-# shellcheck disable=SC2086
-if ! mkdwarfs --set-owner 0 --set-group 0 --no-create-timestamp --no-history --input "$_VAR_TO_BE_BUNDLED" --output "$_VAR_WORKDIR/archive.dwfs" --progress=ascii $_VAR_COMPRESS_ARG; then
-    error "Compression failed"
-fi
 
 # Create a self-extracting archive
 _VAR_HOST_INFO="$(uname -mrspv)"
 CONST_VERSION="1.8_dwfs_raw" # (vanilla)
 
 # Generate the loader script with conditional LD_LIBRARY_PATH replacements
-LOADER_SCRIPT=$(sed -e "s|__ENTRY_POINT__|${_VAR_MAIN_BINARY##*/}|g" \
-                        -e "s|__PELF_VERSION__|${CONST_VERSION}|g" \
-                        -e "s|__PELF_HOST__|${_VAR_HOST_INFO}|g" <<'_END_OF_LOADER_SCRIPT'
+LOADER_SCRIPT=$(
+	sed -e "s|__ENTRY_POINT__|${_VAR_MAIN_BINARY##*/}|g" \
+		-e "s|__PELF_VERSION__|${CONST_VERSION}|g" \
+		-e "s|__PELF_HOST__|${_VAR_HOST_INFO}|g" <<'_END_OF_LOADER_SCRIPT'
 #!/bin/sh
 
 # This file was automatically generated by __PELF_VERSION__. Find out more about it here: https://github.com/xplshn/pelf
@@ -408,46 +416,56 @@ _END_OF_LOADER_SCRIPT
 )
 
 # Create RUNTIME
-echo "$LOADER_SCRIPT" > "$_VAR_OUT_FILE"
+[ -z "$_VAR_RETRIEVE_RUNTIME" ] || {
+    echo "$LOADER_SCRIPT" >"$_VAR_RETRIEVE_RUNTIME"
+    log "Successfully wrote exported the runtime to \"$_VAR_RETRIEVE_RUNTIME\""
+    log "   Notes:
+        1. Add the marker for the static tools tgz prior to embedding the dwarfs archive. Remember to convert the tgz archive to base64 and only after adding the marker add the base64 static.tgz archive to this runtime
+        2. After that, add the dwarfs archive to the runtime (this file)
+        3. Then mark as executable and you're good to go"
+    exit 0
+} && {
+    echo "$LOADER_SCRIPT" >"$_VAR_OUT_FILE"
+}
 
 embed_static_tools() {
-    _VAR_STATIC_TOOLS_DIR="$_VAR_WORKDIR/static/$(uname -om | tr ' ' '_')"
-    # Create the static tools directory
-    mkdir -p "$_VAR_STATIC_TOOLS_DIR" || error "Failed to create directory $_VAR_WORKDIR/static"
+	_VAR_STATIC_TOOLS_DIR="$_VAR_WORKDIR/static/$(uname -om | tr ' ' '_')"
+	# Create the static tools directory
+	mkdir -p "$_VAR_STATIC_TOOLS_DIR" || error "Failed to create directory $_VAR_WORKDIR/static"
 
-    # Check if _VAR_CUSTOM_EMBED_DIR is set and use it; otherwise, use `which` to find the tools
-    if [ -n "$_VAR_CUSTOM_EMBED_DIR" ]; then
-        # Ensure the custom embed directory exists
-        if [ ! -d "$_VAR_CUSTOM_EMBED_DIR" ]; then
-            error "Custom embed directory $_VAR_CUSTOM_EMBED_DIR does not exist"
-        fi
+	# Check if _VAR_CUSTOM_EMBED_DIR is set and use it; otherwise, use `which` to find the tools
+	if [ -n "$_VAR_CUSTOM_EMBED_DIR" ]; then
+		# Ensure the custom embed directory exists
+		if [ ! -d "$_VAR_CUSTOM_EMBED_DIR" ]; then
+			error "Custom embed directory $_VAR_CUSTOM_EMBED_DIR does not exist"
+		fi
 
-        # Copy the tools from the custom embed directory
-        if ! cp "$_VAR_CUSTOM_EMBED_DIR/fusermount3" "$_VAR_CUSTOM_EMBED_DIR/dwarfs" "$_VAR_STATIC_TOOLS_DIR"; then
-            error "Failed to copy static tools from custom embed directory"
-        fi
-    else
-        # Copy static tools using `which`
-        if ! cp "$(which fusermount3)" "$(which dwarfs)" "$_VAR_STATIC_TOOLS_DIR"; then
-            error "Failed to copy static tools"
-        fi
-    fi
+		# Copy the tools from the custom embed directory
+		if ! cp "$_VAR_CUSTOM_EMBED_DIR/fusermount3" "$_VAR_CUSTOM_EMBED_DIR/dwarfs" "$_VAR_STATIC_TOOLS_DIR"; then
+			error "Failed to copy static tools from custom embed directory"
+		fi
+	else
+		# Copy static tools using `which`
+		if ! cp "$(which fusermount3)" "$(which dwarfs)" "$_VAR_STATIC_TOOLS_DIR"; then
+			error "Failed to copy static tools"
+		fi
+	fi
 
-    # Create the tar archive
-    if ! tar -C "$_VAR_STATIC_TOOLS_DIR" -czf "$_VAR_WORKDIR/static.tgz" .; then
-        error "Compression of static tools failed"
-    fi
+	# Create the tar archive
+	if ! tar -C "$_VAR_STATIC_TOOLS_DIR" -czf "$_VAR_WORKDIR/static.tgz" .; then
+		error "Compression of static tools failed"
+	fi
 
-    # Append the marker and the tar archive to the output file
-    printf "\n__STATIC_TOOLS__\n" >> "$_VAR_OUT_FILE" || error "Failed to write marker (TAR) to output file"
-    base64 <"$_VAR_WORKDIR/static.tgz" >> "$_VAR_OUT_FILE" || error "Failed to append TAR archive to output file"
+	# Append the marker and the tar archive to the output file
+	printf "\n__STATIC_TOOLS__\n" >>"$_VAR_OUT_FILE" || error "Failed to write marker (TAR) to output file"
+	base64 <"$_VAR_WORKDIR/static.tgz" >>"$_VAR_OUT_FILE" || error "Failed to append TAR archive to output file"
 }
 
 [ -n "$EMBED_STATIC_TOOLS" ] && embed_static_tools
 
 # Append the DWFS archive to the self-extracting script
-printf "\n__ARCHIVE_MARKER__\n" >> "$_VAR_OUT_FILE" || error "Failed to write marker (DWFS) to output file"
-cat <"$_VAR_WORKDIR/archive.dwfs" >> "$_VAR_OUT_FILE" || error "Failed to append DWFS archive to output file"
+printf "\n__ARCHIVE_MARKER__\n" >>"$_VAR_OUT_FILE" || error "Failed to write marker (DWFS) to output file"
+cat <"$_VAR_WORKDIR/archive.dwfs" >>"$_VAR_OUT_FILE" || error "Failed to append DWFS archive to output file"
 
 # Make the self-extracting script executable
 chmod +x "$_VAR_OUT_FILE" || error "Could not mark output file as executable"
