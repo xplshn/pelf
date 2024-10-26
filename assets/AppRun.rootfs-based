@@ -10,17 +10,8 @@ SELF_TEMPDIR=${SELF%/*}
 [ -d "$SELF_TEMPDIR/rootfs" ] || exit 1
 BWROOTFS="$SELF_TEMPDIR/rootfs"
 
-file_reader() {
-    files="$*"
-    for file in $files; do
-        while IFS= read -r line || [ -n "$line" ]; do
-            printf '%s\n' "$line"
-        done <"$file"
-    done
-}
-
 # Initialize default arguments
-SELF_ARGS="-- env -u LD_PRELOAD -u LD_LIBRARY_PATH $(file_reader "$BWROOTFS/entrypoint")"
+SELF_ARGS="-- env -u LD_PRELOAD -u LD_LIBRARY_PATH $(cat "$BWROOTFS/entrypoint")"
 
 # Find bwrap
 BWRAP_BIN="${SELF_TEMPDIR}/usr/bin/bwrap"
