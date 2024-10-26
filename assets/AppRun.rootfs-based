@@ -38,6 +38,8 @@ while [ "$#" -gt 0 ]; do
         --Xbwrap)
             shift
             SELF_ARGS="$*"
+            SHARE_XDG_RUNTIME_DIR=0
+            SHARE_AUDIO=0
             break
             ;;
         --Xbwrap-XdgRuntimeDir)
