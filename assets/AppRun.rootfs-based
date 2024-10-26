@@ -9,128 +9,60 @@ SELF_TEMPDIR=${SELF%/*}
 [ -d "$SELF_TEMPDIR/rootfs" ] || exit 1
 BWROOTFS="$SELF_TEMPDIR/rootfs"
 
-file_reader() {
-    files="$*"
-    for file in "$files"; do
-        while IFS= read -r line || [ -n "$line" ]; do
-            printf '%s\n' "$line"
-        done < "$file"
-    done
-}
-
-# Initialize default arguments
-SELF_ARGS="-- env -u LD_PRELOAD -u LD_LIBRARY_PATH $(file_reader "$BWROOTFS/entrypoint")"
-
-# Find bwrap
-BWRAP_BIN="${SELF_TEMPDIR}/usr/bin/bwrap"
-[ ! -f "$BWRAP_BIN" ] && BWRAP_BIN="bwrap"
-
-# Default ARGV0
-[ -z "$ARGV0" ] && ARGV0="${0##*/}"
-
-# Forces the use of things contained within the rootfs
-export oPATH="$PATH"
-PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
-
-# Parse other arguments
-while [ "$#" -gt 0 ]; do
-    case "$1" in
-        --Xbwrap)
-            shift
-            SELF_ARGS="$*"
-            break
-            ;;
-        --Xbwrap-XdgRuntimeDir)
-            SHARE_XDG_RUNTIME_DIR=1
-            ;;
-        --Xbwrap-audio)
-            case "$2" in
-                false|0)
-                    SHARE_AUDIO="0"
-                    shift
-                    ;;
-                true|1)
-                    SHARE_AUDIO="1"
-                    shift
-                    ;;
-                *)
-                    echo "Invalid value for --Xbwrap-audio: $2" >&2
-                    exit 1
-                    ;;
-            esac
-            ;;
-        *)
-            SELF_ARGS="$SELF_ARGS $1"
-            ;;
-    esac
+if [ "$1" = "--Xbwrap" ]; then
     shift
-done
-
-# Check for existing entrypoint execution
-if [ "$WITHIN_BWRAP" = 1 ] && [ -f "/entrypoint" ]; then
-    exec "/entrypoint"
+    SELF_ARGS="$*"
+else
+    SELF_ARGS="-- env -u LD_PRELOAD -u LD_LIBRARY_PATH $(cat "$BWROOTFS/entrypoint") $*"
 fi
 
-# Function to build bwrap options
-build_bwrap_options() {
-    BWRAP_OPTIONS="--bind \"$BWROOTFS\" / \
-        --share-net \
-        --proc /proc \
-        --dev-bind /dev /dev \
-        --bind /run /run \
-        --bind-try /sys /sys \
-        --bind /tmp /tmp \
-        --bind-try /media /media \
-        --bind-try /mnt /mnt \
-        --bind /home /home \
-        --bind-try /opt /opt \
-        --ro-bind-try /lib/firmware /lib/firmware \
-        --ro-bind-try /etc/passwd /etc/passwd \
-        --ro-bind-try /etc/group /etc/group \
-        --ro-bind-try /etc/machine-id /etc/machine-id \
-        --ro-bind-try /usr/share/fonts /usr/share/fonts \
-        --ro-bind-try /usr/share/themes /usr/share/themes \
-        --ro-bind-try /etc/resolv.conf /etc/resolv.conf \
-        --ro-bind-try /etc/hosts /etc/hosts \
-        --ro-bind-try /etc/nsswitch.conf /etc/nsswitch.conf \
-        --ro-bind-try /etc/localtime /etc/localtime \
-        --ro-bind-try /etc/hostname /etc/hostname \
-        --ro-bind-try \"$SELF_TEMPDIR\" /app \
-        --setenv SELF \"$SELF\" \
-        --setenv SELF_TEMPDIR \"$SELF_TEMPDIR\" \
-        --setenv BWROOTFS \"$BWROOTFS\" \
-        --setenv ARGV0 \"$ARGV0\" \
-        --setenv ARGS \"!$*\" \
-        --setenv WITHIN_BWRAP \"1\" \
-        --cap-add CAP_SYS_ADMIN"
+if [ -f "$SELF_TEMPDIR/usr/bin/bwrap" ]; then
+    BWRAP_BIN="$SELF_TEMPDIR/usr/bin/bwrap"
+else
+    BWRAP_BIN="bwrap"
+fi
 
-    # Conditionally add optional directories
-    [ -d /usr/share/icons ] && BWRAP_OPTIONS="$BWRAP_OPTIONS --ro-bind-try /usr/share/icons /usr/share/icons"
-    [ -d /usr/share/themes ] && BWRAP_OPTIONS="$BWRAP_OPTIONS --ro-bind-try /usr/share/themes /usr/share/themes"
-    [ -d /usr/share/fontconfig ] && BWRAP_OPTIONS="$BWRAP_OPTIONS --bind-try /usr/share/fontconfig /usr/share/fontconfig"
+if [ -z "$ARGV0" ]; then
+    ARGV0="${0##*/}"
+fi
 
-    UID="$(id -u)"
-    [ -z "$XDG_RUNTIME_DIR" ] && [ -d "/run/user/$UID" ] && XDG_RUNTIME_DIR="/run/user/$UID"
+if [ "$WITHIN_BWRAP" = 1 ] && [ -f "/entrypoint" ]; then
+    "/entrypoint"
+fi
 
-    # Add optional XDG_RUNTIME_DIR binding if enabled
-    [ "$SHARE_XDG_RUNTIME_DIR" -eq 1 ] && [ -n "$XDG_RUNTIME_DIR" ] && BWRAP_OPTIONS="$BWRAP_OPTIONS --bind-try $XDG_RUNTIME_DIR $XDG_RUNTIME_DIR"
+$BWRAP_BIN --bind "$BWROOTFS" / \
+    --share-net \
+    --proc /proc \
+    --dev-bind /dev /dev \
+    --bind /run /run \
+    --bind /home /home \
+    --bind /tmp /tmp \
+    --bind-try /media /media \
+    --bind-try /mnt /mnt \
+    --bind-try /opt /opt \
+    --bind-try /usr/share/fontconfig /usr/share/fontconfig \
+    --ro-bind-try /usr/share/fonts /usr/share/fonts \
+    --ro-bind-try /usr/share/themes /usr/share/themes \
+    --ro-bind-try /sys /sys \
+    --ro-bind-try /etc/resolv.conf /etc/resolv.conf \
+    --ro-bind-try /etc/hosts /etc/hosts \
+    --ro-bind-try /etc/nsswitch.conf /etc/nsswitch.conf \
+    --ro-bind-try /etc/passwd /etc/passwd \
+    --ro-bind-try /etc/group /etc/group \
+    --ro-bind-try /etc/machine-id /etc/machine-id \
+    --ro-bind-try /etc/asound.conf /etc/asound.conf \
+    --ro-bind-try /etc/localtime /etc/localtime \
+    --ro-bind-try /etc/hostname /etc/hostname \
+    --ro-bind-try "$SELF_TEMPDIR" /app \
+    --setenv SELF "$SELF" \
+    --setenv SELF_TEMPDIR "$SELF_TEMPDIR" \
+    --setenv BWROOTFS "$BWROOTFS" \
+    --setenv ARGV0 "$ARGV0" \
+    --setenv ARGS "!$*" \
+    --setenv WITHIN_BWRAP "1" \
+    --cap-add CAP_SYS_ADMIN \
+    $SELF_ARGS
 
-    # Add optional audio bindings if enabled
-    if [ "$SHARE_AUDIO" -eq 1 ] && [ -n "$XDG_RUNTIME_DIR" ]; then
-        BWRAP_OPTIONS="$BWRAP_OPTIONS \
-            $([ -f /etc/asound.conf ] && echo "--ro-bind-try /etc/asound.conf /etc/asound.conf") \
-            --bind-try $XDG_RUNTIME_DIR/pulse $XDG_RUNTIME_DIR/pulse \
-            --bind-try $XDG_RUNTIME_DIR/pipewire-0 $XDG_RUNTIME_DIR/pipewire-0 \
-            --bind-try $XDG_RUNTIME_DIR/pipewire-0.lock $XDG_RUNTIME_DIR/pipewire-0.lock \
-            --bind-try $XDG_RUNTIME_DIR/pipewire-0-manager $XDG_RUNTIME_DIR/pipewire-0-manager \
-            --bind-try $XDG_RUNTIME_DIR/pipewire-0-manager.lock $XDG_RUNTIME_DIR/pipewire-0-manager.lock"
-    fi
-
-    printf '%s\n' "$BWRAP_OPTIONS"
-}
-
-# Build and execute the bwrap options
-BWRAP_OPTIONS="$(build_bwrap_options "$@")"
-
-# Execute bwrap with the built options
-"$BWRAP_BIN" $BWRAP_OPTIONS $SELF_ARGS
+#    --bind-try /usr/lib/locale /usr/lib/locale \
+#    --perms 0700 \
+#    --uid "0" --gid "0" \
