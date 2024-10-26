@@ -29,7 +29,6 @@ while [ "$#" -gt 0 ]; do
         --Xbwrap)
             shift
             SELF_ARGS="$*"
-            break
             ;;
         *)
             shift
@@ -117,8 +116,7 @@ build_bwrap_options() {
 BWRAP_OPTIONS="$(build_bwrap_options "$@")"
 
 PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
-# Execute bwrap with collected options and ensure proper argument quoting
-eval "$BWRAP_BIN $BWRAP_OPTIONS "$SELF_ARGS""
+"$BWRAP_BIN" $BWRAP_OPTIONS $SELF_ARGS
 
 ####### MISC #####################################
 #    --bind-try /usr/lib/locale /usr/lib/locale \
