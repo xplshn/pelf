@@ -9,6 +9,8 @@ SELF_TEMPDIR=${SELF%/*}
 [ -d "$SELF_TEMPDIR/rootfs" ] || exit 1
 BWROOTFS="$SELF_TEMPDIR/rootfs"
 
+SELF_ARGS="-- env -u LD_PRELOAD -u LD_LIBRARY_PATH $(cat "$BWROOTFS/entrypoint") $*"
+
 # Default option settings
 SHARE_AUDIO=1
 while [ "$#" -gt 0 ]; do
@@ -34,10 +36,6 @@ while [ "$#" -gt 0 ]; do
             ;;
     esac
 done
-
-if [ -z "$SELF_ARGS" ]; then
-    SELF_ARGS="-- env -u LD_PRELOAD -u LD_LIBRARY_PATH $(cat "$BWROOTFS/entrypoint") $*"
-fi
 
 if [ -f "$SELF_TEMPDIR/usr/bin/bwrap" ]; then
     BWRAP_BIN="$SELF_TEMPDIR/usr/bin/bwrap"
