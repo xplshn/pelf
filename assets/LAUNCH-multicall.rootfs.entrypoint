@@ -1,16 +1,7 @@
 #!/bin/sh
-
 [ "$DEBUG" = "1" ] && set -x
-
-# Remove the first character ('!') from ARGS for command extraction
-ARGS="${ARGS#?}" #ARGS="$(echo "$ARGS" | cut -c2-)"
-
-# Split ARGS into command and arguments
-set -- $ARGS
 CMD="$1"
-shift # Remove CMD, leaving arguments in $@
-
-file_reader() {
+_cat() {
     files="$*"
     for file in $files; do
         while IFS= read -r line || [ -n "$line" ]; do
@@ -18,20 +9,28 @@ file_reader() {
         done < "$file"
     done
 }
+FALLBACK="$(_cat "/usr/local/bin/default")"
 
-# Define FALLBACK as content of /entrypoint if it exists
-[ -f "/usr/local/bin/default" ] && FALLBACK_CMD="$(file_reader "/usr/local/bin/default")"
+# Execute the command if it exists
+execute_command() {
+    _cmd="$1"
+    shift
+    if _cmd="$(command -v "$_cmd")" >/dev/null 2>&1; then
+        exec "$_cmd" "$@"
+        return 0
+    fi
+    return 1
+}
 
-# Check for ARGV0 command availability (remove "./" if prefixed)
-ARGV0_CMD="${ARGV0#./}"
-
-# Sequentially attempt each command, and fallback to a harmless default if all fail
-if command -v "$ARGV0_CMD" >/dev/null 2>&1; then
-    exec "$ARGV0_CMD" "$@"
-elif command -v "$CMD" >/dev/null 2>&1; then
-    exec "$CMD" "$@"
-elif [ -n "$FALLBACK_CMD" ] && command -v "$FALLBACK_CMD" >/dev/null 2>&1; then
-    exec "$FALLBACK_CMD" "$@"
+# Attempt to run ARGV0 command first
+if [ -n "$ARGV0" ] && execute_command "${ARGV0#./}" "$@"; then
+    :
+# Then check the main CMD derived from ARGS
+elif [ -n "$CMD" ] && execute_command "$CMD" "$@"; then
+    :
+# Lastly, check for the fallback command
+elif [ -n "$FALLBACK" ] && execute_command "$FALLBACK" "$@"; then
+    :
 else
     echo "Error: Neither ARGV0 ('${ARGV0%.*}') nor ARGS ('$CMD') are available in \$PATH"
     exit 1
