@@ -59,11 +59,15 @@ while [ "$#" -gt 0 ]; do
             break
             ;;
         --Xbwrap-XdgRuntimeDir)
-            SHARE_XDG_RUNTIME_DIR=$(bool "$2")
+            SHARE_XDG_RUNTIME_DIR=$(bool "$2") # Shares the entire XDG_RUNTIME_DIR
             shift
             ;;
         --Xbwrap-audio)
-            SHARE_AUDIO=$(bool "$2")
+            SHARE_AUDIO=$(bool "$2") # Shares the audio sockets that pipewire and pulseaudio need. As well as the Alsa config at /etc
+            shift
+            ;;
+        --Xbwrap-look)
+            SHARE_LOOK=$(bool "$2") # Shares the icons & themes directories with the rootfs
             shift
             ;;
         *)
@@ -95,8 +99,6 @@ build_bwrap_options() {
         --ro-bind-try /etc/passwd /etc/passwd \
         --ro-bind-try /etc/group /etc/group \
         --ro-bind-try /etc/machine-id /etc/machine-id \
-        --ro-bind-try /usr/share/fonts /usr/share/fonts \
-        --ro-bind-try /usr/share/themes /usr/share/themes \
         --ro-bind-try /etc/resolv.conf /etc/resolv.conf \
         --ro-bind-try /etc/hosts /etc/hosts \
         --ro-bind-try /etc/nsswitch.conf /etc/nsswitch.conf \
@@ -112,9 +114,16 @@ build_bwrap_options() {
         --cap-add CAP_SYS_ADMIN"
 
     # Conditionally add optional directories
-    [ -d /usr/share/icons ] && BWRAP_OPTIONS="$BWRAP_OPTIONS --ro-bind-try /usr/share/icons /usr/share/icons"
-    [ -d /usr/share/themes ] && BWRAP_OPTIONS="$BWRAP_OPTIONS --ro-bind-try /usr/share/themes /usr/share/themes"
+
+    # Themes & Icons
+    if [ -z "$SHARE_LOOK" ]; then
+        [ -d /usr/share/icons ] && BWRAP_OPTIONS="$BWRAP_OPTIONS --ro-bind-try /usr/share/icons /usr/share/icons"
+        [ -d /usr/share/themes ] && BWRAP_OPTIONS="$BWRAP_OPTIONS --ro-bind-try /usr/share/themes /usr/share/themes"
+    fi
+
+    # Fonts
     [ -d /usr/share/fontconfig ] && BWRAP_OPTIONS="$BWRAP_OPTIONS --bind-try /usr/share/fontconfig /usr/share/fontconfig"
+    [ -d /usr/share/fonts ] && BWRAP_OPTIONS="$BWRAP_OPTIONS --bind-try /usr/share/fonts /usr/share/fonts"
 
     UID="$(id -u)"
     [ -z "$XDG_RUNTIME_DIR" ] && [ -d "/run/user/$UID" ] && XDG_RUNTIME_DIR="/run/user/$UID"
