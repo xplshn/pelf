@@ -1,8 +1,11 @@
 #!/bin/sh
 
+unset ARGV0 ARGS LD_PRELOAD LD_LIBRARY_PATH
+[ "$DEBUGX" = "1" ] && set -x
+
 print_help() {
 	cat <<EOF
- Usage: $0 [|-m|-n|-p|-e|-r|-c|] <|-v|-h|>
+ Usage: $0 [|-m|-n|-p|-e|-r|-c|-z|-x|-o|] <|-v|-h|>
  
  Options:
    -m, --maintainer   Set the maintainer (required)
@@ -12,9 +15,14 @@ print_help() {
    -r, --rootfs-url   Provide a custom URL for downloading rootfs.tgz
    -c, --multicall    Use multicall setup (downloads and sets LAUNCH as entrypoint)
    -z, --dontpack     Disables .dwfs.AppBundle packaging, thus leaving only the AppDir
+   -x, --norootfs     Ditches the rootfs and packs only the desired executables
+   -o, --output-to    Set the output file name (optional, default: <name>-<date>.dwfs.AppBundle)
+   --local            A directory from which to pick up files such as 'LAUNCH', 'AppRun.rootfs', 'AppRun.sharun', 'rootfs.tgz', 'pelf-dwfs', 'bwrap', etc
    -v, --verbose      Enable verbose mode
    -h, --help         Display this help and exit
- 
+
+ ENV:
+     \$LOCAL_PATH       Same as the flag. Must point to a valid directory
  Examples:
    # With .desktop file (enabled integration with pelfd)
      $0 --maintainer animecowgirl79 --name mousepad --pkg-add mousepad --entrypoint org.xfce.mousepad.desktop
@@ -31,11 +39,11 @@ EOF
 }
 
 VERBOSE=0
-ROOTFS_URL="https://pub.ajam.dev/utils/alpine-mini-$(uname -m)/rootfs.tar.gz"
 MULTICALL=0
+: "${ROOTFS_URL:=https://pub.ajam.dev/utils/alpine-mini-$(uname -m)/rootfs.tar.gz}"
 
 # Parse arguments using getopt
-if ! ARGS=$(getopt -o m:n:p:e:r:czvh --long maintainer:,name:,pkg-add:,entrypoint:,rootfs-url:,multicall,verbose,help -n "$0" -- "$@"); then
+if ! ARGS=$(getopt -o m:n:p:e:r:x:o:czvh --long maintainer:,name:,pkg-add:,entrypoint:,rootfs-url:,norootfs:,output:,local:,multicall,dontpack,verbose,help -n "$0" -- "$@"); then
 	echo "Failed to parse arguments." >&2
 	exit 1
 fi
@@ -73,6 +81,22 @@ while true; do
 		DONTPACK=1
 		shift
 		;;
+	-x | --norootfs)
+		NOROOTFS=1
+		TOBEKEPT="$2"
+		shift 2
+		if [ -z "$TOBEKEPT" ]; then
+			echo 'Error: You should specify the names of the binaries to be kept like this (example): "usr/bin/wezterm" "usr/bin/wezterm-gui"' >&2
+		fi
+		;;
+	-o | --output-to)
+		OUTPUT_TO="$2"
+		shift 2
+		;;
+    --local)
+        LOCAL_PATH="$2"
+        shift 2
+        ;;
 	-v | --verbose)
 		VERBOSE=1
 		shift
@@ -93,6 +117,15 @@ while true; do
 	esac
 done
 
+if [ -n "$LOCAL_PATH" ]; then
+    if [ -d "$LOCAL_PATH" ]; then
+        export PATH="$LOCAL_PATH:$PATH"
+    else
+        echo "Error: --local path must be a directory, it can contain AppRun, LAUNCH, bwrap, and pelf* tooling + mkdwarfs, rootfs.tgz, etc" >&2
+        exit 1
+    fi
+fi
+
 # Check for required arguments
 if [ -z "$MAINTAINER" ] || [ -z "$NAME" ] || [ -z "$PKG_ADD" ]; then
 	echo "Error: --maintainer, --name, and --pkg-add are required." >&2
@@ -101,8 +134,8 @@ if [ -z "$MAINTAINER" ] || [ -z "$NAME" ] || [ -z "$PKG_ADD" ]; then
 fi
 
 # Check if ENTRYPOINT is required
-if [ -z "$ENTRYPOINT" ] && [ "$MULTICALL" -eq 0 ]; then
-	echo "Error: --entrypoint is required unless using --multicall." >&2
+if [ -z "$ENTRYPOINT" ] && [ "$MULTICALL" = "0" ] || [ "$NOROOTFS" = "0" ]; then
+	echo "Error: --entrypoint is required unless using --multicall or --norootfs." >&2
 	print_help
 	exit 1
 fi
@@ -111,40 +144,55 @@ DATE="$(date +%d_%m_%Y)"
 APPBUNDLE_ID="$NAME-$DATE-$MAINTAINER"
 APPDIR="$NAME-$DATE.AppDir"
 OUTPUT_TO="$NAME-$DATE.dwfs.AppBundle"
-COMPRESSION_OPTS="--max-lookback-blocks=5 --no-history --categorize=pcmaudio --compression pcmaudio/waveform::flac:level=8" #COMPRESSION_OPTS="--compress-level=4 --categorize=pcmaudio" # Adjust compression options as needed
+: "${COMPRESSION_OPTS:=-l7 -C zstd:level=22 --metadata-compression null -S 19 -B 8 --order nilsimsa -W 12 -w 4}"
 
 [ "$VERBOSE" = "1" ] && TAR_OPTS="xzfv" || TAR_OPTS="xzf"
 mkdir -p "$APPDIR/usr/bin" "$APPDIR/rootfs/app"
 # The command that was used to generate the AppBundle should be saved to a ".gen" file
-echo "${0##*/} $ARGS" >"$APPDIR/.gen" && chmod +x "$APPDIR/.gen"
+echo "${0##*/} $ARGS" >"$APPDIR/.genSteps" && chmod +x "$APPDIR/.genSteps"
 
 # shellcheck disable=SC2086 # Double quote $TAR_OPTS to prevent globbing and word splitting.
 # Download and extract rootfs
-if ! wget -qO- "$ROOTFS_URL" | tar $TAR_OPTS - -C "$APPDIR/rootfs"; then
-	echo "Failed to download or extract rootfs"
-	exit 1
+if [ -f "$LOCAL_PATH/rootfs.tgz" ]; then
+	if ! tar $TAR_OPTS "$LOCAL_PATH/rootfs.tgz" -C "$APPDIR/rootfs" --no-same-permissions; then
+		echo "Failed to extract local rootfs"
+		exit 1
+	fi
+else
+	if ! wget -qO- "$ROOTFS_URL" | tar $TAR_OPTS - -C "$APPDIR/rootfs" --no-same-permissions; then
+		echo "Failed to download or extract rootfs"
+		exit 1
+	fi
 fi
 
-# Download and install bwrap
-if ! wget -qO "$APPDIR/usr/bin/bwrap" "https://bin.ajam.dev/$(uname -m)/bwrap"; then
-	echo "Unable to install bwrap to $APPDIR/usr/bin/bwrap"
-	exit 1
+# Add bwrap
+if [ -f "$LOCAL_PATH/bwrap" ]; then
+    cp "$LOCAL_PATH/bwrap" "$APPDIR/usr/bin/bwrap"
+else
+    if ! wget -qO "$APPDIR/usr/bin/bwrap" "https://bin.ajam.dev/$(uname -m)/bwrap-patched"; then
+       	echo "Unable to install bwrap to $APPDIR/usr/bin/bwrap"
+       	exit 1
+    fi
 fi
 chmod +x "$APPDIR/usr/bin/bwrap"
 
-# Download AppRun
-if ! wget -qO "$APPDIR/AppRun" https://raw.githubusercontent.com/xplshn/pelf/refs/heads/pelf-ng/assets/AppRun.rootfs-based; then
-	echo "Failed to download AppRun.rootfs-based"
-	exit 1
+# Add AppRun
+if [ -f "$LOCAL_PATH/AppRun" ]; then
+    cp "$LOCAL_PATH/AppRun.rootfs" "$APPDIR/AppRun"
+else
+    if ! wget -qO "$APPDIR/AppRun" https://raw.githubusercontent.com/xplshn/pelf/refs/heads/dev/assets/AppRun.rootfs-based; then
+    	echo "Failed to download AppRun.rootfs-based"
+    	exit 1
+    fi
 fi
 chmod +x "$APPDIR/AppRun"
 
-# Set the entrypoint
+# Create entrypoint file
 echo "$ENTRYPOINT" >"$APPDIR/rootfs/entrypoint"
 chmod +x "$APPDIR/rootfs/entrypoint"
 
 # Install packages with APK
-"$APPDIR/AppRun" --Xbwrap --uid "0" --gid "0" -- apk -X "https://dl-cdn.alpinelinux.org/alpine/latest-stable/main" -U --allow-untrusted --initdb add "$PKG_ADD"
+env -i HOME="$HOME" PWD="$PWD" PATH="$PATH" sh "$APPDIR/AppRun" --Xbwrap --uid "0" --gid "0" -- apk -X "http://dl-cdn.alpinelinux.org/alpine/edge/main" -U --allow-untrusted --initdb add "$PKG_ADD" # "$APPDIR/AppRun" --Xbwrap --uid "0" --gid "0" -- apk -X "https://dl-cdn.alpinelinux.org/alpine/edge/main" -U --allow-untrusted --initdb add "$PKG_ADD"
 
 # Handle .desktop file and icon if applicable. (resets entrypoint based on Exec= line and creates .DirIcon based on Icon= line)
 if [ "${ENTRYPOINT##*.}" = "desktop" ]; then
@@ -157,7 +205,6 @@ if [ "${ENTRYPOINT##*.}" = "desktop" ]; then
 		ICON_NAME="$(awk -F"=" '/Icon/ {print $2; exit}' "$APPDIR/rootfs/usr/share/applications/$ENTRYPOINT" 2>/dev/null)"
 		ENTRYPOINT=$(awk -F"=| " '/Exec=/ {print $2; exit}' "$APPDIR/rootfs/usr/share/applications/$ENTRYPOINT" 2>/dev/null)
 		echo "$ENTRYPOINT" >"$APPDIR/rootfs/entrypoint"
-		chmod +x "$APPDIR/rootfs/entrypoint"
 
 		if [ -n "$ICON_NAME" ]; then
 			# Find all matches, sort them, and pick the first one
@@ -171,11 +218,9 @@ if [ "${ENTRYPOINT##*.}" = "desktop" ]; then
 				echo "Icon $ICON_NAME copied to $APPDIR/.DirIcon"
 			else
 				echo "Icon $ICON_NAME not found in $APPDIR/rootfs/usr/share/icons/"
-				exit 1
 			fi
 		else
 			echo "No Icon entry found in $APPDIR/rootfs/usr/share/applications/$ENTRYPOINT"
-			exit 1
 		fi
 	else
 		echo "$ENTRYPOINT does not exist in $APPDIR/rootfs/usr/share/applications/"
@@ -184,22 +229,63 @@ if [ "${ENTRYPOINT##*.}" = "desktop" ]; then
 fi
 
 # Handle multicall setup
-if [ "$MULTICALL" -eq "1" ]; then
-	echo "LAUNCH" >"$APPDIR/rootfs/entrypoint"
+if [ "$MULTICALL" = "1" ]; then
+	echo "/usr/local/bin/LAUNCH" >"$APPDIR/rootfs/entrypoint"
 
 	mkdir -p "$APPDIR/rootfs/usr/local/bin"
-	# Download LAUNCH and set as entrypoint
-	if ! wget -qO "$APPDIR/rootfs/usr/local/bin/LAUNCH" "https://raw.githubusercontent.com/xplshn/pelf/refs/heads/pelf-ng/assets/LAUNCH-multicall.rootfs.entrypoint"; then
-		echo "Failed to download LAUNCH for multicall"
-		exit 1
+	# Add LAUNCH (multicall helper for rootfs-based AppDirs)
+	if [ -f "$LOCAL_PATH/LAUNCH" ]; then
+	    cp "$LOCAL_PATH/LAUNCH" "$APPDIR/rootfs/usr/local/bin/LAUNCH"
+	else
+	    if ! wget -qO "$APPDIR/rootfs/usr/local/bin/LAUNCH" "https://raw.githubusercontent.com/xplshn/pelf/refs/heads/pelf-ng/assets/LAUNCH-multicall.rootfs.entrypoint"; then
+	    	echo "Failed to download LAUNCH for multicall"
+	    	exit 1
+	    fi
 	fi
 	chmod +x "$APPDIR/rootfs/usr/local/bin/LAUNCH"
+
+	echo "$ENTRYPOINT" >"$APPDIR/rootfs/usr/local/bin/default"
+	chmod +x "$APPDIR/rootfs/usr/local/bin/default"
 fi
 
+if [ "$NOROOTFS" = 1 ]; then
+	AUXTOBEKEPT=""
+	# Prepend $APPDIR/ to each word in $TOBEKEPT and overwrite the original
+	for ITEM in $TOBEKEPT; do
+		AUXTOBEKEPT="$AUXTOBEKEPT $APPDIR/rootfs/$ITEM"
+	done
+
+	TOBEKEPT="$AUXTOBEKEPT"
+
+	mv "$APPDIR/rootfs/entrypoint" "$APPDIR/entrypoint"
+
+	echo "LD_LIBRARY_PATH=\"$APPDIR/rootfs/lib:$APPDIR/rootfs/usr/lib\" lib4bin --dst-dir \"$APPDIR\" $TOBEKEPT" >"$APPDIR/.genl4b"
+	chmod +x "$APPDIR/.genl4b"
+	# shellcheck disable=SC2086 # Word-splitting is intentional here
+	LD_LIBRARY_PATH="$APPDIR/rootfs/lib:$APPDIR/rootfs/usr/lib" lib4bin --dst-dir "$APPDIR" $TOBEKEPT && {
+		rm -rf "${APPDIR:?}/usr" "${APPDIR:?}/rootfs"
+		# Download LAUNCH and set as entrypoint
+		if [ -f "$LOCAL_PATH/AppRun.sharun" ]; then
+		    cp "$LOCAL_PATH/AppRun.sharun" "$APPDIR/AppRun"
+		else
+		    if ! wget -qO "$APPDIR/AppRun" "https://raw.githubusercontent.com/xplshn/pelf/refs/heads/pelf-ng/assets/AppRun.sharun"; then
+		    	echo "Failed to download AppRun.sharun, unable to proceed with the NOROOTFS procedure"
+		    	exit 1
+		    fi
+		fi
+		chmod +x "$APPDIR/AppRun"
+	}
+fi
+
+echo "pelf-dwfs --add-appdir \"$APPDIR\" --appbundle-id \"$APPBUNDLE_ID\" --output-to \"$OUTPUT_TO\" --embed-static-tools --compression \"$COMPRESSION_OPTS\"" >"$APPDIR/.gen" && chmod +x "$APPDIR/.gen"
+# Final packaging
 if [ "$DONTPACK" != "1" ]; then
-    # Final packaging
-    if ! wget -qO- "https://raw.githubusercontent.com/xplshn/pelf/refs/heads/pelf-ng/pelf-dwfs" | sh -s -- --add-appdir "$APPDIR" "$APPBUNDLE_ID" --output-to "$OUTPUT_TO" --embed-static-tools --compression "$COMPRESSION_OPTS"; then
-    	echo "Final packaging failed"
-    	exit 1
-    fi
+	if [ -f "$LOCAL_PATH/pelf-dwfs" ]; then
+		"$LOCAL_PATH/pelf-dwfs" --add-appdir "$APPDIR" --appbundle-id "$APPBUNDLE_ID" --output-to "$OUTPUT_TO" --embed-static-tools --compression "$COMPRESSION_OPTS"
+	else
+		if ! wget -qO- "https://raw.githubusercontent.com/xplshn/pelf/refs/heads/pelf-ng/pelf-dwfs" | sh -s -- --add-appdir "$APPDIR" --appbundle-id "$APPBUNDLE_ID" --output-to "$OUTPUT_TO" --embed-static-tools --compression "$COMPRESSION_OPTS"; then
+			echo "Final packaging failed"
+			exit 1
+		fi
+	fi
 fi

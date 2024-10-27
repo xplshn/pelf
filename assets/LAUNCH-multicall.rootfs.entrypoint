@@ -4,7 +4,16 @@
 
 # Strip the first character from ARGS and ARGV0 (assuming it's '!')
 ARGS="$(echo "$ARGS" | cut -c2-)"
-#ARGV0="$(echo "$ARGV0" | cut -c2-)"
+ARGV0="$(echo "$ARGV0" | cut -c2-)"
+
+_cat() {
+    files="$*"
+    for file in $files; do
+        while IFS= read -r line || [ -n "$line" ]; do
+            printf '%s\n' "$line"
+        done <"$file"
+    done
+} ; FALLBACK=$(_cat /usr/local/bin/default)
 
 # Split ARGS into command and its arguments
 set -- $ARGS
@@ -18,6 +27,8 @@ if command -v "${ARGV0%.*}" >/dev/null 2>&1; then
 elif command -v "$CMD" >/dev/null 2>&1; then
     # If CMD (the first part of ARGS) is available, execute it with remaining arguments
     exec "$CMD" "$@"
+elif command -v "$FALLBACK" >/dev/null 2>&1; then
+    exec "$FALLBACK" "$@"
 else
     echo "Error: Neither ARGV0 ('${ARGV0%.*}') nor ARGS ('$CMD') are available in \$PATH"
     exit 1

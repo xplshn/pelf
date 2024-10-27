@@ -29,16 +29,16 @@ fi
 if [ "$WITHIN_BWRAP" = 1 ] && [ -f "/entrypoint" ]; then
     "/entrypoint"
 fi
-
 $BWRAP_BIN --bind "$BWROOTFS" / \
     --share-net \
     --proc /proc \
     --dev-bind /dev /dev \
     --bind /run /run \
-    --bind /home /home \
+    --bind-try /sys /sys \
     --bind /tmp /tmp \
     --bind-try /media /media \
     --bind-try /mnt /mnt \
+    --bind /home /home \
     --bind-try /opt /opt \
     --bind-try /usr/share/fontconfig /usr/share/fontconfig \
     --ro-bind-try /usr/share/fonts /usr/share/fonts \

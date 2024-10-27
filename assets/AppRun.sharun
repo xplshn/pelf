@@ -1,0 +1,37 @@
+#!/bin/sh
+[ "$DEBUG" = "1" ] && set -x
+SELF="$(readlink -f "$0")" && export SELF
+SELF_TEMPDIR="${SELF%/*}" && export SELF_TEMPDIR
+FALLBACK="$(cat "$SELF_TEMPDIR/entrypoint")"
+[ -z "$ARGV0" ] && {
+    ARGV0="${0##*/}"
+}
+
+# LAUNCH helper
+CMD="$1"
+
+if [ "$NOSHARUN" != 1 ]; then
+    PATH="${SELF_TEMPDIR}/bin:$PATH"
+else
+    PATH="${SELF_TEMPDIR}/shared/bin:$PATH"
+    if [ -z "$LD_LIBRARY_PATH" ]; then
+        LD_LIBRARY_PATH="${SELF_TEMPDIR}/shared/lib"
+    else
+        LD_LIBRARY_PATH="${SELF_TEMPDIR}/shared/lib:$LD_LIBRARY_PATH"
+    fi
+fi
+
+# Check if ARGV0 is available as a command. We remove the "./" that might prepend ARGV0
+if command -v "${ARGV0#./}" >/dev/null 2>&1; then
+    # If ARGV0 is available, execute ARGV0 with its arguments
+    exec "${ARGV0#./}" "$@"
+elif command -v "$CMD" >/dev/null 2>&1; then
+    # If CMD ($1) is available, execute it with remaining arguments
+    shift
+    exec "$CMD" "$@"
+elif command -v "$FALLBACK" >/dev/null 2>&1; then
+    "$FALLBACK" "$@"
+else
+    echo "Error: Neither ARGV0 ('${ARGV0%.*}') nor ARGS ('$CMD') are available in \$PATH"
+    exit 1
+fi

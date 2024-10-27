@@ -1,0 +1,91 @@
+#!/bin/sh
+
+# Check if an AppImage was provided
+if [ -z "$1" ]; then
+    echo "Usage: $0 <AppImage>"
+    exit 1
+fi
+
+# Ensure full path to avoid confusion with relative paths
+APPIMAGE="$(realpath "$1")"
+
+# Check if the file actually exists
+if [ ! -f "$APPIMAGE" ]; then
+    echo "Error: $APPIMAGE not found!"
+    exit 1
+fi
+
+DIROFTHEAPP="$(dirname "$APPIMAGE")"
+APPNAME="$(basename "$APPIMAGE" .AppImage)"
+WORKDIR="$(mktemp -d)"
+: "${COMPRESSION_OPTS:=-l7 -C zstd:level=22 --metadata-compression null -S 21 -B 8 --order nilsimsa -W 12 -w 4}"
+
+# Clean up on exit
+cleanup() {
+    fusermount3 -uz "$WORKDIR/rootfs-based.AppDir/rootfs" >/dev/null 2>&1
+    fusermount -uz "$WORKDIR/rootfs-based.AppDir/rootfs" >/dev/null 2>&1
+    rm -rf "$WORKDIR"
+}
+trap cleanup EXIT
+
+cd "$WORKDIR" || exit 1
+
+# Ensure the AppImage is executable
+chmod +x "$APPIMAGE"
+
+# Extract the AppImage contents
+"$APPIMAGE" --appimage-extract
+
+# Check if squashfs-root was created
+if [ ! -d "squashfs-root" ]; then
+    echo "Failed to extract AppImage. squashfs-root not found."
+    exit 1
+fi
+
+# Check if conty.sh exists in squashfs-root
+if [ -f squashfs-root/conty.sh ]; then
+    echo "Found conty.sh. Extracting with dwarfsextract..."
+    
+    # Create the rootfs-based.AppDir
+    mkdir -p rootfs-based.AppDir/rootfs rootfs-based.AppDir/usr/bin
+    
+    # Extract the conty.sh to the rootfs
+    cp ./squashfs-root/*.desktop ./squashfs-root/.DirIcon ./rootfs-based.AppDir
+    dwarfs -o offset="auto",ro,auto_unmount "./squashfs-root/conty.sh" "rootfs-based.AppDir/rootfs" && {
+        echo "Removing decompressed squashfs-root to free up RAM"
+        rm -rf ./squashfs-root
+    }
+
+    # Download AppRun for rootfs-based AppDir
+    if ! wget -qO "rootfs-based.AppDir/AppRun" https://raw.githubusercontent.com/xplshn/pelf/refs/heads/dev/assets/AppRun.rootfs-based; then
+        echo "Failed to download AppRun.rootfs-based"
+        exit 1
+    fi
+    chmod +x "rootfs-based.AppDir/AppRun"
+
+    # Download and install bwrap
+    if ! wget -qO "rootfs-based.AppDir/usr/bin/bwrap" "https://bin.ajam.dev/$(uname -m)/bwrap-patched"; then
+        echo "Unable to install bwrap to rootfs-based.AppDir/usr/bin/bwrap"
+        exit 1
+    fi
+    chmod +x "rootfs-based.AppDir/usr/bin/bwrap"
+    echo "Packaging as a rootfs-based AppBundle..."
+
+    # Pack the new rootfs-based.AppDir as an AppBundle
+    pelf-dwfs --add-appdir ./rootfs-based.AppDir \
+              --appbundle-id "$APPNAME" \
+              --output-to "$DIROFTHEAPP/${APPNAME}.dwfs.AppBundle" \
+              --embed-static-tools \
+              --compression "$COMPRESSION_OPTS"
+else
+    echo "Packaging as a standard AppBundle..."
+
+    # No conty.sh, package the squashfs-root directly as an AppBundle
+    pelf-dwfs --add-appdir ./squashfs-root \
+              --appbundle-id "$APPNAME" \
+              --output-to "$DIROFTHEAPP/${APPNAME}.dwfs.AppBundle" \
+              --embed-static-tools \
+              --compression "$COMPRESSION_OPTS"
+fi
+
+echo "AppBundle created successfully in $DIROFTHEAPP."
