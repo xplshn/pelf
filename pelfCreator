@@ -1,6 +1,7 @@
 #!/bin/sh
 
 unset ARGV0 ARGS LD_PRELOAD LD_LIBRARY_PATH
+[ "$DEBUGX" = "1" ] && set -x
 
 print_help() {
 	cat <<EOF
@@ -160,7 +161,7 @@ echo "$ENTRYPOINT" >"$APPDIR/rootfs/entrypoint"
 chmod +x "$APPDIR/rootfs/entrypoint"
 
 # Install packages with APK
-"$APPDIR/AppRun" --Xbwrap --uid "0" --gid "0" -- apk -X "http://dl-cdn.alpinelinux.org/alpine/edge/main" -U --allow-untrusted --initdb add "$PKG_ADD" # "$APPDIR/AppRun" --Xbwrap --uid "0" --gid "0" -- apk -X "https://dl-cdn.alpinelinux.org/alpine/edge/main" -U --allow-untrusted --initdb add "$PKG_ADD"
+env -i HOME="$HOME" PWD="$PWD" PATH="$PATH" sh "$APPDIR/AppRun" --Xbwrap --uid "0" --gid "0" -- apk -X "http://dl-cdn.alpinelinux.org/alpine/edge/main" -U --allow-untrusted --initdb add "$PKG_ADD" # "$APPDIR/AppRun" --Xbwrap --uid "0" --gid "0" -- apk -X "https://dl-cdn.alpinelinux.org/alpine/edge/main" -U --allow-untrusted --initdb add "$PKG_ADD"
 
 # Handle .desktop file and icon if applicable. (resets entrypoint based on Exec= line and creates .DirIcon based on Icon= line)
 if [ "${ENTRYPOINT##*.}" = "desktop" ]; then
@@ -192,7 +193,6 @@ if [ "${ENTRYPOINT##*.}" = "desktop" ]; then
 		fi
 	else
 		echo "$ENTRYPOINT does not exist in $APPDIR/rootfs/usr/share/applications/"
-		exit 1
 	fi
 fi
 
