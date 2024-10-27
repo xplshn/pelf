@@ -193,6 +193,7 @@ if [ "${ENTRYPOINT##*.}" = "desktop" ]; then
 		fi
 	else
 		echo "$ENTRYPOINT does not exist in $APPDIR/rootfs/usr/share/applications/"
+		exit 1
 	fi
 fi
 
