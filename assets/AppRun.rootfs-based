@@ -149,5 +149,5 @@ build_bwrap_options() {
 BWRAP_OPTIONS="$(build_bwrap_options "$@")"
 
 [ "$DEBUG0" = "1" ] && echo "$BWRAP_BIN $BWRAP_OPTIONS $SELF_ARGS"
+eval "exec $BWRAP_BIN $BWRAP_OPTIONS $SELF_ARGS"
 
-eval "$BWRAP_BIN $BWRAP_OPTIONS $SELF_ARGS"
