@@ -10,18 +10,6 @@ SELF_TEMPDIR=${SELF%/*}
 [ -d "$SELF_TEMPDIR/rootfs" ] || exit 1
 BWROOTFS="$SELF_TEMPDIR/rootfs"
 
-_cat() {
-    files="$*"
-    for file in $files; do
-        while IFS= read -r line || [ -n "$line" ]; do
-            printf '%s\n' "$line"
-        done <"$file"
-    done
-}
-
-# Initialize default arguments
-SELF_ARGS="-- $(_cat "$BWROOTFS/entrypoint")"
-
 # Find bwrap
 BWRAP_BIN="${SELF_TEMPDIR}/usr/bin/bwrap"
 [ ! -f "$BWRAP_BIN" ] && BWRAP_BIN="bwrap"
@@ -47,6 +35,15 @@ bool() {
             ;;
     esac
 }
+
+_cat() {
+    files="$*"
+    for file in $files; do
+        while IFS= read -r line || [ -n "$line" ]; do
+            printf '%s\n' "$line"
+        done <"$file"
+    done
+} ; SELF_ARGS="-- $(_cat "$BWROOTFS/entrypoint")"
 
 # Parse other arguments
 while [ "$#" -gt 0 ]; do
@@ -158,4 +155,3 @@ BWRAP_OPTIONS="$(build_bwrap_options "$@")"
 
 [ "$DEBUG0" = "1" ] && echo "$BWRAP_BIN $BWRAP_OPTIONS $SELF_ARGS"
 eval "exec $BWRAP_BIN $BWRAP_OPTIONS $SELF_ARGS"
-

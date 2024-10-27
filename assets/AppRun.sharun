@@ -2,8 +2,10 @@
 [ "$DEBUG" = "1" ] && set -x
 SELF="$(readlink -f "$0")" && export SELF
 SELF_TEMPDIR="${SELF%/*}" && export SELF_TEMPDIR
-[ -z "$ARGV0" ] && ARGV0="$(basename "$0")"
 FALLBACK="$(cat "$SELF_TEMPDIR/entrypoint")"
+[ -z "$ARGV0" ] && {
+    ARGV0="${0##*/}"
+}
 
 # LAUNCH helper
 CMD="$1"

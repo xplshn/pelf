@@ -1,65 +1,35 @@
 #!/bin/sh
 
 [ "$DEBUG" = "1" ] && set -x
-[ -z "$oPATH" ] && {
-    oPATH="$PATH"
-    PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-}
 
-CMD="$1"
+# Strip the first character from ARGS and ARGV0 (assuming it's '!')
+ARGS="$(echo "$ARGS" | cut -c2-)"
+ARGV0="$(echo "$ARGV0" | cut -c2-)"
+
 _cat() {
     files="$*"
     for file in $files; do
         while IFS= read -r line || [ -n "$line" ]; do
             printf '%s\n' "$line"
-        done < "$file"
+        done <"$file"
     done
-}
-FALLBACK="$(_cat "/usr/local/bin/default")"
+} ; FALLBACK=$(_cat /usr/local/bin/default)
 
-__RESET="\033[0m"
-log() {
-    __YELLOW="\033[0;33m"
-	printf >&2 "Traceback: AppRun -> (rootfs)/usr/local/bin/LAUNCH ${__YELLOW}INFO${__RESET}: %s\n" "$*"
-}
-error() {
-    __RED="\033[0;31m"
-	printf >&2 "Traceback: AppRun -> (rootfs)/usr/local/bin/LAUNCH ${__RED}ERROR${__RESET}: %s\n" "$*"
-	exit 1
-}
+# Split ARGS into command and its arguments
+set -- $ARGS
+CMD="$1"
+shift # Remove the command from the list, leaving the arguments in $@
 
-# Execute the command if it exists
-execute_command() {
-    _cmd="$1"
-    shift
-    if _cmd="$(command -v "$_cmd")" >/dev/null 2>&1; then
-        PATH="$oPATH"
-        shift
-        exec "$_cmd" "$@"
-        return 0
-    elif [ -x "$_cmd" ]; then
-        shift
-        exec "$_cmd" "$@"
-    fi
-    return 1
-}
-
-# Attempt to run ARGV0 command first
-if [ -n "$ARGV0" ] && execute_command "${ARGV0#./}" "$@"; then
-    :
-# Then check the main CMD derived from ARGS
-elif [ -n "$CMD" ] && execute_command "$CMD" "$@"; then
-    :
-# Lastly, check for the fallback command
-elif [ -n "$FALLBACK" ] && execute_command "$FALLBACK" "$@"; then
-    :
+# Check if ARGV0 is available as a command. We remove the "./" that might prepend ARGV0
+if command -v "${ARGV0%.*}" >/dev/null 2>&1; then
+    # If ARGV0 is available, execute ARGV0 with its arguments
+    exec "${ARGV0%.*}" "$ARGS" # Because ARGS' first element was not in fact the CMD
+elif command -v "$CMD" >/dev/null 2>&1; then
+    # If CMD (the first part of ARGS) is available, execute it with remaining arguments
+    exec "$CMD" "$@"
+elif command -v "$FALLBACK" >/dev/null 2>&1; then
+    exec "$FALLBACK" "$@"
 else
-    log "W: DEBUG INFO:"
-    log "        \$CMD: $CMD"
-    log "         \$@: " "$@"
-    log "         \$0: $0"
-    log "       \$SELF: $SELF"
-    log "   \$FALLBACK: $FALLBACK"
-    log "  \$SELF_ARGS: $ARGS"
-    error "Error: Neither ARGV0 ('${ARGV0%.*}') nor the supplied argument ('$CMD') are available in \$PATH"
+    echo "Error: Neither ARGV0 ('${ARGV0%.*}') nor ARGS ('$CMD') are available in \$PATH"
+    exit 1
 fi
