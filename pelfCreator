@@ -154,7 +154,7 @@ echo "${0##*/} $ARGS" >"$APPDIR/.genSteps" && chmod +x "$APPDIR/.genSteps"
 # shellcheck disable=SC2086 # Double quote $TAR_OPTS to prevent globbing and word splitting.
 # Download and extract rootfs
 if [ -f "$LOCAL_PATH/rootfs.tgz" ]; then
-	if ! tar $TAR_OPTS -C "$APPDIR/rootfs" -xf "$LOCAL_PATH/rootfs.tgz"; then
+	if ! bsdtar $TAR_OPTS "$LOCAL_PATH/rootfs.tgz" -C "$APPDIR/rootfs" --no-same-permissions; then
 		echo "Failed to extract local rootfs"
 		exit 1
 	fi
@@ -192,8 +192,7 @@ echo "$ENTRYPOINT" >"$APPDIR/rootfs/entrypoint"
 chmod +x "$APPDIR/rootfs/entrypoint"
 
 # Install packages with APK
-#env -i HOME="$HOME" PWD="$PWD" PATH="$PATH" sh "$APPDIR/AppRun" --Xbwrap --uid "0" --gid "0" -- apk -X "http://dl-cdn.alpinelinux.org/alpine/edge/main" -U --allow-untrusted --initdb add "$PKG_ADD" # "$APPDIR/AppRun" --Xbwrap --uid "0" --gid "0" -- apk -X "https://dl-cdn.alpinelinux.org/alpine/edge/main" -U --allow-untrusted --initdb add "$PKG_ADD"
-env -i HOME="$HOME" PWD="$PWD" PATH="$PATH" sh "$APPDIR/AppRun" --Xbwrap --uid "0" --gid "0" -- pacman -Sy "$PKG_ADD"
+env -i HOME="$HOME" PWD="$PWD" PATH="$PATH" sh "$APPDIR/AppRun" --Xbwrap --uid "0" --gid "0" -- apk -X "http://dl-cdn.alpinelinux.org/alpine/edge/main" -U --allow-untrusted --initdb add "$PKG_ADD" # "$APPDIR/AppRun" --Xbwrap --uid "0" --gid "0" -- apk -X "https://dl-cdn.alpinelinux.org/alpine/edge/main" -U --allow-untrusted --initdb add "$PKG_ADD"
 
 # Handle .desktop file and icon if applicable. (resets entrypoint based on Exec= line and creates .DirIcon based on Icon= line)
 if [ "${ENTRYPOINT##*.}" = "desktop" ]; then
@@ -238,7 +237,7 @@ if [ "$MULTICALL" = "1" ]; then
 	if [ -f "$LOCAL_PATH/LAUNCH" ]; then
 	    cp "$LOCAL_PATH/LAUNCH" "$APPDIR/rootfs/usr/local/bin/LAUNCH"
 	else
-	    if ! wget -qO "$APPDIR/rootfs/usr/local/bin/LAUNCH" "https://raw.githubusercontent.com/xplshn/pelf/refs/heads/dev/assets/LAUNCH-multicall.rootfs.entrypoint"; then
+	    if ! wget -qO "$APPDIR/rootfs/usr/local/bin/LAUNCH" "https://raw.githubusercontent.com/xplshn/pelf/refs/heads/pelf-ng/assets/LAUNCH-multicall.rootfs.entrypoint"; then
 	    	echo "Failed to download LAUNCH for multicall"
 	    	exit 1
 	    fi
@@ -269,7 +268,7 @@ if [ "$NOROOTFS" = 1 ]; then
 		if [ -f "$LOCAL_PATH/AppRun.sharun" ]; then
 		    cp "$LOCAL_PATH/AppRun.sharun" "$APPDIR/AppRun"
 		else
-		    if ! wget -qO "$APPDIR/AppRun" "https://raw.githubusercontent.com/xplshn/pelf/refs/heads/dev/assets/AppRun.sharun"; then
+		    if ! wget -qO "$APPDIR/AppRun" "https://raw.githubusercontent.com/xplshn/pelf/refs/heads/pelf-ng/assets/AppRun.sharun"; then
 		    	echo "Failed to download AppRun.sharun, unable to proceed with the NOROOTFS procedure"
 		    	exit 1
 		    fi
@@ -284,7 +283,7 @@ if [ "$DONTPACK" != "1" ]; then
 	if [ -f "$LOCAL_PATH/pelf-dwfs" ]; then
 		"$LOCAL_PATH/pelf-dwfs" --add-appdir "$APPDIR" --appbundle-id "$APPBUNDLE_ID" --output-to "$OUTPUT_TO" --embed-static-tools --compression "$COMPRESSION_OPTS"
 	else
-		if ! wget -qO- "https://raw.githubusercontent.com/xplshn/pelf/refs/heads/dev/pelf-dwfs" | sh -s -- --add-appdir "$APPDIR" --appbundle-id "$APPBUNDLE_ID" --output-to "$OUTPUT_TO" --embed-static-tools --compression "$COMPRESSION_OPTS"; then
+		if ! wget -qO- "https://raw.githubusercontent.com/xplshn/pelf/refs/heads/pelf-ng/pelf-dwfs" | sh -s -- --add-appdir "$APPDIR" --appbundle-id "$APPBUNDLE_ID" --output-to "$OUTPUT_TO" --embed-static-tools --compression "$COMPRESSION_OPTS"; then
 			echo "Final packaging failed"
 			exit 1
 		fi

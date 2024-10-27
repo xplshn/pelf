@@ -70,6 +70,10 @@ while [ "$#" -gt 0 ]; do
             SHARE_LOOK=$(bool "$2") # Shares the icons & themes directories with the rootfs
             shift
             ;;
+        --Xbwrap-uid0gid0)
+            UID0_GID0=$(bool "$2") # Enables --uid 0 and --gid 0, effectively tricking the program within the rootfs into thinking that you have superuser rights
+            shift
+            ;;
         *)
             SELF_ARGS="$SELF_ARGS $1"
             ;;
@@ -140,6 +144,10 @@ build_bwrap_options() {
             --bind-try $XDG_RUNTIME_DIR/pipewire-0.lock $XDG_RUNTIME_DIR/pipewire-0.lock \
             --bind-try $XDG_RUNTIME_DIR/pipewire-0-manager $XDG_RUNTIME_DIR/pipewire-0-manager \
             --bind-try $XDG_RUNTIME_DIR/pipewire-0-manager.lock $XDG_RUNTIME_DIR/pipewire-0-manager.lock"
+    fi
+
+    if [ "$UID0_GID0" = "1" ]; then
+        BWRAP_OPTIONS="$BWRAP_OPTIONS --uid 0 --gid 0"
     fi
 
     printf '%s\n' "$BWRAP_OPTIONS"
