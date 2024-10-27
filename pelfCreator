@@ -125,7 +125,9 @@ if [ -z "$ENTRYPOINT" ] && [ "$MULTICALL" = "0" ] || [ "$NOROOTFS" = "0" ]; then
 fi
 
 DATE="$(date +%d_%m_%Y)"
+SYSTMP="$(dirname "$(mktemp -u)")"
 APPBUNDLE_ID="$NAME-$DATE-$MAINTAINER"
+APPBUNDLE_TEMP="$SYSTMP/APPBUNDLE_TEMP" && mkdir -p "$APPBUNDLE_TEMP"
 APPDIR="$NAME-$DATE.AppDir"
 OUTPUT_TO="$NAME-$DATE.dwfs.AppBundle"
 : "${COMPRESSION_OPTS:=-l7 -C zstd:level=22 --metadata-compression null -S 19 -B 8 --order nilsimsa -W 12 -w 4}"
@@ -137,20 +139,26 @@ echo "${0##*/} $ARGS" >"$APPDIR/.genSteps" && chmod +x "$APPDIR/.genSteps"
 
 # shellcheck disable=SC2086 # Double quote $TAR_OPTS to prevent globbing and word splitting.
 # Download and extract rootfs
-if ! wget -qO- "$ROOTFS_URL" | tar $TAR_OPTS - -C "$APPDIR/rootfs"; then
+if [ -f "$APPBUNDLE_TEMP/rootfs.tar.gz" ]; then
+    tar $TAR_OPTS "$APPBUNDLE_TEMP/rootfs.tar.gz" -C "$APPDIR/rootfs"
+elif ! wget -qO- "$ROOTFS_URL" | tar $TAR_OPTS - -C "$APPDIR/rootfs"; then
 	echo "Failed to download or extract rootfs"
 	exit 1
 fi
 
 # Download and install bwrap
-if ! wget -qO "$APPDIR/usr/bin/bwrap" "https://bin.ajam.dev/$(uname -m)/bwrap-patched"; then
+if [ -f "$APPBUNDLE_TEMP/bwrap-patched" ]; then
+    cp -fv "$APPBUNDLE_TEMP/bwrap-patched" "$APPDIR/usr/bin/bwrap"
+elif ! wget -qO "$APPDIR/usr/bin/bwrap" "https://bin.ajam.dev/$(uname -m)/bwrap-patched"; then
 	echo "Unable to install bwrap to $APPDIR/usr/bin/bwrap"
 	exit 1
 fi
 chmod +x "$APPDIR/usr/bin/bwrap"
 
 # Download AppRun
-if ! wget -qO "$APPDIR/AppRun" https://raw.githubusercontent.com/xplshn/pelf/refs/heads/dev/assets/AppRun.rootfs-based; then
+if [ -f "$APPBUNDLE_TEMP/AppRun" ]; then
+    cp -fv "$APPBUNDLE_TEMP/AppRun" "$APPDIR/AppRun"
+elif ! wget -qO "$APPDIR/AppRun" https://raw.githubusercontent.com/xplshn/pelf/refs/heads/dev/assets/AppRun.rootfs-based; then
 	echo "Failed to download AppRun.rootfs-based"
 	exit 1
 fi
