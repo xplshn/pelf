@@ -196,7 +196,7 @@ fi
 
 # Create a self-extracting archive
 _VAR_HOST_INFO="$(uname -mrspv)"
-CONST_VERSION="1.8_dwfs_raw" # (vanilla)
+CONST_VERSION="1.9_dwfs_raw" # (vanilla)
 
 # Generate the loader script with conditional LD_LIBRARY_PATH replacements
 LOADER_SCRIPT=$(
