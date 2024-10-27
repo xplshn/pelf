@@ -154,7 +154,7 @@ echo "${0##*/} $ARGS" >"$APPDIR/.genSteps" && chmod +x "$APPDIR/.genSteps"
 # shellcheck disable=SC2086 # Double quote $TAR_OPTS to prevent globbing and word splitting.
 # Download and extract rootfs
 if [ -f "$LOCAL_PATH/rootfs.tgz" ]; then
-	if ! tar $TAR_OPTS -C "$APPDIR/rootfs" -xf "$LOCAL_PATH/rootfs.tgz"; then
+	if ! tar $TAR_OPTS "$LOCAL_PATH/rootfs.tgz" -C "$APPDIR/rootfs"; then
 		echo "Failed to extract local rootfs"
 		exit 1
 	fi
