@@ -16,6 +16,7 @@ print_help() {
    -c, --multicall    Use multicall setup (downloads and sets LAUNCH as entrypoint)
    -z, --dontpack     Disables .dwfs.AppBundle packaging, thus leaving only the AppDir
    -x, --norootfs     Ditches the rootfs and packs only the desired executables
+   -t, --toproto      Moves these directories to the appdir's ./proto, this is for use with -x, to conserve the files a program may need
    -o, --output-to    Set the output file name (optional, default: <name>-<date>.dwfs.AppBundle)
    --local            A directory from which to pick up files such as 'LAUNCH', 'AppRun.rootfs', 'AppRun.sharun', 'rootfs.tgz', 'pelf-dwfs', 'bwrap', etc
    -v, --verbose      Enable verbose mode
@@ -43,7 +44,7 @@ MULTICALL=0
 : "${ROOTFS_URL:=https://pub.ajam.dev/utils/alpine-mini-$(uname -m)/rootfs.tar.gz}"
 
 # Parse arguments using getopt
-if ! ARGS=$(getopt -o m:n:p:e:r:x:o:czvh --long maintainer:,name:,pkg-add:,entrypoint:,rootfs-url:,norootfs:,output:,local:,multicall,dontpack,verbose,help -n "$0" -- "$@"); then
+if ! ARGS=$(getopt -o m:n:p:e:r:x:t:o:czvh --long maintainer:,name:,pkg-add:,entrypoint:,rootfs-url:,norootfs:,toproto:,output:,local:,multicall,dontpack,verbose,help -n "$0" -- "$@"); then
 	echo "Failed to parse arguments." >&2
 	exit 1
 fi
@@ -83,10 +84,18 @@ while true; do
 		;;
 	-x | --norootfs)
 		NOROOTFS=1
-		TOBEKEPT="$2"
+		TOBEKEPT_BIN="$2"
 		shift 2
-		if [ -z "$TOBEKEPT" ]; then
+		if [ -z "$TOBEKEPT_BIN" ]; then
 			echo 'Error: You should specify the names of the binaries to be kept like this (example): "usr/bin/wezterm" "usr/bin/wezterm-gui"' >&2
+		fi
+		;;
+    -t | --toproto)
+		PROTO=1
+		TOBEKEPT_FILES="$2"
+		shift 2
+		if [ -z "$TOBEKEPT_FILES" ]; then
+			echo 'Error: You should specify the files or directories to be kept, like this (example): "usr/share/wezterm"' >&2
 		fi
 		;;
 	-o | --output-to)
@@ -154,12 +163,12 @@ echo "${0##*/} $ARGS" >"$APPDIR/.genSteps" && chmod +x "$APPDIR/.genSteps"
 # shellcheck disable=SC2086 # Double quote $TAR_OPTS to prevent globbing and word splitting.
 # Download and extract rootfs
 if [ -f "$LOCAL_PATH/rootfs.tgz" ]; then
-	if ! bsdtar $TAR_OPTS "$LOCAL_PATH/rootfs.tgz" -C "$APPDIR/rootfs" --no-same-permissions; then
+	if ! tar $TAR_OPTS "$LOCAL_PATH/rootfs.tgz" -C "$APPDIR/rootfs" --no-same-permissions; then
 		echo "Failed to extract local rootfs"
 		exit 1
 	fi
 else
-	if ! wget -qO- "$ROOTFS_URL" | bsdtar $TAR_OPTS - -C "$APPDIR/rootfs" --no-same-permissions; then
+	if ! wget -qO- "$ROOTFS_URL" | tar $TAR_OPTS - -C "$APPDIR/rootfs" --no-same-permissions; then
 		echo "Failed to download or extract rootfs"
 		exit 1
 	fi
@@ -194,7 +203,7 @@ chmod +x "$APPDIR/rootfs/entrypoint"
 # Install desired packages into the rootfs
 pkgAdd() {
     # Default command for package installation, this is for ALPINE.
-    _command="--Xbwrap --uid 0 --gid 0 -- apk -X \"http://dl-cdn.alpinelinux.org/alpine/edge/main\" -U --allow-untrusted --initdb add \"$PKG_ADD\""
+    _command="--Xbwrap --uid 0 --gid 0 -- apk -X \"https://dl-cdn.alpinelinux.org/alpine/edge/main\" -X \"https://dl-cdn.alpinelinux.org/alpine/edge/community\" -X \"https://dl-cdn.alpinelinux.org/alpine/edge/testing\" -U --allow-untrusted --no-cache --no-interactive --initdb add \"$PKG_ADD\""
 
     # Check if a custom command exists at $LOCAL_PATH/pkgadd and set _command accordingly
     if [ -f "$LOCAL_PATH/pkgadd" ]; then
@@ -260,30 +269,59 @@ if [ "$MULTICALL" = "1" ]; then
 fi
 
 if [ "$NOROOTFS" = 1 ]; then
-	AUXTOBEKEPT=""
-	# Prepend $APPDIR/ to each word in $TOBEKEPT and overwrite the original
-	for ITEM in $TOBEKEPT; do
-		AUXTOBEKEPT="$AUXTOBEKEPT $APPDIR/rootfs/$ITEM"
+	AUXTOBEKEPT_BIN=""
+	# Prepend $APPDIR/ to each word in $TOBEKEPT_BIN and overwrite the original
+	for ITEM in $TOBEKEPT_BIN; do
+		AUXTOBEKEPT_BIN="$AUXTOBEKEPT_BIN $APPDIR/rootfs/$ITEM"
 	done
 
-	TOBEKEPT="$AUXTOBEKEPT"
+	TOBEKEPT_BIN="$AUXTOBEKEPT_BIN"
 
 	mv "$APPDIR/rootfs/entrypoint" "$APPDIR/entrypoint"
 
-	echo "LD_LIBRARY_PATH=\"$APPDIR/rootfs/lib:$APPDIR/rootfs/usr/lib\" lib4bin --dst-dir \"$APPDIR\" $TOBEKEPT" >"$APPDIR/.genl4b"
+	echo "LD_LIBRARY_PATH=\"$APPDIR/rootfs/lib:$APPDIR/rootfs/usr/lib\" lib4bin --dst-dir \"$APPDIR\" $TOBEKEPT_BIN" >"$APPDIR/.genl4b"
 	chmod +x "$APPDIR/.genl4b"
 	# shellcheck disable=SC2086 # Word-splitting is intentional here
-	LD_LIBRARY_PATH="$APPDIR/rootfs/lib:$APPDIR/rootfs/usr/lib" lib4bin --dst-dir "$APPDIR" $TOBEKEPT && {
-		rm -rf "${APPDIR:?}/usr" "${APPDIR:?}/rootfs"
+	LD_LIBRARY_PATH="$APPDIR/rootfs/lib:$APPDIR/rootfs/usr/lib" lib4bin --dst-dir "$APPDIR" $TOBEKEPT_BIN && {
 		# Download LAUNCH and set as entrypoint
-		if [ -f "$LOCAL_PATH/AppRun.sharun" ]; then
-		    cp "$LOCAL_PATH/AppRun.sharun" "$APPDIR/AppRun"
+		if [ "$PROTO" != 1 ]; then
+			if [ -f "$LOCAL_PATH/AppRun.sharun" ]; then
+				cp "$LOCAL_PATH/AppRun.sharun" "$APPDIR/AppRun"
+			else
+				if ! wget -qO "$APPDIR/AppRun" "https://raw.githubusercontent.com/xplshn/pelf/refs/heads/pelf-ng/assets/AppRun.sharun"; then
+					echo "Failed to download AppRun.sharun, unable to proceed with the NOROOTFS procedure"
+					exit 1
+				fi
+			fi
+			rm -rf "${APPDIR:?}/usr"
 		else
-		    if ! wget -qO "$APPDIR/AppRun" "https://raw.githubusercontent.com/xplshn/pelf/refs/heads/pelf-ng/assets/AppRun.sharun"; then
-		    	echo "Failed to download AppRun.sharun, unable to proceed with the NOROOTFS procedure"
-		    	exit 1
-		    fi
+			mkdir -p "$APPDIR/proto"
+			for FILE in $TOBEKEPT_FILES; do
+				# Create the directory structure
+				mkdir -p "$APPDIR/proto/$(dirname $FILE)"
+				# Copy the actual directory
+				cp -r "$APPDIR/rootfs/$FILE" "$APPDIR/proto/$FILE"
+			done
+			if [ -f "$LOCAL_PATH/AppRun.sharun.proto" ]; then
+				cp "$LOCAL_PATH/AppRun.sharun.proto" "$APPDIR/AppRun"
+			else
+				if ! wget -qO "$APPDIR/AppRun" "https://raw.githubusercontent.com/xplshn/pelf/refs/heads/pelf-ng/assets/AppRun.sharun.ovfsProto"; then
+					echo "Failed to download AppRun.sharun.proto, unable to proceed with the NOROOTFS procedure"
+					exit 1
+				fi
+			fi
+			# Add fuse-overlayfs
+			if [ -f "$LOCAL_PATH/fuse-overlayfs" ]; then
+			    cp "$LOCAL_PATH/fuse-overlayfs" "$APPDIR/usr/bin/fuse-overlayfs"
+			else
+			    if ! wget -qO "$APPDIR/usr/bin/fuse-overlayfs" "https://bin.ajam.dev/$(uname -m)/fuse-overlayfs"; then
+			       	echo "Unable to install fuse-overlayfs to $APPDIR/usr/bin/fuse-overlayfs"
+			       	exit 1
+			    fi
+			fi
+			chmod +x "$APPDIR/usr/bin/fuse-overlayfs"
 		fi
+		rm -rf "${APPDIR:?}/rootfs"
 		chmod +x "$APPDIR/AppRun"
 	}
 fi
