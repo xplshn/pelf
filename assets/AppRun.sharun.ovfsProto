@@ -1,0 +1,93 @@
+#!/bin/sh
+
+[ "$DEBUG" = "1" ] && set -x
+
+SELF="$(readlink -f "$0")" && export SELF
+SELF_TEMPDIR="${SELF%/*}" && export SELF_TEMPDIR
+FALLBACK="$(cat "$SELF_TEMPDIR/entrypoint")"
+[ -z "$ARGV0" ] && {
+    ARGV0="${0##*/}"
+}
+
+CMD="$1"
+
+if [ "$NOSHARUN" != 1 ]; then
+    oPATH="$PATH"
+    PATH="${SELF_TEMPDIR}/bin"
+else
+    oPATH="$PATH"
+    PATH="${SELF_TEMPDIR}/shared/bin:$PATH"
+    if [ -z "$LD_LIBRARY_PATH" ]; then
+        LD_LIBRARY_PATH="${SELF_TEMPDIR}/shared/lib"
+    else
+        LD_LIBRARY_PATH="${SELF_TEMPDIR}/shared/lib:$LD_LIBRARY_PATH"
+    fi
+fi
+
+# What command shall we exec?
+if _cmd="$(command -v "${ARGV0#./}")" >/dev/null 2>&1; then
+    :
+elif _cmd="$(command -v "$CMD")" >/dev/null 2>&1; then
+    shift
+    :
+elif _cmd="$(command -v "$FALLBACK")" >/dev/null 2>&1; then
+    :
+else
+    echo "Error: Neither ARGV0 ('${ARGV0%.*}') nor ARGS ('$CMD') are available in \$PATH"
+    exit 1
+fi
+PATH="$oPATH"
+
+# Find bwrap
+BWRAP_BIN="${SELF_TEMPDIR}/usr/bin/bwrap"
+[ ! -f "$BWRAP_BIN" ] && BWRAP_BIN="bwrap"
+
+_dirname() { # DIRNAME but made entirely in POSIX SH
+    dir=${1:-.} ; dir=${dir%%"${dir##*[!/]}"} ; [ "${dir##*/*}" ] && dir=. ; dir=${dir%/*} ; dir=${dir%%"${dir##*[!/]}"} ; printf '%s\n' "${dir:-/}"
+}
+
+# Set up overlay filesystem directories using _dirname on SELF_TEMPDIR
+OVFS_DIR="$(_dirname "$SELF_TEMPDIR")/ovfs"
+mkdir -p "$OVFS_DIR"
+
+[ -d "$SELF_TEMPDIR/proto" ] && {
+    # Create temp directories for overlayfs
+    TEMP_DIR="$(mktemp -d)"
+    MOUNT_DIR="$TEMP_DIR/mount_dir"
+    WORK_DIR="$TEMP_DIR/work_dir"
+    mkdir -p "$MOUNT_DIR" "$WORK_DIR"
+    # Mount the overlay
+    fuse-overlayfs -o lowerdir=/,upperdir="$SELF_TEMPDIR/proto",workdir="$WORK_DIR" "$MOUNT_DIR"
+}
+
+# Cleanup function
+cleanup() {
+    # Attempt to unmount
+    fusermount -u "$MOUNT_DIR" 2>/dev/null
+    # Remove the mount directory
+    rmdir "$MOUNT_DIR" 2>/dev/null
+    # Force unmount if still mounted
+    fusermount -uz "$MOUNT_DIR" 2>/dev/null
+    rmdir "$MOUNT_DIR" 2>/dev/null
+    # Remove the temporary work directory
+    rmdir "$WORK_DIR" 2>/dev/null
+    # Remove the temporary base directory
+    rm -rf "$TEMP_DIR" 2>/dev/null
+    exit
+}
+
+# Set trap for cleanup
+trap cleanup INT TERM HUP QUIT EXIT
+
+# Initialize the bwrap command
+bwrap_cmd="$BWRAP_BIN --bind / /"
+# Loop through each directory in $SELF_TEMPDIR/proto/*
+for dir in "$SELF_TEMPDIR"/proto/*; do
+  if [ -d "$dir" ]; then
+    bwrap_cmd="$bwrap_cmd --bind-try $dir /$(basename "$dir")"
+  fi
+done
+# Add the final part of the command
+bwrap_cmd="$bwrap_cmd -- \"$_cmd\" \"$*\""
+
+eval "$bwrap_cmd"
