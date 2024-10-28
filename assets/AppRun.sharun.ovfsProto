@@ -90,6 +90,9 @@ for dir in "$SELF_TEMPDIR"/proto/*; do
   fi
 done
 # Add the final part of the command
-bwrap_cmd="$bwrap_cmd -- \"$_cmd\" \"$*\""
+bwrap_cmd="$bwrap_cmd --share-net"
+bwrap_cmd="$bwrap_cmd --proc /proc"
+bwrap_cmd="$bwrap_cmd --dev-bind /dev /dev"
+bwrap_cmd="$bwrap_cmd --cap-add CAP_SYS_ADMIN"
 
-eval "$bwrap_cmd"
+eval "$bwrap_cmd" -- "$_cmd" "$*"
