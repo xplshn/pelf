@@ -41,6 +41,8 @@ PATH="$oPATH"
 # Find bwrap
 BWRAP_BIN="${SELF_TEMPDIR}/usr/bin/bwrap"
 [ ! -f "$BWRAP_BIN" ] && BWRAP_BIN="bwrap"
+OVFSFUSE_BIN="${SELF_TEMPDIR}/usr/bin/fuse-overlayfs"
+[ ! -f "$OVFSFUSE_BIN" ] && OVFSFUSE_BIN="fuse-overlayfs"
 
 _dirname() { # DIRNAME but made entirely in POSIX SH
     dir=${1:-.} ; dir=${dir%%"${dir##*[!/]}"} ; [ "${dir##*/*}" ] && dir=. ; dir=${dir%/*} ; dir=${dir%%"${dir##*[!/]}"} ; printf '%s\n' "${dir:-/}"
@@ -57,7 +59,7 @@ mkdir -p "$OVFS_DIR"
     WORK_DIR="$TEMP_DIR/work_dir"
     mkdir -p "$MOUNT_DIR" "$WORK_DIR"
     # Mount the overlay
-    fuse-overlayfs -o lowerdir=/,upperdir="$SELF_TEMPDIR/proto",workdir="$WORK_DIR" "$MOUNT_DIR"
+    "$OVFSFUSE_BIN" -o lowerdir=/,upperdir="$SELF_TEMPDIR/proto",workdir="$WORK_DIR" "$MOUNT_DIR"
 }
 
 # Cleanup function
