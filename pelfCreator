@@ -154,12 +154,12 @@ echo "${0##*/} $ARGS" >"$APPDIR/.genSteps" && chmod +x "$APPDIR/.genSteps"
 # shellcheck disable=SC2086 # Double quote $TAR_OPTS to prevent globbing and word splitting.
 # Download and extract rootfs
 if [ -f "$LOCAL_PATH/rootfs.tgz" ]; then
-	if ! tar $TAR_OPTS "$LOCAL_PATH/rootfs.tgz" -C "$APPDIR/rootfs" --no-same-permissions; then
+	if ! bsdtar $TAR_OPTS "$LOCAL_PATH/rootfs.tgz" -C "$APPDIR/rootfs" --no-same-permissions; then
 		echo "Failed to extract local rootfs"
 		exit 1
 	fi
 else
-	if ! wget -qO- "$ROOTFS_URL" | tar $TAR_OPTS - -C "$APPDIR/rootfs" --no-same-permissions; then
+	if ! wget -qO- "$ROOTFS_URL" | bsdtar $TAR_OPTS - -C "$APPDIR/rootfs" --no-same-permissions; then
 		echo "Failed to download or extract rootfs"
 		exit 1
 	fi
@@ -191,8 +191,19 @@ chmod +x "$APPDIR/AppRun"
 echo "$ENTRYPOINT" >"$APPDIR/rootfs/entrypoint"
 chmod +x "$APPDIR/rootfs/entrypoint"
 
-# Install packages with APK
-env -i HOME="$HOME" PWD="$PWD" PATH="$PATH" sh "$APPDIR/AppRun" --Xbwrap --uid "0" --gid "0" -- apk -X "http://dl-cdn.alpinelinux.org/alpine/edge/main" -U --allow-untrusted --initdb add "$PKG_ADD" # "$APPDIR/AppRun" --Xbwrap --uid "0" --gid "0" -- apk -X "https://dl-cdn.alpinelinux.org/alpine/edge/main" -U --allow-untrusted --initdb add "$PKG_ADD"
+# Install desired packages into the rootfs
+pkgAdd() {
+    # Default command for package installation, this is for ALPINE.
+    _command="--Xbwrap --uid 0 --gid 0 -- apk -X \"http://dl-cdn.alpinelinux.org/alpine/edge/main\" -U --allow-untrusted --initdb add \"$PKG_ADD\""
+
+    # Check if a custom command exists at $LOCAL_PATH/pkgadd and set _command accordingly
+    if [ -f "$LOCAL_PATH/pkgadd" ]; then
+        _command="$(cat "$LOCAL_PATH/pkgadd")"
+    fi
+
+    # Execute the command
+    eval env -i HOME="$HOME" PWD="$PWD" PATH="$PATH" sh "$APPDIR/AppRun" "$_command"
+} ; pkgAdd
 
 # Handle .desktop file and icon if applicable. (resets entrypoint based on Exec= line and creates .DirIcon based on Icon= line)
 if [ "${ENTRYPOINT##*.}" = "desktop" ]; then
