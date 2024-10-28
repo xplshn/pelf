@@ -12,7 +12,6 @@ print_help() {
    -n, --name         Set the name of the app (required)
    -p, --pkg-add      Packages to add with APK (required)
    -e, --entrypoint   Set the entrypoint (required unless using --multicall)
-   -r, --rootfs-url   Provide a custom URL for downloading rootfs.tgz
    -c, --multicall    Use multicall setup (downloads and sets LAUNCH as entrypoint)
    -z, --dontpack     Disables .dwfs.AppBundle packaging, thus leaving only the AppDir
    -x, --norootfs     Ditches the rootfs and packs only the desired executables
@@ -29,8 +28,8 @@ print_help() {
      $0 --maintainer animecowgirl79 --name mousepad --pkg-add mousepad --entrypoint org.xfce.mousepad.desktop
    # With binary name (disables integration with pelfd unless you manually add a .DirIcon or .desktop or both)
      $0 --maintainer animecowgirl79 --name mousepad --pkg-add mousepad --entrypoint mousepad
-   # Using a custom rootfs URL
-     $0 --maintainer animecowgirl79 --name mousepad --pkg-add mousepad --rootfs-url http://example.com/rootfs.tgz
+   # Using a custom rootfs, AppRuns, etc
+     $0 --maintainer animecowgirl79 --name mousepad --pkg-add mousepad --local ./localArchLinuxResources
    # Using multicall
      $0 --maintainer animecowgirl79 --name xfce-multicall --pkg-add "mousepad thunar ristretto xfce4-terminal" --multicall
  Notes:
@@ -44,7 +43,7 @@ MULTICALL=0
 : "${ROOTFS_URL:=https://pub.ajam.dev/utils/alpine-mini-$(uname -m)/rootfs.tar.gz}"
 
 # Parse arguments using getopt
-if ! ARGS=$(getopt -o m:n:p:e:r:x:t:o:czvh --long maintainer:,name:,pkg-add:,entrypoint:,rootfs-url:,norootfs:,toproto:,output:,local:,multicall,dontpack,verbose,help -n "$0" -- "$@"); then
+if ! ARGS=$(getopt -o m:n:p:e:x:t:o:czvh --long maintainer:,name:,pkg-add:,entrypoint:,norootfs:,toproto:,output:,local:,multicall,dontpack,verbose,help -n "$0" -- "$@"); then
 	echo "Failed to parse arguments." >&2
 	exit 1
 fi
