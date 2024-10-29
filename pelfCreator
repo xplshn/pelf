@@ -204,12 +204,10 @@ pkgAdd() {
     # Default command for package installation, this is for ALPINE.
     _command="--Xbwrap --uid 0 --gid 0 -- apk -X \"https://dl-cdn.alpinelinux.org/alpine/edge/main\" -X \"https://dl-cdn.alpinelinux.org/alpine/edge/community\" -X \"https://dl-cdn.alpinelinux.org/alpine/edge/testing\" -U --allow-untrusted --no-cache --no-interactive --initdb add \"$PKG_ADD\""
 
-    set -x
     # Check if a custom procedure exists at $LOCAL_PATH/pkgadd.sh and use that instead
     if [ -f "$LOCAL_PATH/pkgadd.sh" ]; then
         HOME="$HOME" PWD="$PWD" PATH="$PATH" "$APPDIR/AppRun" --Xbwrap --uid 0 --gid 0 -- sh "$LOCAL_PATH/pkgadd.sh" "$PKG_ADD" ; return $?
     fi
-    set +x
 
     # Check if a custom command exists at $LOCAL_PATH/pkgadd and set _command accordingly
     if [ -f "$LOCAL_PATH/pkgadd" ]; then
