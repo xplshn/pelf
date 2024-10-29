@@ -45,6 +45,10 @@ _cat() {
     done
 } ; SELF_ARGS="-- $(_cat "$BWROOTFS/entrypoint")"
 
+# Defaults
+SHARE_AUDIO=1
+SHARE_LOOK=1
+SHARE_FONTS=1
 # Parse other arguments
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -53,6 +57,8 @@ while [ "$#" -gt 0 ]; do
             SELF_ARGS="$*"
             SHARE_XDG_RUNTIME_DIR=0
             SHARE_AUDIO=0
+            SHARE_LOOK=0
+            SHARE_FONTS=0
             break
             ;;
         --Xbwrap-XdgRuntimeDir)
@@ -65,6 +71,10 @@ while [ "$#" -gt 0 ]; do
             ;;
         --Xbwrap-look)
             SHARE_LOOK=$(bool "$2") # Shares the icons & themes directories with the rootfs
+            shift
+            ;;
+        --Xbwrap-hostfonts)
+            SHARE_FONTS=$(bool "$2") # Shares the host's fonts
             shift
             ;;
         --Xbwrap-uid0gid0)
@@ -123,8 +133,10 @@ build_bwrap_options() {
     fi
 
     # Fonts
-    [ -d /usr/share/fontconfig ] && BWRAP_OPTIONS="$BWRAP_OPTIONS --bind-try /usr/share/fontconfig /usr/share/fontconfig"
-    [ -d /usr/share/fonts ] && BWRAP_OPTIONS="$BWRAP_OPTIONS --bind-try /usr/share/fonts /usr/share/fonts"
+    if [ "$SHARE_FONTS" = 1 ]; then
+        [ -d /usr/share/fontconfig ] && BWRAP_OPTIONS="$BWRAP_OPTIONS --bind-try /usr/share/fontconfig /usr/share/fontconfig"
+        [ -d /usr/share/fonts ] && BWRAP_OPTIONS="$BWRAP_OPTIONS --bind-try /usr/share/fonts /usr/share/fonts"
+    fi
 
     UID="$(id -u)"
     [ -z "$XDG_RUNTIME_DIR" ] && [ -d "/run/user/$UID" ] && XDG_RUNTIME_DIR="/run/user/$UID"
