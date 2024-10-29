@@ -20,7 +20,7 @@ BWRAP_BIN="${SELF_TEMPDIR}/usr/bin/bwrap"
 [ -z "$ARGV0" ] && ARGV0="${0##*/}"
 
 # Forces the use of things contained within the rootfs
-export oPATH="$PATH"
+oPATH="$PATH"
 PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
 
 bool() {
