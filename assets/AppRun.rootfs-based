@@ -157,6 +157,9 @@ build_bwrap_options() {
             --bind-try $XDG_RUNTIME_DIR/pipewire-0-manager.lock $XDG_RUNTIME_DIR/pipewire-0-manager.lock"
     fi
 
+    # We could be running from a GH runner -> See AppBundleHUB & pelfCreator.
+    [ -d "/__w" ] && BWRAP_OPTIONS="$BWRAP_OPTIONS --bind-try /__w /__w"
+
     if [ "$UID0_GID0" = "1" ]; then
         BWRAP_OPTIONS="$BWRAP_OPTIONS --uid 0 --gid 0"
     fi
