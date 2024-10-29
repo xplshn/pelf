@@ -167,7 +167,7 @@ if [ -f "$LOCAL_PATH/rootfs.tgz" ]; then
 		exit 1
 	fi
 else
-	if ! wget -qO- "$ROOTFS_URL" | tar $TAR_OPTS - -C "$APPDIR/rootfs" --no-same-permissions; then
+	if ! wget -qO- "$ROOTFS_URL" | tar $TAR_OPTS - -C "$APPDIR/rootfs" --no-same-permissions; then # TODO: PERMS. are still a problem even with this option enabled; Fix this.
 		echo "Failed to download or extract rootfs"
 		exit 1
 	fi
@@ -204,13 +204,20 @@ pkgAdd() {
     # Default command for package installation, this is for ALPINE.
     _command="--Xbwrap --uid 0 --gid 0 -- apk -X \"https://dl-cdn.alpinelinux.org/alpine/edge/main\" -X \"https://dl-cdn.alpinelinux.org/alpine/edge/community\" -X \"https://dl-cdn.alpinelinux.org/alpine/edge/testing\" -U --allow-untrusted --no-cache --no-interactive --initdb add \"$PKG_ADD\""
 
+    set -x
+    # Check if a custom procedure exists at $LOCAL_PATH/pkgadd.sh and use that instead
+    if [ -f "$LOCAL_PATH/pkgadd.sh" ]; then
+        HOME="$HOME" PWD="$PWD" PATH="$PATH" "$APPDIR/AppRun" --Xbwrap --uid 0 --gid 0 -- sh "$LOCAL_PATH/pkgadd.sh" "$PKG_ADD" ; return $?
+    fi
+    set +x
+
     # Check if a custom command exists at $LOCAL_PATH/pkgadd and set _command accordingly
     if [ -f "$LOCAL_PATH/pkgadd" ]; then
         _command="$(cat "$LOCAL_PATH/pkgadd")"
     fi
 
     # Execute the command
-    eval env -i HOME="$HOME" PWD="$PWD" PATH="$PATH" sh "$APPDIR/AppRun" "$_command"
+    eval env -i HOME="$HOME" PWD="$PWD" PATH="$PATH" "$APPDIR/AppRun" "$_command"
 } ; pkgAdd
 
 # Handle .desktop file and icon if applicable. (resets entrypoint based on Exec= line and creates .DirIcon based on Icon= line)
