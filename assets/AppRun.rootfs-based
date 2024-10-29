@@ -108,6 +108,7 @@ build_bwrap_options() {
         --bind-try /mnt /mnt \
         --bind /home /home \
         --bind-try /opt /opt \
+        --bind-try /etc/localtime /etc/localtime \
         --bind-try /etc/machine-id /etc/machine-id \
         --bind-try /etc/resolv.conf /etc/resolv.conf \
         --ro-bind-try /lib/firmware /lib/firmware \
@@ -124,7 +125,6 @@ build_bwrap_options() {
         --setenv ARGS \"$SELF_ARGS\" \
         --setenv WITHIN_BWRAP \"1\" \
         --cap-add CAP_SYS_ADMIN"
-    #   --bind-try /etc/localtime /etc/localtime \
     # Conditionally add optional directories
 
     # Themes & Icons
