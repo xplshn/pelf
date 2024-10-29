@@ -1,5 +1,7 @@
 #!/bin/sh
 
+# DATE OF LAST REVISION: 29-10-2024
+
 [ "$DEBUG" = "1" ] && set -x
 [ "$DEBUG2" = "1" ] && set -v
 
@@ -106,14 +108,14 @@ build_bwrap_options() {
         --bind-try /mnt /mnt \
         --bind /home /home \
         --bind-try /opt /opt \
+        --bind-try /etc/machine-id /etc/machine-id \
+        --bind-try /etc/resolv.conf /etc/resolv.conf \
+        --bind-try /etc/localtime /etc/localtime \
         --ro-bind-try /lib/firmware /lib/firmware \
         --ro-bind-try /etc/passwd /etc/passwd \
         --ro-bind-try /etc/group /etc/group \
-        --ro-bind-try /etc/machine-id /etc/machine-id \
-        --ro-bind-try /etc/resolv.conf /etc/resolv.conf \
         --ro-bind-try /etc/hosts /etc/hosts \
         --ro-bind-try /etc/nsswitch.conf /etc/nsswitch.conf \
-        --ro-bind-try /etc/localtime /etc/localtime \
         --ro-bind-try /etc/hostname /etc/hostname \
         --ro-bind-try \"$SELF_TEMPDIR\" /app \
         --setenv SELF \"$SELF\" \
@@ -154,6 +156,9 @@ build_bwrap_options() {
             --bind-try $XDG_RUNTIME_DIR/pipewire-0-manager $XDG_RUNTIME_DIR/pipewire-0-manager \
             --bind-try $XDG_RUNTIME_DIR/pipewire-0-manager.lock $XDG_RUNTIME_DIR/pipewire-0-manager.lock"
     fi
+
+    # We could be running from a GH runner -> See AppBundleHUB & pelfCreator.
+    [ -d "/__w" ] && BWRAP_OPTIONS="$BWRAP_OPTIONS --bind-try /__w /__w"
 
     if [ "$UID0_GID0" = "1" ]; then
         BWRAP_OPTIONS="$BWRAP_OPTIONS --uid 0 --gid 0"
