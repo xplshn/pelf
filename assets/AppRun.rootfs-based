@@ -1,6 +1,6 @@
 #!/bin/sh
 
-# DATE OF LAST REVISION: 28-10-2024
+# DATE OF LAST REVISION: 29-10-2024
 
 [ "$DEBUG" = "1" ] && set -x
 [ "$DEBUG2" = "1" ] && set -v
