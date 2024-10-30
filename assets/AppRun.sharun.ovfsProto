@@ -5,6 +5,7 @@
 SELF="$(readlink -f "$0")" && export SELF
 SELF_TEMPDIR="${SELF%/*}" && export SELF_TEMPDIR
 FALLBACK="$(cat "$SELF_TEMPDIR/entrypoint")"
+FALLBACK="${FALLBACK##*/}"
 [ -z "$ARGV0" ] && {
     ARGV0="${0##*/}"
 }
@@ -26,17 +27,23 @@ fi
 
 # What command shall we exec?
 if _cmd="$(command -v "${ARGV0#./}")" >/dev/null 2>&1; then
-    :
+    PATH="$PATH:$oPATH"
 elif _cmd="$(command -v "$CMD")" >/dev/null 2>&1; then
     shift
-    :
+    PATH="$PATH:$oPATH"
 elif _cmd="$(command -v "$FALLBACK")" >/dev/null 2>&1; then
-    :
+    PATH="$PATH:$oPATH"
 else
     echo "Error: Neither ARGV0 ('${ARGV0%.*}') nor ARGS ('$CMD') are available in \$PATH"
     exit 1
 fi
-PATH="$oPATH"
+
+# If not in proto mode, execute as normal
+[ ! -d "$SELF_TEMPDIR/proto" ] && {
+    exec "$_cmd" "$*"
+}
+
+# Proto mode handling ->
 
 # Find bwrap
 BWRAP_BIN="${SELF_TEMPDIR}/usr/bin/bwrap"
@@ -52,15 +59,13 @@ _dirname() { # DIRNAME but made entirely in POSIX SH
 OVFS_DIR="$(_dirname "$SELF_TEMPDIR")/ovfs"
 mkdir -p "$OVFS_DIR"
 
-[ -d "$SELF_TEMPDIR/proto" ] && {
-    # Create temp directories for overlayfs
-    TEMP_DIR="$(mktemp -d)"
-    MOUNT_DIR="$TEMP_DIR/mount_dir"
-    WORK_DIR="$TEMP_DIR/work_dir"
-    mkdir -p "$MOUNT_DIR" "$WORK_DIR"
-    # Mount the overlay
-    "$OVFSFUSE_BIN" -o lowerdir=/,upperdir="$SELF_TEMPDIR/proto",workdir="$WORK_DIR" "$MOUNT_DIR"
-}
+# Create temp directories for overlayfs
+TEMP_DIR="$(mktemp -d)"
+MOUNT_DIR="$TEMP_DIR/mount_dir"
+WORK_DIR="$TEMP_DIR/work_dir"
+mkdir -p "$MOUNT_DIR" "$WORK_DIR"
+# Mount the overlay
+"$OVFSFUSE_BIN" -o lowerdir=/,upperdir="$SELF_TEMPDIR/proto",workdir="$WORK_DIR" "$MOUNT_DIR"
 
 # Cleanup function
 cleanup() {
