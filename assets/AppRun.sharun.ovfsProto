@@ -26,17 +26,16 @@ fi
 
 # What command shall we exec?
 if _cmd="$(command -v "${ARGV0#./}")" >/dev/null 2>&1; then
-    :
+    PATH="$PATH:$oPATH"
 elif _cmd="$(command -v "$CMD")" >/dev/null 2>&1; then
     shift
-    :
+    PATH="$PATH:$oPATH"
 elif _cmd="$(command -v "$FALLBACK")" >/dev/null 2>&1; then
-    :
+    PATH="$PATH:$oPATH"
 else
     echo "Error: Neither ARGV0 ('${ARGV0%.*}') nor ARGS ('$CMD') are available in \$PATH"
     exit 1
 fi
-PATH="$oPATH"
 
 # If not in proto mode, execute as normal
 [ ! -d "$SELF_TEMPDIR/proto" ] && {
