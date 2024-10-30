@@ -38,12 +38,12 @@ else
 fi
 PATH="$oPATH"
 
-# Normal mode
+# If not in proto mode, execute as normal
 [ ! -d "$SELF_TEMPDIR/proto" ] && {
     exec "$_cmd" "$*"
 }
 
-#  Continue with proto mode if the proto dir is present ->
+# Proto mode handling ->
 
 # Find bwrap
 BWRAP_BIN="${SELF_TEMPDIR}/usr/bin/bwrap"
@@ -59,14 +59,13 @@ _dirname() { # DIRNAME but made entirely in POSIX SH
 OVFS_DIR="$(_dirname "$SELF_TEMPDIR")/ovfs"
 mkdir -p "$OVFS_DIR"
 
-    # Create temp directories for overlayfs
-    TEMP_DIR="$(mktemp -d)"
-    MOUNT_DIR="$TEMP_DIR/mount_dir"
-    WORK_DIR="$TEMP_DIR/work_dir"
-    mkdir -p "$MOUNT_DIR" "$WORK_DIR"
-    # Mount the overlay
-    "$OVFSFUSE_BIN" -o lowerdir=/,upperdir="$SELF_TEMPDIR/proto",workdir="$WORK_DIR" "$MOUNT_DIR"
-
+# Create temp directories for overlayfs
+TEMP_DIR="$(mktemp -d)"
+MOUNT_DIR="$TEMP_DIR/mount_dir"
+WORK_DIR="$TEMP_DIR/work_dir"
+mkdir -p "$MOUNT_DIR" "$WORK_DIR"
+# Mount the overlay
+"$OVFSFUSE_BIN" -o lowerdir=/,upperdir="$SELF_TEMPDIR/proto",workdir="$WORK_DIR" "$MOUNT_DIR"
 
 # Cleanup function
 cleanup() {
