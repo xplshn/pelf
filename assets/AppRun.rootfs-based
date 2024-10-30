@@ -67,7 +67,7 @@ while [ "$#" -gt 0 ]; do
             SHARE_AUDIO=0
             SHARE_LOOK=0
             SHARE_FONTS=0
-            SHARE_OPT
+            SHARE_OPT=0
             break
             ;;
         --Xbwrap-XdgRuntimeDir)
