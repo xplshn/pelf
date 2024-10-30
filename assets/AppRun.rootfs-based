@@ -1,6 +1,6 @@
 #!/bin/sh
 
-# DATE OF LAST REVISION: 29-10-2024
+# DATE OF LAST REVISION: 30-10-2024
 
 [ "$DEBUG" = "1" ] && set -x
 [ "$DEBUG2" = "1" ] && set -v
@@ -107,7 +107,6 @@ build_bwrap_options() {
         --bind-try /media /media \
         --bind-try /mnt /mnt \
         --bind /home /home \
-        --bind-try /opt /opt \
         --bind-try /etc/localtime /etc/localtime \
         --bind-try /etc/machine-id /etc/machine-id \
         --bind-try /etc/resolv.conf /etc/resolv.conf \
@@ -126,6 +125,11 @@ build_bwrap_options() {
         --setenv WITHIN_BWRAP \"1\" \
         --cap-add CAP_SYS_ADMIN"
     # Conditionally add optional directories
+
+    # Arch is a BS os, and programs get installed to /opt
+    if [ -f /app/.disabled/bindOpt ]; then
+        BWRAP_OPTIONS="$BWRAP_OPTIONS --bind-try /opt /opt"
+    fi
 
     # Themes & Icons
     if [ "$SHARE_LOOK" = "1" ]; then
