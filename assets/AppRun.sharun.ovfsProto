@@ -90,7 +90,7 @@ trap cleanup INT TERM HUP QUIT EXIT
 bwrap_cmd="$BWRAP_BIN --bind /tmp /tmp --bind / /"
 # Loop through each directory in $MOUNT_DIR/proto/*
 for dir in "$MOUNT_DIR"/*; do
-  if [ -d "$dir" ] && [ "tmp" != "$(basename "$dir")" ]; then
+  if [ -d "$dir" ] && [ "tmp" != "${dir##*/}" ]; then
     bwrap_cmd="$bwrap_cmd --bind-try $dir /$(basename "$dir")"
   fi
 done
