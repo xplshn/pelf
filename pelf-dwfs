@@ -406,6 +406,13 @@ main() {
 		# Proceed to execute the packed ENTRY POINT binary
 		"$_VAR_EXEC_FILE" "$@"
 	}
+	determine_home(){
+	     SELF_HOME="${SELF#*/}"
+	     _dirname() { dir=${1:-.} ; dir=${dir%%"${dir##*[!/]}"} ; [ "${dir##*/*}" ] && dir=. ; dir=${dir%/*}; dir=${dir%%"${dir##*[!/]}"}; printf '%s\n' "${dir:-/}"
+         } ; SELF_HOME="$(_dirname "$SELF")/.$SELF_HOME"
+         SELF_HOME="${SELF_HOME}.home"
+         [ -d "$SELF_HOME" ] && export HOME="$SELF_HOME"
+    } ; determine_home
 	execute_file "$@"
 }
 
