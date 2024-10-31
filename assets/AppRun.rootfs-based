@@ -25,19 +25,29 @@ PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
 
 bool() {
     case "$1" in
-        false | 0)
-            echo "0"
-            ;;
-        true | 1)
-            echo "1"
-            ;;
-        *)
-            echo "Invalid boolean value: $1" >&2
-            exit 1
-            ;;
+        false | 0) echo "0" ;;
+        true | 1) echo "1" ;;
+        *) echo "Invalid boolean value: $1" >&2; exit 1 ;;
     esac
 }
 
+# Function to check if a feature is enabled by file presence
+is_enabled() {
+    _propName="$1"
+    [ -f "$SELF_TEMPDIR/.enabled/$_propName" ] && echo "1" && return 0
+    [ -f "$SELF_TEMPDIR/.disabled/$_propName" ] && echo "0" && return 0
+    echo "$2" ; return 5
+}
+
+# Defaults with file-based overrides
+SHARE_LOOK="$(is_enabled "SHARE_LOOK" 1)"
+SHARE_FONTS="$(is_enabled "SHARE_FONTS" 1)"
+SHARE_XDG_RUNTIME_DIR="$(is_enabled "SHARE_XDG_RUNTIME_DIR" 0)"
+SHARE_AUDIO="$(is_enabled "SHARE_AUDIO" 1)"
+SHARE_OPT="$(is_enabled "SHARE_OPT" 1)"
+UID0_GID0="$(is_enabled "UID0_GID0" 0)"
+
+# Set default cmd
 _cat() {
     files="$*"
     for file in $files; do
@@ -47,10 +57,6 @@ _cat() {
     done
 } ; SELF_ARGS="-- $(_cat "$BWROOTFS/entrypoint")"
 
-# Defaults
-SHARE_AUDIO=1
-SHARE_LOOK=1
-SHARE_FONTS=1
 # Parse other arguments
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -61,6 +67,7 @@ while [ "$#" -gt 0 ]; do
             SHARE_AUDIO=0
             SHARE_LOOK=0
             SHARE_FONTS=0
+            SHARE_OPT=0
             break
             ;;
         --Xbwrap-XdgRuntimeDir)
@@ -127,8 +134,8 @@ build_bwrap_options() {
     # Conditionally add optional directories
 
     # Arch is a BS os, and programs get installed to /opt
-    if [ -f /app/.disabled/bindOpt ]; then
-        BWRAP_OPTIONS="$BWRAP_OPTIONS --bind-try /opt /opt"
+    if [ "$SHARE_OPT" = 1 ]; then
+        [ -d /opt ] && BWRAP_OPTIONS="$BWRAP_OPTIONS --bind-try /opt /opt"
     fi
 
     # Themes & Icons
@@ -152,7 +159,7 @@ build_bwrap_options() {
     # Add optional audio bindings if enabled
     if [ "$SHARE_AUDIO" = "1" ] && [ -n "$XDG_RUNTIME_DIR" ]; then
         BWRAP_OPTIONS="$BWRAP_OPTIONS \
-            $([ -f /etc/asound.conf ] && echo "--ro-bind-try /etc/asound.conf /etc/asound.conf") \
+            --bind-try /etc/asound.conf /etc/asound.conf \
             --bind-try $XDG_RUNTIME_DIR/pulse $XDG_RUNTIME_DIR/pulse \
             --bind-try $XDG_RUNTIME_DIR/pipewire-0 $XDG_RUNTIME_DIR/pipewire-0 \
             --bind-try $XDG_RUNTIME_DIR/pipewire-0.lock $XDG_RUNTIME_DIR/pipewire-0.lock \

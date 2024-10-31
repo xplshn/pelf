@@ -283,11 +283,11 @@ if [ "$NOROOTFS" = 1 ]; then
 
 	mv "$APPDIR/rootfs/entrypoint" "$APPDIR/entrypoint"
 
-	echo "LD_LIBRARY_PATH=\"$APPDIR/rootfs/lib:$APPDIR/rootfs/usr/lib\" lib4bin --dst-dir \"$APPDIR\" $TOBEKEPT_BIN" >"$APPDIR/.genl4b"
+    printf 'LD_LIBRARY_PATH="%s/rootfs/lib:%s/rootfs/usr/lib" lib4bin --dst-dir "%s" %s\n' "$APPDIR" "$APPDIR" "$APPDIR" "$TOBEKEPT_BIN" > "$APPDIR/.genl4b"
 	chmod +x "$APPDIR/.genl4b"
 	# shellcheck disable=SC2086 # Word-splitting is intentional here
-	LD_LIBRARY_PATH="$APPDIR/rootfs/lib:$APPDIR/rootfs/usr/lib" lib4bin --dst-dir "$APPDIR" $TOBEKEPT_BIN && {
-		# Download LAUNCH and set as entrypoint
+	"$APPDIR/.genl4b" && {
+		# Download AppRun.sharun
 		if [ "$PROTO" != 1 ]; then
 			if [ -f "$LOCAL_PATH/AppRun.sharun" ]; then
 				cp "$LOCAL_PATH/AppRun.sharun" "$APPDIR/AppRun"
@@ -299,9 +299,10 @@ if [ "$NOROOTFS" = 1 ]; then
 			fi
 			rm -rf "${APPDIR:?}/usr"
 		else
+		    # Create proto directory
 			mkdir -p "$APPDIR/proto"
 			for FILE in $TOBEKEPT_FILES; do
-				# Create the directory structure
+				# Create the requested structure
 				mkdir -p "$APPDIR/proto/$(dirname $FILE)"
 				# Copy the actual directory
 				cp -r "$APPDIR/rootfs/$FILE" "$APPDIR/proto/$FILE"
@@ -325,6 +326,7 @@ if [ "$NOROOTFS" = 1 ]; then
 			fi
 			chmod +x "$APPDIR/usr/bin/fuse-overlayfs"
 		fi
+
 		rm -rf "${APPDIR:?}/rootfs"
 		chmod +x "$APPDIR/AppRun"
 	}

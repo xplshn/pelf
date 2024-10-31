@@ -44,19 +44,21 @@ type BundleEntry struct {
 }
 
 func main() {
-	// Check if the program is running as root
 	usr, err := user.Current()
 	if err != nil {
-		logMessage("ERR", fmt.Sprintf("Failed to get current user: <yellow>%v</yellow>", err))
+		logMessage("ERR", fmt.Sprintf("Failed to get current user: %v", err))
+		return
 	}
 	if usr.Username == "root" {
-		logMessage("ERR", "This program cannot run as <yellow>root</yellow>.")
+		logMessage("ERR", "This program cannot run as root.")
+		return
 	}
 
 	// User's config directory and config file path
 	configDir, err := os.UserConfigDir()
 	if err != nil {
-		logMessage("ERR", fmt.Sprintf("Failed to determine config directory: <yellow>%v</yellow>", err))
+		logMessage("ERR", fmt.Sprintf("Failed to determine config directory: %v", err))
+		return
 	}
 	configFilePath := filepath.Join(configDir, "pelfd.json")
 
@@ -69,38 +71,40 @@ func main() {
 	// Handle version flag
 	if *version {
 		fmt.Printf("Version: %s\n", Version)
-		os.Exit(0)
+		return
 	}
 
-	// Load configuration
 	config := loadConfig(configFilePath, usr.HomeDir)
 
-	// Create necessary directories
-	if err := os.MkdirAll(config.Options.IconDir, 0755); err != nil {
-		logMessage("ERR", fmt.Sprintf("Failed to create icons directory: <yellow>%v</yellow>", err))
-	}
-	if err := os.MkdirAll(config.Options.AppDir, 0755); err != nil {
-		logMessage("ERR", fmt.Sprintf("Failed to create applications directory: <yellow>%v</yellow>", err))
-	}
+	// Run the main processing logic in a goroutine
+	go func() {
+		// Create necessary directories
+		os.MkdirAll(config.Options.IconDir, 0755)
+		os.MkdirAll(config.Options.AppDir, 0755)
 
-	// Manual integration mode
-	if *integratePath != "" {
-		integrateBundle(config, []string{*integratePath}, usr.HomeDir, configFilePath)
-		os.Exit(0)
-	}
+		// Manual integration mode
+		if *integratePath != "" {
+			integrateBundle(config, []string{*integratePath}, usr.HomeDir, configFilePath)
+			return
+		}
 
-	// Manual deintegration mode
-	if *deintegratePath != "" {
-		deintegrateBundle(config, *deintegratePath, configFilePath)
-		os.Exit(0)
-	}
+		// Manual deintegration mode
+		if *deintegratePath != "" {
+			deintegrateBundle(config, *deintegratePath, configFilePath)
+			return
+		}
 
-	// Automatic probing loop
-	probeInterval := time.Duration(config.Options.ProbeInterval) * time.Second
-	for {
-		integrateBundle(config, config.Options.DirectoriesToWalk, usr.HomeDir, configFilePath)
-		time.Sleep(probeInterval)
-	}
+		// Automatic probing loop
+		probeInterval := time.Duration(config.Options.ProbeInterval) * time.Second
+		for {
+			integrateBundle(config, config.Options.DirectoriesToWalk, usr.HomeDir, configFilePath)
+			time.Sleep(probeInterval)
+		}
+	}()
+
+	// Run the Fyne application in the main goroutine
+	//fyneWindow.ShowAndRun()
+	fyneApp.Run()
 }
 
 func integrateBundle(config Config, paths []string, homeDir string, configFilePath string) {
@@ -129,7 +133,7 @@ func integrateBundle(config Config, paths []string, homeDir string, configFilePa
 		// Check if the path is a file or directory
 		info, err := os.Stat(filePath)
 		if err != nil {
-			logMessage("ERR", fmt.Sprintf("Failed to access <yellow>%s</yellow>: <yellow>%v</yellow>", filePath, err))
+			logMessage("ERR", fmt.Sprintf("Failed to access %s: %v", filePath, err))
 			continue // Skip this file or handle it as needed
 		}
 
@@ -137,13 +141,13 @@ func integrateBundle(config Config, paths []string, homeDir string, configFilePa
 			// If it's a directory, process all files within it
 			files, err := os.ReadDir(filePath)
 			if err != nil {
-				logMessage("ERR", fmt.Sprintf("Failed to read directory <yellow>%s</yellow>: <yellow>%v</yellow>", filePath, err))
+				logMessage("ERR", fmt.Sprintf("Failed to read directory %s: %v", filePath, err))
 				continue // Handle directory read errors
 			}
 
 			for _, entry := range files {
 				if !entry.Type().IsRegular() {
-					logMessage("INF", fmt.Sprintf("Skipping non-regular file in directory: <yellow>%s</yellow>", entry.Name()))
+					logMessage("INF", fmt.Sprintf("Skipping non-regular file in directory: %s", entry.Name()))
 					continue // Skip non-regular files (like directories, symlinks, etc.)
 				}
 				// Process each file within the directory
@@ -205,7 +209,7 @@ func checkAndRecreateFiles(entry *BundleEntry, bundle string, options Options, c
 		logMessage("WRN", fmt.Sprintf("The thumbnail file for <blue>%s</blue> doesn't exist anymore. Generating new thumbnail...", filepath.Base(bundle)))
 		thumbnailPath, err := generateThumbnail(bundle, entry.Png)
 		if err != nil {
-			logMessage("ERR", fmt.Sprintf("Failed to create thumbnail file: <yellow>%v</yellow>", err))
+			logMessage("ERR", fmt.Sprintf("Failed to create thumbnail file: %v", err))
 		} else {
 			entry.Thumbnail = thumbnailPath
 			logMessage("INF", fmt.Sprintf("A new thumbnail for <green>%s</green> was created", filepath.Base(bundle)))
@@ -278,7 +282,7 @@ func cleanupBundle(path string, entries map[string]*BundleEntry) {
 			continue
 		}
 		if err := os.Remove(file); err != nil && !os.IsNotExist(err) {
-			logMessage("ERR", fmt.Sprintf("Failed to remove file: <yellow>%s</yellow> <red>%v</red>", file, err))
+			logMessage("ERR", fmt.Sprintf("Failed to remove file: %s %v", file, err))
 		} else {
 			logMessage("INF", fmt.Sprintf("Removed file: <green>%s</green>", file))
 		}
@@ -304,12 +308,12 @@ func executeBundle(bundle, param, outputFile string) string {
 
 	data, err := base64.StdEncoding.DecodeString(outputStr)
 	if err != nil {
-		logMessage("ERR", fmt.Sprintf("Failed to decode base64 output for <yellow>%s</yellow> <yellow>%s</yellow>: <red>%v</red>", bundle, param, err))
+		logMessage("ERR", fmt.Sprintf("Failed to decode base64 output for %s %s: %v", bundle, param, err))
 		return ""
 	}
 
 	if err := os.WriteFile(outputFile, data, 0644); err != nil {
-		logMessage("ERR", fmt.Sprintf("Failed to write file <yellow>%s</yellow>: <red>%v</red>", outputFile, err))
+		logMessage("ERR", fmt.Sprintf("Failed to write file %s: %v", outputFile, err))
 		return ""
 	}
 
@@ -323,18 +327,18 @@ func extractAppImageMetadata(metadataType, appImagePath, outputFile string) stri
 	// Create a temporary directory for extraction
 	tempDir, err := os.MkdirTemp("", "appimage-extract-")
 	if err != nil {
-		logMessage("ERR", fmt.Sprintf("Failed to create temporary directory: <yellow>%v</yellow>", err))
+		logMessage("ERR", fmt.Sprintf("Failed to create temporary directory: %v", err))
 		return ""
 	}
 	// Defer the removal of the tempDir to ensure it is deleted at the end of the function
 	defer func() {
 		if err := os.RemoveAll(tempDir); err != nil {
-			logMessage("ERR", fmt.Sprintf("Failed to remove temporary directory: <yellow>%v</yellow>", err))
+			logMessage("ERR", fmt.Sprintf("Failed to remove temporary directory: %v", err))
 		}
 	}()
 
 	if err := os.Chdir(tempDir); err != nil {
-		logMessage("ERR", fmt.Sprintf("Failed to change directory to <yellow>%s</yellow>: <yellow>%v</yellow>", tempDir, err))
+		logMessage("ERR", fmt.Sprintf("Failed to change directory to %s: %v", tempDir, err))
 		return ""
 	}
 
@@ -362,7 +366,7 @@ func extractAppImageMetadata(metadataType, appImagePath, outputFile string) stri
 		}
 		metadataPath = files[0]
 	default:
-		logMessage("ERR", fmt.Sprintf("Unknown metadata type: <yellow>%s</yellow>", metadataType))
+		logMessage("ERR", fmt.Sprintf("Unknown metadata type: %s", metadataType))
 		return ""
 	}
 
@@ -372,7 +376,7 @@ func extractAppImageMetadata(metadataType, appImagePath, outputFile string) stri
 	}
 
 	if err := copyFile(metadataPath, outputFile); err != nil {
-		logMessage("ERR", fmt.Sprintf("Failed to copy %s file: <yellow>%v</yellow>", metadataType, err))
+		logMessage("ERR", fmt.Sprintf("Failed to copy %s file: %v", metadataType, err))
 		return ""
 	}
 
