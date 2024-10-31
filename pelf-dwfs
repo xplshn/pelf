@@ -32,6 +32,7 @@ Options:
   --embed-static-tools                   Embed static tools into the bundle.
   --static-tools-dir=[directory]         Specify a custom directory from which to get the static tools.
   --retrieve-runtime=[filepath]          Output the runtime to a file and exit
+  --no-upx                               Disables usage of UPX compression in the static tools.
   --help                                 Display this help and exit.
 
 Examples:
@@ -55,7 +56,7 @@ check_and_process() {
 }
 
 # Parse command-line arguments using getopt
-if ! ARGS=$(getopt -o ho:c:a:i:e:s --long help,output-to:,compression:,add-appdir:,appbundle-id:,embed-static-tools,static-tools-dir:,retrieve-runtime: -n "$0" -- "$@"); then
+if ! ARGS=$(getopt --long help,output-to:,compression:,add-appdir:,appbundle-id:,embed-static-tools,static-tools-dir:,no-upx,retrieve-runtime: -n "$0" -- "$@"); then
 	print_help
 	exit 1
 fi
@@ -70,33 +71,33 @@ _VAR_MAIN_BINARY=""
 # Process options
 while true; do
 	case "$1" in
-	-h | --help)
+	 --help)
 		print_help
 		exit 0
 		;;
-	-o | --output-to)
+	--output-to)
 		_VAR_OUT_FILE="$2"
 		shift 2
 		;;
-	-c | --compression)
+	--compression)
 		_VAR_COMPRESS_ARG="$2"
 		shift 2
 		;;
-	-a | --add-appdir)
+	--add-appdir)
 		[ -z "$2" ] && error "You must specify an AppDir."
 		__APPDIR="$2"
 		shift 2
 		;;
-	-i | --appbundle-id)
+	--appbundle-id)
 		[ -z "$2" ] && error "You must specify an AppBundle ID"
 		_VAR_MAIN_BINARY="$2"
 		shift 2
 		;;
-	-e | --embed-static-tools)
+	--embed-static-tools)
 		EMBED_STATIC_TOOLS="1"
 		shift
 		;;
-	-s | --static-tools-dir)
+	--static-tools-dir)
 		[ -z "$2" ] && error "You must specify a valid directory that contains the static tools"
 		_VAR_CUSTOM_EMBED_DIR="$2"
 		shift 2
@@ -106,6 +107,10 @@ while true; do
 		_VAR_RETRIEVE_RUNTIME="$2"
 		shift 2
 		;;
+	--no-upx)
+	    NOUPX="1"
+	    shift
+	    ;;
 	--)
 		shift
 		break
@@ -457,6 +462,14 @@ embed_static_tools() {
 			error "Failed to copy static tools"
 		fi
 	fi
+
+    if [ -z "$NOUPX" ]; then
+        if command -v "upx" >/dev/null 2>&1; then
+            for file in "$_VAR_STATIC_TOOLS_DIR"/*; do
+                upx "$file" >/dev/null 2>&1
+            done
+        fi
+    fi
 
 	# Create the tar archive
 	if ! tar -C "$_VAR_STATIC_TOOLS_DIR" -czf "$_VAR_WORKDIR/static.tgz" .; then
