@@ -43,7 +43,7 @@ fi
     exec "$_cmd" "$*"
 }
 
-# Proto mode handling ->
+# proto mode handling ->
 
 # Find bwrap
 BWRAP_BIN="${SELF_TEMPDIR}/usr/bin/bwrap"
@@ -87,10 +87,10 @@ cleanup() {
 trap cleanup INT TERM HUP QUIT EXIT
 
 # Initialize the bwrap command
-bwrap_cmd="$BWRAP_BIN --bind $SELF_TEMPDIR /app --bind / /"
+bwrap_cmd="$BWRAP_BIN --bind /tmp /tmp --bind / /"
 # Loop through each directory in $MOUNT_DIR/proto/*
-for dir in "$MOUNT_DIR"/proto/*; do
-  if [ -d "$dir" ]; then
+for dir in "$MOUNT_DIR"/*; do
+  if [ -d "$dir" ] && [ "tmp" != "$(basename "$dir")" ]; then
     bwrap_cmd="$bwrap_cmd --bind-try $dir /$(basename "$dir")"
   fi
 done
