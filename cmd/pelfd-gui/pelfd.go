@@ -4,12 +4,15 @@ import (
 	"encoding/base64"
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"os/user"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/liamg/tml"
 )
 
 // Version indicates the current PELFD version
@@ -133,8 +136,8 @@ func integrateBundle(config Config, paths []string, homeDir string, configFilePa
 		// Check if the path is a file or directory
 		info, err := os.Stat(filePath)
 		if err != nil {
-			logMessage("ERR", fmt.Sprintf("Failed to access %s: %v", filePath, err))
-			continue // Skip this file or handle it as needed
+			log.Println(tml.Sprintf("<red><bold>ERR:</bold></red> Failed to access <yellow>%s</yellow>: <red>%v</red>", filePath, err)) //logMessage("ERR", fmt.Sprintf("Failed to access %s: %v", filePath, err))
+			continue                                                                                                                    // Skip this file or handle it as needed
 		}
 
 		if info.IsDir() {
