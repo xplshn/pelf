@@ -286,12 +286,12 @@ select_structure_and_apprun() {
 }
 
 tidyup(){
-    rm -rf "${APPDIR:?}/proto/app"
-    #for EXCLUDED in $GETRID_FILES; do
-    #    if [ -f "$APPDIR/proto/$EXCLUDED" ] || [ -d "$APPDIR/proto/$EXCLUDED" ]; then
-    #        rm -rf "${APPDIR:?}/proto/$EXCLUDED"
-    #    fi
-    #done
+    [ "$SANDBOX" != "1" ] && rm -rf "${APPDIR:?}/proto/app"
+    for EXCLUDED in $GETRID_FILES; do
+        if [ -f "$APPDIR/proto/$EXCLUDED" ] || [ -d "$APPDIR/proto/$EXCLUDED" ]; then
+            rm -rf "${APPDIR:?}/proto/$EXCLUDED"
+        fi
+    done
 }
 
 upx_static_tools() {
