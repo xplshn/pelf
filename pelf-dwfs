@@ -56,17 +56,16 @@ check_and_process() {
 }
 
 # Parse command-line arguments using getopt
-if ! ARGS=$(getopt --long help,output-to:,compression:,add-appdir:,appbundle-id:,embed-static-tools,static-tools-dir:,no-upx,retrieve-runtime: -n "$0" -- "$@"); then
-	print_help
-	exit 1
+if ! ARGS=$(getopt -o "" --long output-to:,compression:,add-appdir:,appbundle-id:,static-tools-dir:,retrieve-runtime:,embed-static-tools,no-upx,help -n "$0" -- "$@"); then
+    print_help
+    exit 1
 fi
 
-# Evaluate the arguments
+# Evaluate the parsed arguments
 eval set -- "$ARGS"
 
 # Initialize variables
-__APPDIR=""
-_VAR_MAIN_BINARY=""
+_VAR_APPDIR="" _VAR_APPBUNDLE_ID="" _VAR_OUT_FILE="" _VAR_COMPRESS_ARG="" EMBED_STATIC_TOOLS=0 _VAR_CUSTOM_EMBED_DIR="" _VAR_RETRIEVE_RUNTIME="" _VAR_NOUPX=0
 
 # Process options
 while true; do
@@ -84,13 +83,11 @@ while true; do
 		shift 2
 		;;
 	--add-appdir)
-		[ -z "$2" ] && error "You must specify an AppDir."
-		__APPDIR="$2"
+		_VAR_APPDIR="$2"
 		shift 2
 		;;
 	--appbundle-id)
-		[ -z "$2" ] && error "You must specify an AppBundle ID"
-		_VAR_MAIN_BINARY="$2"
+		_VAR_APPBUNDLE_ID="$2"
 		shift 2
 		;;
 	--embed-static-tools)
@@ -98,17 +95,15 @@ while true; do
 		shift
 		;;
 	--static-tools-dir)
-		[ -z "$2" ] && error "You must specify a valid directory that contains the static tools"
 		_VAR_CUSTOM_EMBED_DIR="$2"
 		shift 2
 		;;
 	--retrieve-runtime)
-		[ -z "$2" ] && error "You must specify a valid filepath to which we can write the extracted runtime to"
 		_VAR_RETRIEVE_RUNTIME="$2"
 		shift 2
 		;;
 	--no-upx)
-	    NOUPX="1"
+	    _VAR_NOUPX="1"
 	    shift
 	    ;;
 	--)
@@ -123,45 +118,48 @@ while true; do
 	esac
 done
 
+
 # Check for required arguments after parsing
-if [ -z "$__APPDIR" ] || [ -z "$_VAR_MAIN_BINARY" ] || [ -z "$_VAR_OUT_FILE" ] && [ -z "$_VAR_RETRIEVE_RUNTIME" ]; then
-	echo "Error: Required arguments not provided."
-	echo "You must specify:"
-	echo "  --add-appdir <AppDir>"
-	echo "  --appbundle-id <PROGRAM-DATE-MAINTAINER>"
-	echo "  --output-to <OUTPUT.AppBundle>"
-	print_help
-	exit 1
+if [ -z "$_VAR_RETRIEVE_RUNTIME" ]; then
+    if [ -z "$_VAR_APPDIR" ] || [ -z "$_VAR_APPBUNDLE_ID" ] || [ -z "$_VAR_OUT_FILE" ]; then
+    	echo "Error: Required arguments not provided."
+    	echo "You must specify:"
+    	echo "  --add-appdir <AppDir>"
+    	echo "  --appbundle-id <PROGRAM-DATE-MAINTAINER>"
+    	echo "  --output-to <OUTPUT.AppBundle>"
+    	print_help
+    	exit 1
+    fi
 fi
 
 [ -z "$_VAR_RETRIEVE_RUNTIME" ] && {
 	# Check if the APPDIR exists and is a directory
-	if [ -d "$__APPDIR" ]; then
+	if [ -d "$_VAR_APPDIR" ]; then
 		# Check for the existence of the AppRun file
-		if [ ! -f "$__APPDIR/AppRun" ]; then
+		if [ ! -f "$_VAR_APPDIR/AppRun" ]; then
 			echo "This AppDir does not contain an AppRun" >&2
 
 			# Attempt to copy a generic AppRun if it exists
 			if [ -f "./AppRun.generic" ]; then
 				echo "Copying a generic AppRun" >&2
-				cp ./AppRun.generic "$__APPDIR/AppRun"
+				cp ./AppRun.generic "$_VAR_APPDIR/AppRun"
 			else
 				echo "Downloading a generic AppRun..." >&2
-				wget -q -O "$__APPDIR/AppRun" "https://raw.githubusercontent.com/xplshn/pelf/refs/heads/pelf-ng/assets/AppRun.generic" || {
+				wget -q -O "$_VAR_APPDIR/AppRun" "https://raw.githubusercontent.com/xplshn/pelf/refs/heads/pelf-ng/assets/AppRun.generic" || {
 					echo "Failed to download AppRun." >&2
 					exit 1
 				}
 			fi
-			chmod +x "$__APPDIR/AppRun"
+			chmod +x "$_VAR_APPDIR/AppRun"
 		fi
 
 		# Process the directory and copy items
-		check_and_process "$__APPDIR" "true" &&
-			find "$__APPDIR" -mindepth 1 -maxdepth 1 | while IFS= read -r item; do
+		check_and_process "$_VAR_APPDIR" "true" &&
+			find "$_VAR_APPDIR" -mindepth 1 -maxdepth 1 | while IFS= read -r item; do
 				cp -dR "$item" "${_VAR_TO_BE_BUNDLED}/"
 			done
 	else
-		echo "[$__APPDIR] is not an existing directory" >&2
+		echo "[$_VAR_APPDIR] is not an existing directory" >&2
 		exit 1
 	fi
 
@@ -205,7 +203,7 @@ CONST_VERSION="1.9_dwfs_raw" # (vanilla)
 
 # Generate the loader script with conditional LD_LIBRARY_PATH replacements
 LOADER_SCRIPT=$(
-	sed -e "s|__ENTRY_POINT__|${_VAR_MAIN_BINARY##*/}|g" \
+	sed -e "s|__ENTRY_POINT__|${_VAR_APPBUNDLE_ID##*/}|g" \
 		-e "s|__PELF_VERSION__|${CONST_VERSION}|g" \
 		-e "s|__PELF_HOST__|${_VAR_HOST_INFO}|g" <<'_END_OF_LOADER_SCRIPT'
 #!/bin/sh
@@ -215,17 +213,20 @@ LOADER_SCRIPT=$(
 # PELF's behavior, submit a PR of your "PELF EDITION" if you think it is appropiate.                    -
 # NOTE: The only way to make changes to this file is by using a `vi` implementation like Busybox's, which respects non-visible characters
 
+# shellcheck disable=SC3028 # 18,74 # In POSIX sh, RANDOM is undefined. [SC3028] # That's ok, we also use epoch date
+# shellcheck disable=SC2317 # 107,9 # Command appears to be unreachable. Check usage (or *ignore* if invoked indirectly) # We call this function via a `trap`
+
 # Get the binary's name
-[ -n "$EXE_NAME" ] || EXE_NAME="__ENTRY_POINT__"
+[ -n "$EXE_NAME" ] || EXE_NAME=""
 # rEXE_NAME can be used as a variable name, and it is also used for creating the work dir
 rEXE_NAME="$(echo "$EXE_NAME" | tr -dc '[:alnum:]_')"
 
 # Important variables
-_VAR_POOL_DIR="${TMPDIR:-/tmp}/.pelfbundles"                                        # Temporary pool directory
-_VAR_BWORK_DIR="${_VAR_POOL_DIR}/pbundle_${rEXE_NAME}$(date '+%s%M%S')_${RANDOM}"   # Temporary work directory
-_VAR_MOUNT_DIR="$_VAR_BWORK_DIR/mounted"                                            # Temporary directory for mounting
-_VAR_EXEC_FILE="${_VAR_MOUNT_DIR}/AppRun"                                           # The file to execute
-SELF="$(realpath "$0")"                                                             # Path to the .AppBundle itself
+_VAR_POOL_DIR="${TMPDIR:-/tmp}/.pelfbundles"                                      # Temporary pool directory
+_VAR_BWORK_DIR="${_VAR_POOL_DIR}/pbundle_${rEXE_NAME}$(date '+%s%M%S')_${RANDOM}" # Temporary work directory
+_VAR_MOUNT_DIR="$_VAR_BWORK_DIR/mounted"                                          # Temporary directory for mounting
+_VAR_EXEC_FILE="${_VAR_MOUNT_DIR}/AppRun"                                         # The file to execute
+SELF="$(realpath "$0")"                                                           # Path to the .AppBundle itself
 mkdir -p "$_VAR_BWORK_DIR"
 
 # Nice variables
@@ -288,20 +289,54 @@ mount_dwarfs() {
 	}
 }
 
+determine_home() {
+	_dirname() {
+		dir=${1:-.}
+		dir=${dir%%"${dir##*[!/]}"}
+		[ "${dir##*/*}" ] && dir=.
+		dir=${dir%/*}
+		dir=${dir%%"${dir##*[!/]}"}
+		printf '%s\n' "${dir:-/}"
+	}
+	SELF_HOME="$(_dirname "$SELF")/.$SELF_HOME"
+	SELF_HOME="${SELF}.home"
+	[ -d "$SELF_HOME" ] || WOULDBE_HOME="$SELF_HOME" && {
+		if [ -z "$OLD_HOME" ]; then
+			export OLD_HOME="$HOME"
+		fi
+		export HOME="$SELF_HOME"
+	}
+}
+determine_home
+
 # Main function to handle the logic
 main() {
-	mount_dwarfs && touch "${_VAR_BWORK_DIR}/.$$"
-    # shellcheck disable=SC2317 # Command appears to be unreachable. Check usage (or *ignore* if invoked indirectly)
+	mount_dwarfs && touch "${_VAR_BWORK_DIR}/.$$" # Creats a hidden file in the work dir of the instance of this AppBundle, to allow for scripts to determine if the runtime is still running. This is a feature that some people may want if they wish to write wild AppRuns/external scripts
 	cleanup() {
-		count() {
-			[ -e "$1" ] &&
-				printf '%s\n' "$#" ||
-				printf '%s\n' 0
-		}
-		fusermount3 -uz "$_VAR_MOUNT_DIR" 2>/dev/null
-		rm -rf "$_VAR_BWORK_DIR" 2>/dev/null || true
-		rm -rf "$_VAR_POOL_DIR" 2>/dev/null || true
+		(
+			# Attempt to unmount
+			fusermount3 -u "$_VAR_MOUNT_DIR" 2>/dev/null
+
+			# Wait and check if the mount point is unmounted
+			for i in 1 2 3 4 5; do
+				if mountpoint -q "$_VAR_MOUNT_DIR"; then
+					sleep "$i"
+				else
+					break
+				fi
+			done
+
+			# Force unmount if still mounted
+			if mountpoint -q "$_VAR_MOUNT_DIR"; then
+				fusermount3 -uz "$_VAR_MOUNT_DIR" 2>/dev/null
+			fi
+
+			# Remove temporary directories
+			rm -rf "$_VAR_BWORK_DIR" 2>/dev/null || true
+			rm -rf "$_VAR_POOL_DIR" 2>/dev/null || true
+		) & # Run cleanup in the background
 	}
+
 	# Set up cleanup trap
 	trap 'cleanup' INT TERM HUP QUIT EXIT
 
@@ -378,6 +413,9 @@ main() {
 		fi
 		exit 1
 		;;
+	--pbundle_portableHome)
+		mkdir -p "$WOULDBE_HOME"
+		;;
 	esac
 
 	# Execute the specified file from the mounted directory
@@ -411,13 +449,6 @@ main() {
 		# Proceed to execute the packed ENTRY POINT binary
 		"$_VAR_EXEC_FILE" "$@"
 	}
-	determine_home(){
-	     SELF_HOME="${SELF#*/}"
-	     _dirname() { dir=${1:-.} ; dir=${dir%%"${dir##*[!/]}"} ; [ "${dir##*/*}" ] && dir=. ; dir=${dir%/*}; dir=${dir%%"${dir##*[!/]}"}; printf '%s\n' "${dir:-/}"
-         } ; SELF_HOME="$(_dirname "$SELF")/.$SELF_HOME"
-         SELF_HOME="${SELF_HOME}.home"
-         [ -d "$SELF_HOME" ] && export HOME="$SELF_HOME"
-    } ; determine_home
 	execute_file "$@"
 }
 
@@ -463,7 +494,7 @@ embed_static_tools() {
 		fi
 	fi
 
-    if [ -z "$NOUPX" ]; then
+    if [ -z "$_VAR_NOUPX" ]; then
         if command -v "upx" >/dev/null 2>&1; then
             for file in "$_VAR_STATIC_TOOLS_DIR"/*; do
                 upx "$file" >/dev/null 2>&1
