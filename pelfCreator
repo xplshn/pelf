@@ -14,6 +14,7 @@ Options:
    -e, --entrypoint   Set the entrypoint (required unless using --multicall)
    -z, --dontpack     Disables .dwfs.AppBundle packaging, thus leaving only the AppDir
    -x, --sharun       Processes the desired binaries with lib4bin and adds sharun. Then, it ditches the rootfs and only keeps the files specified with '-k'
+   -s, --sandbox      Enable sandbox mode (uses AppRun.rootfs-based)
    -k, --keep         Moves these directories to the appdir's ./proto, this is for use with -x, to conserve the files a program may need while also removing the rest of the rootfs
    -o, --output-to    Set the output file name (optional, default: <name>-<date>.dwfs.AppBundle)
    --local            A directory from which to pick up files such as 'AppRun.sharun', 'rootfs.tgz', 'pelf-dwfs', 'bwrap', etc
@@ -37,7 +38,7 @@ EOF
 : "${ROOTFS_URL:=https://pub.ajam.dev/utils/alpine-mini-$(uname -m)/rootfs.tar.gz}"
 
 parse_arguments() {
-    ARGS=$(getopt -o m:n:p:e:x:k:o:z -l maintainer:,name:,pkg-add:,entrypoint:,sharun:,keep:,output:,local:,dontpack,help -- "$@") || {
+    ARGS=$(getopt -o m:n:p:e:x:k:r:o:sz -l maintainer:,name:,pkg-add:,entrypoint:,sharun:,keep:,getrid:,output:,local:,sandbox,dontpack,help -- "$@") || {
         echo "Failed to parse arguments." >&2
         exit 1
     }
@@ -52,7 +53,9 @@ parse_arguments() {
         -e | --entrypoint) ENTRYPOINT="$2"; shift 2 ;;
         -z | --dontpack) DONTPACK=1; shift ;;
         -x | --sharun) SHARUN=1; LIB4BIN_ARGS="$2"; shift 2 ;;
+        -s | --sandbox) SANDBOX="1"; shift ;;
         -k | --keep) TOBEKEPT_FILES="$2"; shift 2 ;;
+        -r | --getrid) GETRID_FILES="$2"; shift 2 ;;
         -o | --output-to) OUTPUT_TO="$2"; shift 2 ;;
         --local) LOCAL_PATH="$2"; shift 2 ;;
         -h | --help) print_help; exit 0 ;;
@@ -71,8 +74,6 @@ check_required_arguments() {
 
     if [ -z "$ENTRYPOINT" ]; then
         echo "Warning: The resulting AppBundle won't have a default entrypoint/fallback, because you did not specify -e/--entrypoint. It will only work as a multicall binary" >&2
-        print_help
-        exit 1
     fi
 }
 
@@ -150,10 +151,31 @@ pkg_add() {
 
     echo "sh" >"$APPDIR/rootfs/entrypoint"
     eval env -i HOME="$HOME" PWD="$PWD" PATH="$PATH" "$APPDIR/AppRun" "$_command"
+    [ "$SANDBOX" = "1" ] && {
+        ENTRYPOINT_DEST="$APPDIR/rootfs/usr/local/bin/default"
+        rm -rf "$APPDIR/proto"
+        ln -f "$APPDIR/rootfs" "$APPDIR/proto"
+
+        echo "/usr/local/bin/LAUNCH" >"$ENTRYPOINT_DEST"
+        ENTRYPOINT_DEST="$APPDIR/rootfs/entrypoint"
+
+	    mkdir -p "$APPDIR/rootfs/usr/local/bin"
+	    # Either download or copy LAUNCH (multicall helper for rootfs-based)
+	    if [ -f "$LOCAL_PATH/LAUNCH" ]; then
+	        cp "$LOCAL_PATH/LAUNCH" "$APPDIR/rootfs/usr/local/bin/LAUNCH"
+	    else
+	        if ! wget -qO "$APPDIR/rootfs/usr/local/bin/LAUNCH" "https://raw.githubusercontent.com/xplshn/pelf/refs/heads/pelf-ng/assets/LAUNCH-multicall.rootfs.entrypoint"; then
+	        	echo "Failed to download LAUNCH for multicall"
+	        	exit 1
+	        fi
+	    fi
+	    chmod +x "$APPDIR/rootfs/usr/local/bin/LAUNCH"
+	    chmod +x "$APPDIR/rootfs/usr/local/bin/default"
+    }
 }
 
 create_entrypoint() {
-    echo "$ENTRYPOINT" >"$APPDIR/entrypoint"
+    echo "$ENTRYPOINT" >"$ENTRYPOINT_DEST"
     chmod +x "$APPDIR/entrypoint"
 }
 
@@ -167,7 +189,7 @@ handle_desktop_file() {
 
             ICON_NAME="$(awk -F"=" '/Icon/ {print $2; exit}' "$APPDIR/rootfs/usr/share/applications/$ENTRYPOINT" 2>/dev/null)"
             ENTRYPOINT=$(awk -F"=| " '/Exec=/ {print $2; exit}' "$APPDIR/rootfs/usr/share/applications/$ENTRYPOINT" 2>/dev/null)
-            echo "$ENTRYPOINT" >"$APPDIR/entrypoint"
+            create_entrypoint
 
             if [ -n "$ICON_NAME" ]; then
                 ICON_PATH=$(find "$APPDIR/rootfs/usr/share/icons" -type f -name "$ICON_NAME.*" 2>/dev/null | sort | head -n 1)
@@ -194,7 +216,11 @@ select_structure_and_apprun() {
         # Prepare the list of binaries to be kept
         TOBEKEPT_BIN=""
         for ITEM in $LIB4BIN_ARGS; do
-            TOBEKEPT_BIN="$TOBEKEPT_BIN $APPDIR/rootfs/$ITEM"
+            for EXCLUDED in $GETRID_FILES; do
+                if [ "$ITEM" != "$EXCLUDED" ]; then
+                    TOBEKEPT_BIN="$TOBEKEPT_BIN $APPDIR/rootfs/$ITEM"
+                fi
+            done
         done
 
         # Generate and execute lib4bin script
@@ -224,9 +250,13 @@ select_structure_and_apprun() {
         [ -d "$APPDIR/proto" ] && rm -rf "$APPDIR/proto"
         mv "$APPDIR/rootfs" "$APPDIR/proto"
     else # We're in "proto" mode/norootfs. Let's only keep the specified files.
-        for FILE in $TOBEKEPT_FILES; do # Doesn't do anything if the var is empty
-            mkdir -p "$APPDIR/proto/$(dirname "$FILE")"
-            cp -r "$APPDIR/rootfs/$FILE" "$APPDIR/proto/$FILE"
+        for ITEM in $TOBEKEPT_FILES; do # Doesn't do anything if the var is empty
+            for EXCLUDED in $GETRID_FILES; do
+                if [ "$ITEM" != "$EXCLUDED" ]; then
+                    mkdir -p "$APPDIR/proto/$(dirname "$ITEM")"
+                    cp -r "$APPDIR/rootfs/$ITEM" "$APPDIR/proto/$ITEM"
+                fi
+            done
         done
         rm -rf "$APPDIR/rootfs"
     fi
@@ -257,6 +287,11 @@ select_structure_and_apprun() {
 
 tidyup(){
     rm -rf "${APPDIR:?}/proto/app"
+    #for EXCLUDED in $GETRID_FILES; do
+    #    if [ -f "$APPDIR/proto/$EXCLUDED" ] || [ -d "$APPDIR/proto/$EXCLUDED" ]; then
+    #        rm -rf "${APPDIR:?}/proto/$EXCLUDED"
+    #    fi
+    #done
 }
 
 upx_static_tools() {
@@ -284,20 +319,22 @@ create_bundle() {
 }
 
 main() {
+    ENTRYPOINT_DEST="$APPDIR/entrypoint"
+
     parse_arguments "$@"
     check_required_arguments
     setup_local_path
     create_appdir
     download_and_extract_rootfs
-    # Actual logic ->
-    add_bwrap # 1.
-    pkg_add   # 2.
-    create_entrypoint   # 3.
-    handle_desktop_file # 4.
-    select_structure_and_apprun # 5
-    tidyup              # 6.
-    upx_static_tools    # 7.
-    create_bundle       # 8.
+    # Actual logic 0------------------------------------>
+    add_bwrap                                            # 1.
+    pkg_add                                              # 2.
+    create_entrypoint                                    # 3.
+    handle_desktop_file                                  # 4.
+    [ "$SANDBOX" != "1" ] && select_structure_and_apprun # 5
+    tidyup                                               # 6.
+    upx_static_tools                                     # 7.
+    create_bundle                                        # 8.
 }
 
 main "$@"
