@@ -151,6 +151,7 @@ pkg_add() {
 
     echo "sh" >"$APPDIR/rootfs/entrypoint"
     eval env -i HOME="$HOME" PWD="$PWD" PATH="$PATH" "$APPDIR/AppRun" "$_command"
+    ENTRYPOINT_DEST="$APPDIR/entrypoint"
     [ "$SANDBOX" = "1" ] && {
         ENTRYPOINT_DEST="$APPDIR/rootfs/usr/local/bin/default"
         rm -rf "$APPDIR/proto"

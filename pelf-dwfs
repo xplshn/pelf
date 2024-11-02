@@ -290,22 +290,32 @@ mount_dwarfs() {
 }
 
 determine_home() {
-	_dirname() {
-		dir=${1:-.}
-		dir=${dir%%"${dir##*[!/]}"}
-		[ "${dir##*/*}" ] && dir=.
-		dir=${dir%/*}
-		dir=${dir%%"${dir##*[!/]}"}
-		printf '%s\n' "${dir:-/}"
-	}
-	SELF_HOME="$(_dirname "$SELF")/.$SELF_HOME"
-	SELF_HOME="${SELF}.home"
-	[ -d "$SELF_HOME" ] || WOULDBE_HOME="$SELF_HOME" && {
-		if [ -z "$OLD_HOME" ]; then
-			export OLD_HOME="$HOME"
-		fi
-		export HOME="$SELF_HOME"
-	}
+    setEnvIfExists() {
+        dirSuffix="$1"
+        envVar="$2"
+        oldEnvVar="$3"
+        wouldbeVar="$4"
+
+        dir="$SELF$dirSuffix"
+
+        if [ -d "$dir" ]; then
+            # Check if the old environment variable is empty and set it
+            oldValue=$(eval "echo \$$oldEnvVar")
+            if [ -z "$oldValue" ]; then
+                envValue=$(eval "echo \$$envVar")
+                export "$oldEnvVar=$envValue"
+            fi
+            eval export "$envVar=\"$dir\""
+        else
+            echo "Directory does not exist: $dir"
+            eval export "$wouldbeVar=\"$dir\""
+        fi
+    }
+
+    setEnvIfExists ".home" "HOME" "OLD_HOME" "WOULDBE_HOME"
+    if [ ! -d "${SELF}.home" ]; then
+        setEnvIfExists ".config" "XDG_CONFIG_HOME" "OLD_XDG_CONFIG_HOME" "WOULDBE_CONFIG"
+    fi
 }
 determine_home
 
@@ -355,7 +365,7 @@ main() {
 	case "$1" in
 	--pbundle_help)
 		printf "This bundle was generated automatically by PELF __PELF_VERSION__, the machine on which it was created has the following \"uname -mrspv\":\n %s \n" "__PELF_HOST__"
-		printf "Usage:\n <|--pbundle_help|--pbundle_list|--pbundle_link <binary>|--pbundle_pngIcon|--pbundle_svgIcon|--pbundle_desktop|--pbundle_genThumbnail|--pbundle_mount|> <args...>\n"
+		printf "Usage:\n <|--pbundle_help|--pbundle_list|--pbundle_link <binary>|--pbundle_pngIcon|--pbundle_svgIcon|--pbundle_desktop|--pbundle_genThumbnail|--pbundle_portableHome|--pbundle_portableConfig|> <args...>\n"
 		exit 1
 		;;
 	--pbundle_list)
@@ -414,7 +424,20 @@ main() {
 		exit 1
 		;;
 	--pbundle_portableHome)
+	    if [ -z "$WOULDBE_HOME" ] && [ -n "$WOULDBE_CONFIG" ] && [ -d "$WOULDBE_CONFIG" ]; then
+            error "You cannot have a portable .home & .config of this AppBundle"
+	    fi
 		mkdir -p "$WOULDBE_HOME"
+		determine_home
+		shift
+		;;
+	--pbundle_portableConfig)
+	    if [ -z "$WOULDBE_CONFIG" ] && [ -n "$WOULDBE_HOME" ] && [ -d "$WOULDBE_HOME" ]; then
+            error "You cannot have a portable .config & .home of this AppBundle"
+	    fi
+		mkdir -p "$WOULDBE_CONFIG"
+		determine_home
+		shift
 		;;
 	esac
 
