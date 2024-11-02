@@ -1,6 +1,6 @@
 #!/bin/sh
 
-# DATE OF LAST REVISION: 30-10-2024
+# DATE OF LAST REVISION: 02-11-2024
 
 [ "$DEBUG" = "1" ] && set -x
 [ "$DEBUG2" = "1" ] && set -v
@@ -108,21 +108,22 @@ build_bwrap_options() {
         --share-net \
         --proc /proc \
         --dev-bind /dev /dev \
-        --bind /run /run \
+        --bind-try /run /run \
         --bind-try /sys /sys \
-        --bind /tmp /tmp \
+        --bind-try /tmp /tmp \
         --bind-try /media /media \
         --bind-try /mnt /mnt \
-        --bind /home /home \
-        --bind-try /etc/localtime /etc/localtime \
-        --bind-try /etc/machine-id /etc/machine-id \
-        --bind-try /etc/resolv.conf /etc/resolv.conf \
+        --bind-try /home /home \
+        --ro-bind-try /etc/localtime /etc/localtime \
+        --ro-bind-try /etc/machine-id /etc/machine-id \
+        --ro-bind-try /etc/resolv.conf /etc/resolv.conf \
         --ro-bind-try /lib/firmware /lib/firmware \
         --ro-bind-try /etc/passwd /etc/passwd \
         --ro-bind-try /etc/group /etc/group \
         --ro-bind-try /etc/hosts /etc/hosts \
         --ro-bind-try /etc/nsswitch.conf /etc/nsswitch.conf \
         --ro-bind-try /etc/hostname /etc/hostname \
+        --ro-bind-try \"$SELF_TEMPDIR\" /app \
         --setenv SELF \"$SELF\" \
         --setenv SELF_TEMPDIR \"$SELF_TEMPDIR\" \
         --setenv BWROOTFS \"$BWROOTFS\" \
