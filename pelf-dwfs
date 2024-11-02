@@ -307,7 +307,6 @@ determine_home() {
             fi
             eval export "$envVar=\"$dir\""
         else
-            echo "Directory does not exist: $dir"
             eval export "$wouldbeVar=\"$dir\""
         fi
     }
