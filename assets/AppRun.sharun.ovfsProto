@@ -87,14 +87,8 @@ cleanup() {
 trap cleanup INT TERM HUP QUIT EXIT
 
 # Initialize the bwrap command
-bwrap_cmd="$BWRAP_BIN --bind /tmp /tmp --bind / /"
-# Loop through each directory in $MOUNT_DIR/proto/*
-for dir in "$MOUNT_DIR"/*; do
-  if [ -d "$dir" ] && [ "tmp" != "${dir##*/}" ]; then
-    bwrap_cmd="$bwrap_cmd --bind-try $dir /$(basename "$dir")"
-  fi
-done
-# Add the final part of the command
+bwrap_cmd="$BWRAP_BIN --bind $MOUNT_DIR / --bind /tmp /tmp"
+# Add special flags which are needed to "unsandbox" bwrap ("not a security boundary"):
 bwrap_cmd="$bwrap_cmd --share-net"
 bwrap_cmd="$bwrap_cmd --proc /proc"
 bwrap_cmd="$bwrap_cmd --dev-bind /dev /dev"
