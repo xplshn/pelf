@@ -344,7 +344,7 @@ select_structure_and_apprun() {
 tidyup() {
 	[ "$SANDBOX" != "1" ] && rm -rf "${APPDIR:?}/proto/app"
 	rm -rf "${APPDIR:?}/proto/home"
-	rm -rf "${APPDIR:?}/proto/__w"
+	rm -rf "${APPDIR:?}/proto/__w" "${APPDIR:?}/proto/github"
 	for EXCLUDED in $GETRID_FILES; do
 		if [ -f "$APPDIR/proto/$EXCLUDED" ] || [ -d "$APPDIR/proto/$EXCLUDED" ]; then
 			rm -rf "${APPDIR:?}/proto/$EXCLUDED"
