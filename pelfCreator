@@ -225,8 +225,7 @@ select_structure_and_apprun() {
         done
 
         # Generate and execute lib4bin script
-        printf 'LD_LIBRARY_PATH="%s/rootfs/lib:%s/rootfs/usr/lib" lib4bin --dst-dir "%s" %s\n' \
-            "$APPDIR" "$APPDIR" "$APPDIR" "$TOBEKEPT_BIN" > "$APPDIR/.genl4b"
+        printf 'LD_LIBRARY_PATH="%s/rootfs/lib:%s/rootfs/usr/lib" lib4bin --dst-dir "%s" %s\n' "$APPDIR" "$APPDIR" "$APPDIR" $TOBEKEPT_BIN >"$APPDIR/.genl4b"
         chmod +x "$APPDIR/.genl4b"
 
         # Either download or copy AppRun.sharun
