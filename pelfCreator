@@ -274,7 +274,8 @@ select_structure_and_apprun() {
 		done
 
 		# shellcheck disable=SC2086 # Generate and execute lib4bin script
-		printf 'LD_LIBRARY_PATH="%s/rootfs/lib:%s/rootfs/usr/lib" lib4bin --dst-dir "%s" %s\n' "$APPDIR" "$APPDIR" "$APPDIR" $TOBEKEPT_BIN >"$APPDIR/.genl4b"
+		printf 'LD_LIBRARY_PATH="%s/rootfs/lib:%s/rootfs/usr/lib" lib4bin --dst-dir "%s"' "$APPDIR" "$APPDIR" "$APPDIR" >"$APPDIR/.genl4b"
+		echo " $TOBEKEPT_BIN" >>"$APPDIR/.genl4b"
 		chmod +x "$APPDIR/.genl4b"
 
 		# Either download or copy AppRun.sharun
