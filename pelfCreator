@@ -243,7 +243,6 @@ select_structure_and_apprun() {
 
             [ -z "$TOBEKEPT_FILES" ] && rm -rf "$APPDIR/rootfs"
             
-            chmod +x "$APPDIR/AppRun"
         fi
     fi
 
@@ -261,6 +260,7 @@ select_structure_and_apprun() {
         done
         rm -rf "$APPDIR/rootfs"
     fi
+    chmod +x "$APPDIR/AppRun"
 
     # Either download or copy fuse-overlayfs
     if [ -f "$LOCAL_PATH/fuse-overlayfs" ]; then
@@ -288,6 +288,7 @@ select_structure_and_apprun() {
 
 tidyup(){
     [ "$SANDBOX" != "1" ] && rm -rf "${APPDIR:?}/proto/app"
+    rm -rf "${APPDIR:?}/proto/home"
     for EXCLUDED in $GETRID_FILES; do
         if [ -f "$APPDIR/proto/$EXCLUDED" ] || [ -d "$APPDIR/proto/$EXCLUDED" ]; then
             rm -rf "${APPDIR:?}/proto/$EXCLUDED"
