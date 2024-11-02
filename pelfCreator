@@ -288,6 +288,7 @@ select_structure_and_apprun() {
 					exit 1
 				fi
 			fi
+			chmod +x "$APPDIR/AppRun"
 
 			[ -z "$TOBEKEPT_FILES" ] && rm -rf "$APPDIR/rootfs"
 
@@ -337,6 +338,7 @@ select_structure_and_apprun() {
 			exit 1
 		fi
 	fi
+	chmod +x "$APPDIR/AppRun"
 }
 
 tidyup() {
