@@ -32,7 +32,7 @@ var (
 	dialogMutex    sync.Mutex
 	lastUpdate     time.Time
 	fyneApp        = app.New()
-	fyneWindow     = fyneApp.NewWindow("pelfd is integrating bundles")
+	fyneWindow     = fyneApp.NewWindow("pelfd is working...")
 )
 
 func logMessage(level, message string) string {
@@ -143,7 +143,6 @@ func loadConfig(configPath string, homeDir string) Config {
 			ProbeInterval:       5,
 			IconDir:             filepath.Join(homeDir, ".local/share/icons"),
 			AppDir:              filepath.Join(homeDir, ".local/share/applications"),
-			ProbeExtensions:     []string{".AppBundle", ".blob", ".AppIBundle", ".AppImage", ".NixAppImage"},
 			CorrectDesktopFiles: true,
 		},
 		Tracker: make(map[string]*BundleEntry),

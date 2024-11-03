@@ -21,7 +21,6 @@ type Options struct {
 	ProbeInterval       int      `json:"probe_interval"`        // Interval in seconds between directory scans.
 	IconDir             string   `json:"icon_dir"`              // Directory to store extracted icons.
 	AppDir              string   `json:"app_dir"`               // Directory to store .desktop files.
-	ProbeExtensions     []string `json:"probe_extensions"`      // File extensions to probe within directories.
 	CorrectDesktopFiles bool     `json:"correct_desktop_files"` // Flag to enable automatic correction of .desktop files.
 }
 
@@ -33,14 +32,13 @@ type Config struct {
 
 // BundleEntry represents metadata associated with an installed bundle.
 type BundleEntry struct {
-	Path        string `json:"path"`                // Full path to the bundle file.
 	B3SUM       string `json:"b3sum"`               // B3SUM[0..256] hash of the bundle file.
 	Png         string `json:"png,omitempty"`       // Path to the PNG icon file, if extracted.
 	Svg         string `json:"svg,omitempty"`       // Path to the SVG icon file, if extracted.
 	Desktop     string `json:"desktop,omitempty"`   // Path to the corrected .desktop file, if processed.
 	Thumbnail   string `json:"thumbnail,omitempty"` // Path to the 128x128 png thumbnail file, if processed.
 	HasMetadata bool   `json:"has_metadata"`        // Indicates if metadata was found.
-	// LastUpdated int64  `json:"last_updated"`        // Epoch date when the entry was last updated.
+	// LastUpdated int64  `json:"last_updated"`     // Epoch date when the entry was last updated.
 }
 
 func main() {
@@ -117,7 +115,8 @@ func integrateBundle(config Config, paths []string, homeDir string, configFilePa
 				integrateBundleMetadata(bundle, b3sum, entries, options.IconDir, options.AppDir, config)
 				return true
 			}
-			entries[bundle] = nil // Bundle is not executable, remove entry
+			// Bundle is not executable, remove entry
+			delete(entries, bundle)
 			return false
 		}
 		return false
@@ -151,6 +150,9 @@ func integrateBundle(config Config, paths []string, homeDir string, configFilePa
 				}
 				// Process each file within the directory
 				filePathToIntegrate := filepath.Join(filePath, entry.Name())
+				if !isSupportedFile(filePathToIntegrate) {
+					continue // Skip files that are not supported
+				}
 				b3sum := computeB3SUM(filePathToIntegrate)
 				if entry, exists := entries[filePathToIntegrate]; exists {
 					changed = refreshBundle(filePathToIntegrate, b3sum, entry, options) || changed
@@ -165,6 +167,9 @@ func integrateBundle(config Config, paths []string, homeDir string, configFilePa
 
 		// If it's a regular file, proceed as before
 		bundle := filePath
+		if !isSupportedFile(bundle) {
+			continue // Skip files that are not supported
+		}
 		b3sum := computeB3SUM(bundle)
 
 		// Check if the bundle already exists in entries
@@ -192,6 +197,10 @@ func integrateBundle(config Config, paths []string, homeDir string, configFilePa
 }
 
 func checkAndRecreateFiles(entry *BundleEntry, bundle string, options Options, changed *bool) {
+	if entry == nil {
+		return
+	}
+
 	checkAndRecreateFile := func(filePath *string, param, outputDir, extension string) {
 		if *filePath != "" && !fileExists(*filePath) {
 			logMessage("WRN", fmt.Sprintf("The file for <blue>%s</blue> doesn't exist anymore. Re-creating...", filepath.Base(bundle)))
@@ -208,7 +217,7 @@ func checkAndRecreateFiles(entry *BundleEntry, bundle string, options Options, c
 		logMessage("WRN", fmt.Sprintf("The thumbnail file for <blue>%s</blue> doesn't exist anymore. Generating new thumbnail...", filepath.Base(bundle)))
 		thumbnailPath, err := generateThumbnail(bundle, entry.Png)
 		if err != nil {
-			logMessage("ERR", fmt.Sprintf("Failed to create thumbnail file: <red>%v</red>", err))
+			logMessage("ERR", fmt.Sprintf("Failed to create thumbnail file: <yellow>%v</yellow>", err))
 		} else {
 			entry.Thumbnail = thumbnailPath
 			logMessage("INF", fmt.Sprintf("A new thumbnail for <green>%s</green> was created", filepath.Base(bundle)))
@@ -227,7 +236,7 @@ func checkAndRecreateFiles(entry *BundleEntry, bundle string, options Options, c
 }
 
 func integrateBundleMetadata(path, b3sum string, entries map[string]*BundleEntry, iconPath, appPath string, cfg Config) {
-	entry := &BundleEntry{Path: path, B3SUM: b3sum, HasMetadata: false}
+	entry := &BundleEntry{B3SUM: b3sum, HasMetadata: false}
 	baseName := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
 
 	if strings.HasSuffix(path, ".AppImage") || strings.HasSuffix(path, ".NixAppImage") {
@@ -381,4 +390,8 @@ func extractAppImageMetadata(metadataType, appImagePath, outputFile string) stri
 
 	logMessage("INF", fmt.Sprintf("Successfully extracted %s to: <green>%s</green>", metadataType, outputFile))
 	return outputFile
+}
+
+func isSupportedFile(filePath string) bool {
+	return strings.HasSuffix(filePath, ".AppBundle") || strings.HasSuffix(filePath, ".AppImage") || strings.HasSuffix(filePath, ".NixAppImage")
 }
