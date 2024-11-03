@@ -32,7 +32,7 @@ var (
 	dialogMutex    sync.Mutex
 	lastUpdate     time.Time
 	fyneApp        = app.New()
-	fyneWindow     = fyneApp.NewWindow("pelfd is integrating bundles")
+	fyneWindow     = fyneApp.NewWindow("pelfd is working...")
 )
 
 func logMessage(level, message string) string {
@@ -47,8 +47,8 @@ func logMessage(level, message string) string {
 		color = "<white><bold>LOG:</bold></white>"
 	}
 
-	formattedMessage := fmt.Sprintf("%s %s", color, message)
-	log.Println(tml.Sprintf(formattedMessage))
+	formattedMessage := tml.Sprintf(fmt.Sprintf("%s %s", color, message))
+	log.Println(formattedMessage)
 
 	// Reset progress and timestamp on each log message call
 	dialogMutex.Lock()
@@ -68,7 +68,7 @@ func logMessage(level, message string) string {
 	}
 
 	// Update the message label with the current message
-	messageLabel.SetText(message)
+	messageLabel.SetText(removeAnsi(formattedMessage))
 
 	// Start a goroutine for continuous update
 	go updateProgressBar()
@@ -103,7 +103,7 @@ func createThumbnailForBundle(entry *BundleEntry, path string) {
 	if entry.Png != "" {
 		thumbnailPath, err := generateThumbnail(path, entry.Png)
 		if err != nil {
-			logMessage("ERR", fmt.Sprintf("Failed to create thumbnail file: %v", err))
+			logMessage("ERR", fmt.Sprintf("Failed to create thumbnail file: <red>%v</red>", err))
 		}
 		entry.Thumbnail = thumbnailPath
 		logMessage("INF", fmt.Sprintf("A thumbnail for %s was created at: %s", path, thumbnailPath))
@@ -115,21 +115,21 @@ func updateDesktopFileIfRequired(path, baseName, appPath string, entry *BundleEn
 	if _, err := os.Stat(desktopPath); err == nil {
 		content, err := os.ReadFile(desktopPath)
 		if err != nil {
-			logMessage("ERR", fmt.Sprintf("Failed to read .desktop file: %v", err))
+			logMessage("ERR", fmt.Sprintf("Failed to read .desktop file: <red>%v</red>", err))
 			return
 		}
 		if cfg.Options.CorrectDesktopFiles {
 			updatedContent, err := updateDesktopFile(string(content), path, entry)
 			if err != nil {
-				logMessage("ERR", fmt.Sprintf("Failed to update .desktop file: %v", err))
+				logMessage("ERR", fmt.Sprintf("Failed to update .desktop file: <red>%v</red>", err))
 				return
 			}
 			if err := os.Remove(desktopPath); err != nil && !os.IsNotExist(err) {
-				logMessage("ERR", fmt.Sprintf("Failed to remove existing .desktop file: %v", err))
+				logMessage("ERR", fmt.Sprintf("Failed to remove existing .desktop file: <red>%v</red>", err))
 				return
 			}
 			if err := os.WriteFile(desktopPath, []byte(updatedContent), 0644); err != nil {
-				logMessage("ERR", fmt.Sprintf("Failed to write updated .desktop file: %v", err))
+				logMessage("ERR", fmt.Sprintf("Failed to write updated .desktop file: <red>%v</red>", err))
 				return
 			}
 		}
@@ -143,7 +143,6 @@ func loadConfig(configPath string, homeDir string) Config {
 			ProbeInterval:       5,
 			IconDir:             filepath.Join(homeDir, ".local/share/icons"),
 			AppDir:              filepath.Join(homeDir, ".local/share/applications"),
-			ProbeExtensions:     []string{".AppBundle", ".blob", ".AppIBundle", ".AppImage", ".NixAppImage"},
 			CorrectDesktopFiles: true,
 		},
 		Tracker: make(map[string]*BundleEntry),
@@ -156,14 +155,14 @@ func loadConfig(configPath string, homeDir string) Config {
 			saveConfig(config, configPath)
 			return config
 		}
-		logMessage("ERR", fmt.Sprintf("Failed to open config file %s: %v", configPath, err))
+		logMessage("ERR", fmt.Sprintf("Failed to open config file %s: <red>%v</red>", configPath, err))
 		os.Exit(1)
 	}
 	defer file.Close()
 
 	decoder := json.NewDecoder(file)
 	if err := decoder.Decode(&config); err != nil {
-		logMessage("ERR", fmt.Sprintf("Failed to decode config file: %v", err))
+		logMessage("ERR", fmt.Sprintf("Failed to decode config file: <red>%v</red>", err))
 		os.Exit(1)
 	}
 
@@ -173,14 +172,14 @@ func loadConfig(configPath string, homeDir string) Config {
 func saveConfig(config Config, path string) {
 	file, err := os.Create(path)
 	if err != nil {
-		logMessage("ERR", fmt.Sprintf("Failed to save config file: %v", err))
+		logMessage("ERR", fmt.Sprintf("Failed to save config file: <red>%v</red>", err))
 	}
 	defer file.Close()
 
 	encoder := json.NewEncoder(file)
 	encoder.SetIndent("", "  ")
 	if err := encoder.Encode(config); err != nil {
-		logMessage("ERR", fmt.Sprintf("Failed to encode config file: %v", err))
+		logMessage("ERR", fmt.Sprintf("Failed to encode config file: <red>%v</red>", err))
 		os.Exit(1)
 	}
 }
@@ -249,14 +248,14 @@ func isDirectory(path string) bool {
 func computeB3SUM(path string) string {
 	file, err := os.Open(path)
 	if err != nil {
-		logMessage("ERR", fmt.Sprintf("Failed to open file %s: %v", path, err))
+		logMessage("ERR", fmt.Sprintf("Failed to open file %s: <red>%v</red>", path, err))
 		return ""
 	}
 	defer file.Close()
 
 	hasher := blake3.New()
 	if _, err := io.Copy(hasher, file); err != nil {
-		logMessage("ERR", fmt.Sprintf("Failed to compute Blake3 hash of %s: %v", path, err))
+		logMessage("ERR", fmt.Sprintf("Failed to compute Blake3 hash of %s: <red>%v</red>", path, err))
 		os.Exit(1)
 	}
 
@@ -361,7 +360,7 @@ func generateThumbnail(path string, png string) (string, error) {
 	// Generate the canonical URI for the file path
 	canonicalURI, err := CanonicalURI(path)
 	if err != nil {
-		logMessage("ERR", fmt.Sprintf("Couldn't generate canonical URI: %v", err))
+		logMessage("ERR", fmt.Sprintf("Couldn't generate canonical URI: <red>%v</red>", err))
 		return "", err
 	}
 
@@ -371,14 +370,14 @@ func generateThumbnail(path string, png string) (string, error) {
 	// Determine the thumbnail path
 	getThumbnailPath, err := getThumbnailPath(fileMD5, "normal")
 	if err != nil {
-		logMessage("ERR", fmt.Sprintf("Couldn't generate an appropriate thumbnail path: %v", err))
+		logMessage("ERR", fmt.Sprintf("Couldn't generate an appropriate thumbnail path: <red>%v</red>", err))
 		return "", err
 	}
 
 	// Copy the PNG file to the thumbnail path
 	err = copyFile(png, getThumbnailPath)
 	if err != nil {
-		logMessage("ERR", fmt.Sprintf("Failed to create thumbnail file: %v", err))
+		logMessage("ERR", fmt.Sprintf("Failed to create thumbnail file: <red>%v</red>", err))
 		return "", err
 	}
 
@@ -399,4 +398,11 @@ func hashChanged(filePath string, config Config) bool {
 
 	// Compare with the stored hash
 	return entry.B3SUM != currentHash
+}
+
+// removeNonPrintable removes non-printable characters from a string, including ANSI escape codes.
+func removeAnsi(s string) string {
+	ansiEscape := regexp.MustCompile(`\x1B\[[0-?9;]*[mK]`)
+	s = ansiEscape.ReplaceAllString(s, "")
+	return s
 }

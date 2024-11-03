@@ -21,7 +21,6 @@ type Options struct {
 	ProbeInterval       int      `json:"probe_interval"`        // Interval in seconds between directory scans.
 	IconDir             string   `json:"icon_dir"`              // Directory to store extracted icons.
 	AppDir              string   `json:"app_dir"`               // Directory to store .desktop files.
-	ProbeExtensions     []string `json:"probe_extensions"`      // File extensions to probe within directories.
 	CorrectDesktopFiles bool     `json:"correct_desktop_files"` // Flag to enable automatic correction of .desktop files.
 }
 
@@ -33,14 +32,13 @@ type Config struct {
 
 // BundleEntry represents metadata associated with an installed bundle.
 type BundleEntry struct {
-	Path        string `json:"path"`                // Full path to the bundle file.
 	B3SUM       string `json:"b3sum"`               // B3SUM[0..256] hash of the bundle file.
 	Png         string `json:"png,omitempty"`       // Path to the PNG icon file, if extracted.
 	Svg         string `json:"svg,omitempty"`       // Path to the SVG icon file, if extracted.
 	Desktop     string `json:"desktop,omitempty"`   // Path to the corrected .desktop file, if processed.
 	Thumbnail   string `json:"thumbnail,omitempty"` // Path to the 128x128 png thumbnail file, if processed.
 	HasMetadata bool   `json:"has_metadata"`        // Indicates if metadata was found.
-	// LastUpdated int64  `json:"last_updated"`        // Epoch date when the entry was last updated.
+	// LastUpdated int64  `json:"last_updated"`     // Epoch date when the entry was last updated.
 }
 
 func main() {
@@ -103,7 +101,6 @@ func main() {
 	}()
 
 	// Run the Fyne application in the main goroutine
-	//fyneWindow.ShowAndRun()
 	fyneApp.Run()
 }
 
@@ -118,7 +115,8 @@ func integrateBundle(config Config, paths []string, homeDir string, configFilePa
 				integrateBundleMetadata(bundle, b3sum, entries, options.IconDir, options.AppDir, config)
 				return true
 			}
-			entries[bundle] = nil // Bundle is not executable, remove entry
+			// Bundle is not executable, remove entry
+			delete(entries, bundle)
 			return false
 		}
 		return false
@@ -133,7 +131,7 @@ func integrateBundle(config Config, paths []string, homeDir string, configFilePa
 		// Check if the path is a file or directory
 		info, err := os.Stat(filePath)
 		if err != nil {
-			logMessage("ERR", fmt.Sprintf("Failed to access %s: %v", filePath, err))
+			logMessage("ERR", fmt.Sprintf("Failed to access <yellow>%s</yellow>: <red>%v</red>", filePath, err))
 			continue // Skip this file or handle it as needed
 		}
 
@@ -141,17 +139,20 @@ func integrateBundle(config Config, paths []string, homeDir string, configFilePa
 			// If it's a directory, process all files within it
 			files, err := os.ReadDir(filePath)
 			if err != nil {
-				logMessage("ERR", fmt.Sprintf("Failed to read directory %s: %v", filePath, err))
+				logMessage("ERR", fmt.Sprintf("Failed to read directory <yellow>%s</yellow>: <red>%v</red>", filePath, err))
 				continue // Handle directory read errors
 			}
 
 			for _, entry := range files {
 				if !entry.Type().IsRegular() {
-					logMessage("INF", fmt.Sprintf("Skipping non-regular file in directory: %s", entry.Name()))
+					logMessage("INF", fmt.Sprintf("Skipping non-regular file in directory: <yellow>%s</yellow>", entry.Name()))
 					continue // Skip non-regular files (like directories, symlinks, etc.)
 				}
 				// Process each file within the directory
 				filePathToIntegrate := filepath.Join(filePath, entry.Name())
+				if !isSupportedFile(filePathToIntegrate) {
+					continue // Skip files that are not supported
+				}
 				b3sum := computeB3SUM(filePathToIntegrate)
 				if entry, exists := entries[filePathToIntegrate]; exists {
 					changed = refreshBundle(filePathToIntegrate, b3sum, entry, options) || changed
@@ -166,6 +167,9 @@ func integrateBundle(config Config, paths []string, homeDir string, configFilePa
 
 		// If it's a regular file, proceed as before
 		bundle := filePath
+		if !isSupportedFile(bundle) {
+			continue // Skip files that are not supported
+		}
 		b3sum := computeB3SUM(bundle)
 
 		// Check if the bundle already exists in entries
@@ -193,6 +197,10 @@ func integrateBundle(config Config, paths []string, homeDir string, configFilePa
 }
 
 func checkAndRecreateFiles(entry *BundleEntry, bundle string, options Options, changed *bool) {
+	if entry == nil {
+		return
+	}
+
 	checkAndRecreateFile := func(filePath *string, param, outputDir, extension string) {
 		if *filePath != "" && !fileExists(*filePath) {
 			logMessage("WRN", fmt.Sprintf("The file for <blue>%s</blue> doesn't exist anymore. Re-creating...", filepath.Base(bundle)))
@@ -209,7 +217,7 @@ func checkAndRecreateFiles(entry *BundleEntry, bundle string, options Options, c
 		logMessage("WRN", fmt.Sprintf("The thumbnail file for <blue>%s</blue> doesn't exist anymore. Generating new thumbnail...", filepath.Base(bundle)))
 		thumbnailPath, err := generateThumbnail(bundle, entry.Png)
 		if err != nil {
-			logMessage("ERR", fmt.Sprintf("Failed to create thumbnail file: %v", err))
+			logMessage("ERR", fmt.Sprintf("Failed to create thumbnail file: <yellow>%v</yellow>", err))
 		} else {
 			entry.Thumbnail = thumbnailPath
 			logMessage("INF", fmt.Sprintf("A new thumbnail for <green>%s</green> was created", filepath.Base(bundle)))
@@ -228,7 +236,7 @@ func checkAndRecreateFiles(entry *BundleEntry, bundle string, options Options, c
 }
 
 func integrateBundleMetadata(path, b3sum string, entries map[string]*BundleEntry, iconPath, appPath string, cfg Config) {
-	entry := &BundleEntry{Path: path, B3SUM: b3sum, HasMetadata: false}
+	entry := &BundleEntry{B3SUM: b3sum, HasMetadata: false}
 	baseName := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
 
 	if strings.HasSuffix(path, ".AppImage") || strings.HasSuffix(path, ".NixAppImage") {
@@ -282,7 +290,7 @@ func cleanupBundle(path string, entries map[string]*BundleEntry) {
 			continue
 		}
 		if err := os.Remove(file); err != nil && !os.IsNotExist(err) {
-			logMessage("ERR", fmt.Sprintf("Failed to remove file: %s %v", file, err))
+			logMessage("ERR", fmt.Sprintf("Failed to remove file: <yellow>%s</yellow> <red>%v</red>", file, err))
 		} else {
 			logMessage("INF", fmt.Sprintf("Removed file: <green>%s</green>", file))
 		}
@@ -308,12 +316,12 @@ func executeBundle(bundle, param, outputFile string) string {
 
 	data, err := base64.StdEncoding.DecodeString(outputStr)
 	if err != nil {
-		logMessage("ERR", fmt.Sprintf("Failed to decode base64 output for %s %s: %v", bundle, param, err))
+		logMessage("ERR", fmt.Sprintf("Failed to decode base64 output for <yellow>%s</yellow> <yellow>%s</yellow>: <red>%v</red>", bundle, param, err))
 		return ""
 	}
 
 	if err := os.WriteFile(outputFile, data, 0644); err != nil {
-		logMessage("ERR", fmt.Sprintf("Failed to write file %s: %v", outputFile, err))
+		logMessage("ERR", fmt.Sprintf("Failed to write file <yellow>%s</yellow>: <red>%v</red>", outputFile, err))
 		return ""
 	}
 
@@ -327,18 +335,18 @@ func extractAppImageMetadata(metadataType, appImagePath, outputFile string) stri
 	// Create a temporary directory for extraction
 	tempDir, err := os.MkdirTemp("", "appimage-extract-")
 	if err != nil {
-		logMessage("ERR", fmt.Sprintf("Failed to create temporary directory: %v", err))
+		logMessage("ERR", fmt.Sprintf("Failed to create temporary directory: <red>%v</red>", err))
 		return ""
 	}
 	// Defer the removal of the tempDir to ensure it is deleted at the end of the function
 	defer func() {
 		if err := os.RemoveAll(tempDir); err != nil {
-			logMessage("ERR", fmt.Sprintf("Failed to remove temporary directory: %v", err))
+			logMessage("ERR", fmt.Sprintf("Failed to remove temporary directory: <red>%v</red>", err))
 		}
 	}()
 
 	if err := os.Chdir(tempDir); err != nil {
-		logMessage("ERR", fmt.Sprintf("Failed to change directory to %s: %v", tempDir, err))
+		logMessage("ERR", fmt.Sprintf("Failed to change directory to <yellow>%s</yellow>: <red>%v</red>", tempDir, err))
 		return ""
 	}
 
@@ -366,7 +374,7 @@ func extractAppImageMetadata(metadataType, appImagePath, outputFile string) stri
 		}
 		metadataPath = files[0]
 	default:
-		logMessage("ERR", fmt.Sprintf("Unknown metadata type: %s", metadataType))
+		logMessage("ERR", fmt.Sprintf("Unknown metadata type: <yellow>%s</yellow>", metadataType))
 		return ""
 	}
 
@@ -376,10 +384,14 @@ func extractAppImageMetadata(metadataType, appImagePath, outputFile string) stri
 	}
 
 	if err := copyFile(metadataPath, outputFile); err != nil {
-		logMessage("ERR", fmt.Sprintf("Failed to copy %s file: %v", metadataType, err))
+		logMessage("ERR", fmt.Sprintf("Failed to copy %s file: <red>%v</red>", metadataType, err))
 		return ""
 	}
 
 	logMessage("INF", fmt.Sprintf("Successfully extracted %s to: <green>%s</green>", metadataType, outputFile))
 	return outputFile
+}
+
+func isSupportedFile(filePath string) bool {
+	return strings.HasSuffix(filePath, ".AppBundle") || strings.HasSuffix(filePath, ".AppImage") || strings.HasSuffix(filePath, ".NixAppImage")
 }
