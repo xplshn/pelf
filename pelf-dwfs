@@ -364,7 +364,7 @@ main() {
 	case "$1" in
 	--pbundle_help)
 		printf "This bundle was generated automatically by PELF __PELF_VERSION__, the machine on which it was created has the following \"uname -mrspv\":\n %s \n" "__PELF_HOST__"
-		printf "Usage:\n <|--pbundle_help|--pbundle_list|--pbundle_link <binary>|--pbundle_pngIcon|--pbundle_svgIcon|--pbundle_desktop|--pbundle_genThumbnail|--pbundle_portableHome|--pbundle_portableConfig|> <args...>\n"
+		printf "Usage:\n <|--pbundle_help|--pbundle_list|--pbundle_link <binary>|--pbundle_pngIcon|--pbundle_svgIcon|--pbundle_desktop|--pbundle_appstream|--pbundle_portableHome|--pbundle_portableConfig|> <args...>\n"
 		exit 1
 		;;
 	--pbundle_list)
@@ -409,17 +409,13 @@ main() {
 		done
 		exit 1
 		;;
-	--pbundle_genThumbnail)
-		if [ -f "$_BIN_DIRs/.pelf_thumbgen" ]; then
-			if [ -f "$_VAR_MOUNT_DIR/.DirIcon" ]; then
-				"$_BIN_DIRs/.pelf_thumbgen" "$0" "$_VAR_MOUNT_DIR/.DirIcon"
+    --pbundle_appstream)
+		for file in "$_VAR_MOUNT_DIR"/*.xml; do
+			if [ -e "$file" ]; then
+				base64 "$file"
 				exit 0
-			else
-				log "$_VAR_MOUNT_DIR/.DirIcon does not exist"
 			fi
-		else
-			log "Sorry, this bundle does not contain .pelf_thumbgen, add that binary if you wish to enable this functionality. (github.com/xplshn/pelf/tree/master/cmd/misc/thumbgen)"
-		fi
+		done
 		exit 1
 		;;
 	--pbundle_portableHome)
