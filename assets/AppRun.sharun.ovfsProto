@@ -65,29 +65,42 @@ MOUNT_DIR="$TEMP_DIR/mount_dir"
 WORK_DIR="$TEMP_DIR/work_dir"
 mkdir -p "$MOUNT_DIR" "$WORK_DIR"
 # Mount the overlay
-"$OVFSFUSE_BIN" -o lowerdir=/,upperdir="$SELF_TEMPDIR/proto",workdir="$WORK_DIR" "$MOUNT_DIR"
+"$OVFSFUSE_BIN" -o lowerdir=/,upperdir="$SELF_TEMPDIR/proto",workdir="$WORK_DIR" "$MOUNT_DIR" &
+OVFSFUSE_PID="$!"
 
-# Cleanup function
 cleanup() {
-    # Attempt to unmount
-    fusermount -u "$MOUNT_DIR" 2>/dev/null
-    # Remove the mount directory
-    rmdir "$MOUNT_DIR" 2>/dev/null
-    # Force unmount if still mounted
-    fusermount -uz "$MOUNT_DIR" 2>/dev/null
-    rmdir "$MOUNT_DIR" 2>/dev/null
-    # Remove the temporary work directory
-    rmdir "$WORK_DIR" 2>/dev/null
-    # Remove the temporary base directory
-    rm -rf "$TEMP_DIR" 2>/dev/null
-    exit
-}
+    (
+        # Attempt to unmount
+        fusermount -u "$MOUNT_DIR" 2>/dev/null
 
-# Set trap for cleanup
+        # Wait and check if the mount point is unmounted
+        for i in 1 2 3 4 5; do
+            if mountpoint -q "$MOUNT_DIR"; then
+                sleep "$i"
+            else
+                break
+            fi
+        done
+
+        # Force unmount if still mounted
+        if mountpoint -q "$MOUNT_DIR"; then
+            fusermount -uz "$MOUNT_DIR" 2>/dev/null
+        fi
+
+        # Remove temporary directories
+        rmdir "$MOUNT_DIR" 2>/dev/null || true
+        rmdir "$WORK_DIR" 2>/dev/null || true
+        rm -rf "$TEMP_DIR" 2>/dev/null || true
+
+        if pgrep -P "$OVFSFUSE_PID"; then
+            pkill -9 "$OVFSFUSE_PID"
+        fi
+    ) & # Run cleanup in the background
+}
 trap cleanup INT TERM HUP QUIT EXIT
 
 # Initialize the bwrap command
-bwrap_cmd="$BWRAP_BIN --bind $MOUNT_DIR / --bind /tmp /tmp"
+bwrap_cmd="$BWRAP_BIN --ro-bind-try / /host --ro-bind-try /host/etc/resolv.conf /etc/resolv.conf --bind $MOUNT_DIR / --bind /tmp /tmp"
 # Add special flags which are needed to "unsandbox" bwrap ("not a security boundary"):
 bwrap_cmd="$bwrap_cmd --share-net"
 bwrap_cmd="$bwrap_cmd --proc /proc"
