@@ -10,7 +10,7 @@ SELF=$(readlink -f "$0")
 SELF_TEMPDIR=${SELF%/*}
 
 [ -d "$SELF_TEMPDIR/rootfs" ] || exit 1
-BWROOTFS="$SELF_TEMPDIR/rootfs"
+BWROOTFS="$SELF_TEMPDIR/proto"
 
 # Find bwrap
 BWRAP_BIN="${SELF_TEMPDIR}/usr/bin/bwrap"
