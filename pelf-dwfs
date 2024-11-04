@@ -217,7 +217,7 @@ LOADER_SCRIPT=$(
 # shellcheck disable=SC2317 # 107,9 # Command appears to be unreachable. Check usage (or *ignore* if invoked indirectly) # We call this function via a `trap`
 
 # Get the binary's name
-[ -n "$EXE_NAME" ] || EXE_NAME=""
+[ -n "$EXE_NAME" ] || EXE_NAME="__ENTRY_POINT__"
 # rEXE_NAME can be used as a variable name, and it is also used for creating the work dir
 rEXE_NAME="$(echo "$EXE_NAME" | tr -dc '[:alnum:]_')"
 
