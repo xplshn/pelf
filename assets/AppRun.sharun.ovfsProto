@@ -75,7 +75,7 @@ MOUNT_DIR="$TEMP_DIR/mount_dir"
 WORK_DIR="$TEMP_DIR/work_dir"
 mkdir -p "$MOUNT_DIR" "$WORK_DIR"
 # Mount the overlay
-"$OVFSFUSE_BIN" -o lowerdir=/,upperdir="$PROTO",workdir="$WORK_DIR" "$MOUNT_DIR" &
+"$OVFSFUSE_BIN" -o lowerdir=/,upperdir="$SELF_TEMPDIR/proto",workdir="$WORK_DIR" "$MOUNT_DIR" &
 OVFSFUSE_PID="$!"
 
 cleanup() {
@@ -110,11 +110,13 @@ cleanup() {
 trap cleanup INT TERM HUP QUIT EXIT
 
 # Initialize the bwrap command
-bwrap_cmd="$BWRAP_BIN --bind $MOUNT_DIR / --bind /tmp /tmp"
+bwrap_cmd="$BWRAP_BIN --bind /tmp /tmp --bind $MOUNT_DIR /"
 # Add special flags which are needed to "unsandbox" bwrap ("not a security boundary"):
 bwrap_cmd="$bwrap_cmd --share-net"
 bwrap_cmd="$bwrap_cmd --proc /proc"
 bwrap_cmd="$bwrap_cmd --dev-bind /dev /dev"
 bwrap_cmd="$bwrap_cmd --cap-add CAP_SYS_ADMIN"
+
+tree "$MOUNT_DIR"
 
 eval "$bwrap_cmd" -- "$_cmd" "$*"

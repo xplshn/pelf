@@ -344,7 +344,8 @@ tidyup() {
 	           "$APPDIR/proto/etc/resolv.conf" "$APPDIR/proto/etc/passwd" \
 	           "$APPDIR/proto/etc/group" "$APPDIR/proto/etc/hosts" \
 	           "$APPDIR/proto/etc/hostname" "$APPDIR/proto/etc/localtime" \
-	           "$APPDIR/proto/home" "$APPDIR/proto/__w" "$APPDIR/proto/github"
+	           "$APPDIR/proto/__w" "$APPDIR/proto/github"
+	   [ "$SANDBOX" != "1" ] && rm -rf "$APPDIR/proto/home"
     }
 }
 
