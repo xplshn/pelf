@@ -117,6 +117,4 @@ bwrap_cmd="$bwrap_cmd --proc /proc"
 bwrap_cmd="$bwrap_cmd --dev-bind /dev /dev"
 bwrap_cmd="$bwrap_cmd --cap-add CAP_SYS_ADMIN"
 
-tree "$MOUNT_DIR"
-
 eval "$bwrap_cmd" -- "$_cmd" "$*"
