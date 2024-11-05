@@ -35,8 +35,6 @@ Notes:
 EOF
 }
 
-: "${ROOTFS_URL:=https://pub.ajam.dev/utils/alpine-mini-$(uname -m)/rootfs.tar.gz}"
-
 parse_arguments() {
 	ARGS=$(getopt -o m:n:p:e:x:k:r:o:sz -l maintainer:,name:,pkg-add:,entrypoint:,sharun:,keep:,getrid:,output:,local:,sandbox,dontpack,help -- "$@") || {
 		echo "Failed to parse arguments." >&2
@@ -139,19 +137,20 @@ create_appdir() {
 	OUTPUT_TO="${OUTPUT_TO:-$NAME-$DATE.dwfs.AppBundle}"
 	COMPRESSION_OPTS="${COMPRESSION_OPTS:=-l7 -C zstd:level=22 --metadata-compression null -S 19 -B 8 --order nilsimsa -W 12 -w 4}"
 
-	mkdir -p "$APPDIR/usr/bin" "$APPDIR/rootfs"
+	mkdir -p "$APPDIR/usr/bin" "$APPDIR/proto"
 	echo "${0##*/} $ARGS" >"$APPDIR/.genSteps" && chmod +x "$APPDIR/.genSteps"
 }
 
 download_and_extract_rootfs() {
 	# Either download & extract rootfs or directly extract it from its local copy
 	if [ -f "$LOCAL_PATH/rootfs.tgz" ]; then
-		if ! tar xzf "$LOCAL_PATH/rootfs.tgz" -C "$APPDIR/rootfs" --no-same-permissions; then
+		if ! tar xzf "$LOCAL_PATH/rootfs.tgz" -C "$APPDIR/proto" --no-same-permissions; then
 			echo "Failed to extract local rootfs"
 			exit 1
 		fi
 	else
-		if ! wget -qO- "$ROOTFS_URL" | tar xz - -C "$APPDIR/rootfs" --no-same-permissions; then
+        : "${ROOTFS_URL:=https://pub.ajam.dev/utils/alpine-mini-$(uname -m)/rootfs.tar.gz}"
+		if ! wget -qO- "$ROOTFS_URL" | tar xz - -C "$APPDIR/proto" --no-same-permissions; then
 			echo "Failed to download or extract rootfs"
 			exit 1
 		fi
@@ -173,7 +172,7 @@ add_bwrap() {
 
 pkg_add() {
 	# Either download or copy initial AppRun
-	if [ -f "$LOCAL_PATH/AppRun" ]; then
+	if [ -f "$LOCAL_PATH/AppRun.rootfs" ]; then
 		cp "$LOCAL_PATH/AppRun.rootfs" "$APPDIR/AppRun"
 	else
 		if ! wget -qO "$APPDIR/AppRun" https://raw.githubusercontent.com/xplshn/pelf/refs/heads/dev/assets/AppRun.rootfs-based; then
@@ -192,65 +191,62 @@ pkg_add() {
 	if [ -f "$LOCAL_PATH/pkgadd" ]; then
 		_command="$(cat "$LOCAL_PATH/pkgadd")"
 	fi
+	echo "sh" >"$APPDIR/proto/entrypoint"
 
-	echo "sh" >"$APPDIR/rootfs/entrypoint"
 	eval env -i HOME="$HOME" PWD="$PWD" PATH="$PATH" "$APPDIR/AppRun" "$_command"
 	ENTRYPOINT_DEST="$APPDIR/entrypoint"
 	[ "$SANDBOX" = "1" ] && {
-		ENTRYPOINT_DEST="$APPDIR/rootfs/usr/local/bin/default"
-		rm -rf "$APPDIR/proto"
-		ln -f "$APPDIR/rootfs" "$APPDIR/proto"
-
+		ENTRYPOINT_DEST="$APPDIR/proto/usr/local/bin/default"
 		echo "/usr/local/bin/LAUNCH" >"$ENTRYPOINT_DEST"
-		ENTRYPOINT_DEST="$APPDIR/rootfs/entrypoint"
 
-		mkdir -p "$APPDIR/rootfs/usr/local/bin"
+		ENTRYPOINT_DEST="$APPDIR/proto/entrypoint"
+
+		mkdir -p "$APPDIR/proto/usr/local/bin"
 		# Either download or copy LAUNCH (multicall helper for rootfs-based)
 		if [ -f "$LOCAL_PATH/LAUNCH" ]; then
-			cp "$LOCAL_PATH/LAUNCH" "$APPDIR/rootfs/usr/local/bin/LAUNCH"
+			cp "$LOCAL_PATH/LAUNCH" "$APPDIR/proto/usr/local/bin/LAUNCH"
 		else
-			if ! wget -qO "$APPDIR/rootfs/usr/local/bin/LAUNCH" "https://raw.githubusercontent.com/xplshn/pelf/refs/heads/pelf-ng/assets/LAUNCH-multicall.rootfs.entrypoint"; then
+			if ! wget -qO "$APPDIR/proto/usr/local/bin/LAUNCH" "https://raw.githubusercontent.com/xplshn/pelf/refs/heads/pelf-ng/assets/LAUNCH-multicall.rootfs.entrypoint"; then
 				echo "Failed to download LAUNCH for multicall"
 				exit 1
 			fi
 		fi
-		chmod +x "$APPDIR/rootfs/usr/local/bin/LAUNCH"
-		chmod +x "$APPDIR/rootfs/usr/local/bin/default"
+		chmod +x "$APPDIR/proto/usr/local/bin/LAUNCH"
+		chmod +x "$APPDIR/proto/usr/local/bin/default"
 	}
 }
 
 create_entrypoint() {
 	echo "$ENTRYPOINT" >"$ENTRYPOINT_DEST"
-	chmod +x "$APPDIR/entrypoint"
 }
 
 handle_desktop_file() {
 	if [ "${ENTRYPOINT##*.}" = "desktop" ]; then
-		if [ -f "$APPDIR/rootfs/usr/share/applications/$ENTRYPOINT" ]; then
-			ln -f "$APPDIR/rootfs/usr/share/applications/$ENTRYPOINT" "$APPDIR/$ENTRYPOINT" || {
-				echo "Failed to link $APPDIR/rootfs/usr/share/applications/$ENTRYPOINT"
+		if [ -f "$APPDIR/proto/usr/share/applications/$ENTRYPOINT" ]; then
+			ln -f "$APPDIR/proto/usr/share/applications/$ENTRYPOINT" "$APPDIR/$ENTRYPOINT" || {
+				echo "Failed to link $APPDIR/proto/usr/share/applications/$ENTRYPOINT"
 				exit 1
 			}
 
-			ICON_NAME="$(awk -F"=" '/Icon/ {print $2; exit}' "$APPDIR/rootfs/usr/share/applications/$ENTRYPOINT" 2>/dev/null)"
-			ENTRYPOINT=$(awk -F"=| " '/Exec=/ {print $2; exit}' "$APPDIR/rootfs/usr/share/applications/$ENTRYPOINT" 2>/dev/null)
+			ICON_NAME="$(awk -F"=" '/Icon/ {print $2; exit}' "$APPDIR/proto/usr/share/applications/$ENTRYPOINT" 2>/dev/null)"
+			ENTRYPOINT=$(awk -F"=| " '/Exec=/ {print $2; exit}' "$APPDIR/proto/usr/share/applications/$ENTRYPOINT" 2>/dev/null)
 			create_entrypoint
 
 			if [ -n "$ICON_NAME" ]; then
-				ICON_PATH=$(find "$APPDIR/rootfs/usr/share/icons" -type f -name "$ICON_NAME.*" 2>/dev/null | sort | head -n 1)
+				ICON_PATH=$(find "$APPDIR/proto/usr/share/icons" -type f -name "$ICON_NAME.*" 2>/dev/null | sort | head -n 1)
 				if [ -n "$ICON_PATH" ]; then
 					cp "$ICON_PATH" "$APPDIR/.DirIcon" || {
 						echo "Failed to copy icon $ICON_PATH"
 						exit 1
 					}
 				else
-					echo "Icon $ICON_NAME not found in $APPDIR/rootfs/usr/share/icons/"
+					echo "Icon $ICON_NAME not found in $APPDIR/proto/usr/share/icons/"
 				fi
 			else
-				echo "No Icon entry found in $APPDIR/rootfs/usr/share/applications/$ENTRYPOINT"
+				echo "No Icon entry found in $APPDIR/proto/usr/share/applications/$ENTRYPOINT"
 			fi
 		else
-			echo "No such desktop file: $APPDIR/rootfs/usr/share/applications/$ENTRYPOINT"
+			echo "No such desktop file: $APPDIR/proto/usr/share/applications/$ENTRYPOINT"
 			exit 1
 		fi
 	fi
@@ -269,12 +265,12 @@ select_structure_and_apprun() {
 				fi
 			done
 			if $KEEP; then
-				TOBEKEPT_BIN="$TOBEKEPT_BIN $APPDIR/rootfs/$ITEM"
+				TOBEKEPT_BIN="$TOBEKEPT_BIN $APPDIR/proto/$ITEM"
 			fi
 		done
 
 		# shellcheck disable=SC2086 # Generate and execute lib4bin script
-		printf 'LD_LIBRARY_PATH="%s/rootfs/lib:%s/rootfs/usr/lib" lib4bin --dst-dir "%s"' "$APPDIR" "$APPDIR" "$APPDIR" >"$APPDIR/.genl4b"
+		printf 'LD_LIBRARY_PATH="%s/proto/lib:%s/proto/usr/lib" lib4bin --dst-dir "%s"' "$APPDIR" "$APPDIR" "$APPDIR" >"$APPDIR/.genl4b"
 		echo " $TOBEKEPT_BIN" >>"$APPDIR/.genl4b"
 		chmod +x "$APPDIR/.genl4b"
 
@@ -290,16 +286,12 @@ select_structure_and_apprun() {
 				fi
 			fi
 			chmod +x "$APPDIR/AppRun"
-
-			[ -z "$TOBEKEPT_FILES" ] && rm -rf "$APPDIR/rootfs"
-
+			[ -z "$TOBEKEPT_FILES" ] && rm -rf "$APPDIR/proto" # SHARUN mode without Proto mode
 		fi
 	fi
 
 	if [ -n "$TOBEKEPT_FILES" ]; then
-    	[ -d "$APPDIR/proto" ] && rm -rf "$APPDIR/proto"
-		mv "$APPDIR/rootfs" "$APPDIR/proto"
-	else                                # We're in "proto" mode/norootfs. Let's only keep the specified files.
+        # We're in EXPLICIT "proto" mode/norootfs. Let's only keep the specified files.
 		for ITEM in $TOBEKEPT_FILES; do # Doesn't do anything if the var is empty
 			KEEP=true
 			for EXCLUDED in $GETRID_FILES; do
@@ -309,13 +301,13 @@ select_structure_and_apprun() {
 				fi
 			done
 			if $KEEP; then
-				mkdir -p "$APPDIR/proto/$(dirname "$ITEM")"
-				cp -r "$APPDIR/rootfs/$ITEM" "$APPDIR/proto/$ITEM"
+				mkdir -p "$APPDIR/proto_trimmed/$(dirname "$ITEM")"
+				cp -r "$APPDIR/proto/$ITEM" "$APPDIR/proto_trimmed/$ITEM"
 			fi
 		done
-		rm -rf "$APPDIR/rootfs"
+		rm -rf "$APPDIR/proto"
 	fi
-	chmod +x "$APPDIR/AppRun"
+    # Finalized AppDir/proto or AppDir/proto_trimmed
 
 	# Either download or copy fuse-overlayfs
 	if [ -f "$LOCAL_PATH/fuse-overlayfs" ]; then
@@ -333,8 +325,7 @@ select_structure_and_apprun() {
 	if [ -f "$LOCAL_PATH/AppRun.sharun.ovfsProto" ]; then
 		cp "$LOCAL_PATH/AppRun.sharun.ovfsProto" "$APPDIR/AppRun"
 	else
-		if ! wget -qO "$APPDIR/AppRun" \
-			"https://raw.githubusercontent.com/xplshn/pelf/refs/heads/pelf-ng/assets/AppRun.sharun.ovfsProto"; then
+		if ! wget -qO "$APPDIR/AppRun" "https://raw.githubusercontent.com/xplshn/pelf/refs/heads/pelf-ng/assets/AppRun.sharun.ovfsProto"; then
 			echo "Failed to download AppRun.sharun.ovfsProto, unable to proceed with the NOROOTFS procedure"
 			exit 1
 		fi
@@ -343,8 +334,6 @@ select_structure_and_apprun() {
 }
 
 tidyup() {
-	rm -rf "${APPDIR:?}/proto/home"
-	rm -rf "${APPDIR:?}/proto/__w" "${APPDIR:?}/proto/github"
 	for EXCLUDED in $GETRID_FILES; do
 		if [ -f "$APPDIR/proto/$EXCLUDED" ] || [ -d "$APPDIR/proto/$EXCLUDED" ]; then
 			rm -rf "${APPDIR:?}/proto/$EXCLUDED"
@@ -354,7 +343,8 @@ tidyup() {
 	rm -rf "$APPDIR/proto/etc/machine-id" "$APPDIR/proto/etc/machine-id" \
 	       "$APPDIR/proto/etc/resolv.conf" "$APPDIR/proto/etc/passwd" \
 	       "$APPDIR/proto/etc/group" "$APPDIR/proto/etc/hosts" \
-	       "$APPDIR/proto/etc/hostname" "$APPDIR/proto/etc/localtime"
+	       "$APPDIR/proto/etc/hostname" "$APPDIR/proto/etc/localtime" \
+	       "$APPDIR/proto/home" "$APPDIR/proto/__w" "$APPDIR/proto/github"
 }
 
 upx_static_tools() {
@@ -383,21 +373,20 @@ create_bundle() {
 
 main() {
 	ENTRYPOINT_DEST="$APPDIR/entrypoint"
-
 	parse_arguments "$@"
 	check_required_arguments
 	setup_local_path
 	create_appdir
 	download_and_extract_rootfs
+	add_bwrap
+	pkg_add
 	# Actual logic 0------------------------------------->
-	add_bwrap                                            # 1.
-	pkg_add                                              # 2.
-	create_entrypoint                                    # 3.
-	handle_desktop_file                                  # 4.
-	[ "$SANDBOX" != "1" ] && select_structure_and_apprun # 5
-	tidyup                                               # 6.
-	upx_static_tools                                     # 7.
-	create_bundle                                        # 8.
+	create_entrypoint                                    # 1.
+	handle_desktop_file                                  # 2.
+	[ "$SANDBOX" != "1" ] && select_structure_and_apprun # 3.
+	tidyup                                               # 4.
+	upx_static_tools                                     # 5.
+	create_bundle                                        # 6.
 }
 
 main "$@"
