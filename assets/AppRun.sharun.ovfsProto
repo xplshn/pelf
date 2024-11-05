@@ -75,7 +75,7 @@ MOUNT_DIR="$TEMP_DIR/mount_dir"
 WORK_DIR="$TEMP_DIR/work_dir"
 mkdir -p "$MOUNT_DIR" "$WORK_DIR"
 # Mount the overlay
-"$OVFSFUSE_BIN" -o lowerdir=/,upperdir="$SELF_TEMPDIR/proto",workdir="$WORK_DIR" "$MOUNT_DIR" &
+"$OVFSFUSE_BIN" -o lowerdir=/,upperdir="$PROTO",workdir="$WORK_DIR" "$MOUNT_DIR" &
 OVFSFUSE_PID="$!"
 
 cleanup() {
