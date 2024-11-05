@@ -19,9 +19,6 @@ elif [ -d "$SELF_TEMPDIR/rootfs" ]; then
     PROTO="$SELF_TEMPDIR/rootfs"
 elif [ -d "$SELF_TEMPDIR/proto_trimmed" ]; then
     PROTO="$SELF_TEMPDIR/proto_trimmed"
-else
-    echo "Error: Neither 'proto', 'rootfs' nor 'proto_trimmed' directories exist in $SELF_TEMPDIR" >&2
-    exit 1
 fi
 
 oPATH="$PATH"
