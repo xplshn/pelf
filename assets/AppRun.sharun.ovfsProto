@@ -106,7 +106,7 @@ cleanup() {
 trap cleanup INT TERM HUP QUIT EXIT
 
 # Initialize the bwrap command
-bwrap_cmd="$BWRAP_BIN --bind /tmp /tmp --bind $MOUNT_DIR /"
+bwrap_cmd="$BWRAP_BIN --bind $MOUNT_DIR / --bind /tmp /tmp"
 # Add special flags which are needed to "unsandbox" bwrap ("not a security boundary"):
 bwrap_cmd="$bwrap_cmd --share-net"
 bwrap_cmd="$bwrap_cmd --proc /proc"
