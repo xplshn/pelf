@@ -48,14 +48,9 @@ else
     exit 1
 fi
 
-# If not in proto/rootfs mode, execute as normal
-[ ! -d "$PROTO" ] && {
-    exec "$_cmd" "$*"
-}
-
 # proto/rootfs mode handling ->
 
-# Find bwrap
+ # Find bwrap
 BWRAP_BIN="${SELF_TEMPDIR}/usr/bin/bwrap"
 [ ! -f "$BWRAP_BIN" ] && BWRAP_BIN="bwrap"
 OVFSFUSE_BIN="${SELF_TEMPDIR}/usr/bin/fuse-overlayfs"
@@ -75,8 +70,8 @@ MOUNT_DIR="$TEMP_DIR/mount_dir"
 WORK_DIR="$TEMP_DIR/work_dir"
 mkdir -p "$MOUNT_DIR" "$WORK_DIR"
 # Mount the overlay
-"$OVFSFUSE_BIN" -o lowerdir=/,upperdir="$PROTO",workdir="$WORK_DIR" "$MOUNT_DIR" &
-OVFSFUSE_PID="$!"
+"$OVFSFUSE_BIN" -o lowerdir=/,upperdir="$PROTO",workdir="$WORK_DIR" "$MOUNT_DIR" # &
+#OVFSFUSE_PID="$!"
 
 cleanup() {
     (
@@ -102,9 +97,10 @@ cleanup() {
         rmdir "$WORK_DIR" 2>/dev/null || true
         rm -rf "$TEMP_DIR" 2>/dev/null || true
 
-        if pgrep -P "$OVFSFUSE_PID"; then
-            pkill -9 "$OVFSFUSE_PID"
-        fi
+        #if pgrep -P "$OVFSFUSE_PID"; then
+        #    pkill -9 "$OVFSFUSE_PID"
+        #fi
+
     ) & # Run cleanup in the background
 }
 trap cleanup INT TERM HUP QUIT EXIT
