@@ -218,7 +218,6 @@ pkg_add() {
 
 create_entrypoint() {
 	echo "$ENTRYPOINT" >"$ENTRYPOINT_DEST"
-	chmod +x "$APPDIR/entrypoint"
 }
 
 handle_desktop_file() {
