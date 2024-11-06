@@ -1,0 +1,121 @@
+#!/bin/sh
+
+[ "$DEBUG" = "1" ] && set -x
+
+SELF="$(readlink -f "$0")" && export SELF
+SELF_TEMPDIR="${SELF%/*}" && export SELF_TEMPDIR
+FALLBACK="$(cat "$SELF_TEMPDIR/entrypoint")"
+FALLBACK="${FALLBACK##*/}"
+[ -z "$ARGV0" ] && {
+    ARGV0="${0##*/}"
+}
+
+CMD="$1"
+
+# Check for proto or rootfs directories and set PROTO accordingly
+if [ -d "$SELF_TEMPDIR/proto" ]; then
+    PROTO="$SELF_TEMPDIR/proto"
+elif [ -d "$SELF_TEMPDIR/rootfs" ]; then
+    PROTO="$SELF_TEMPDIR/rootfs"
+else
+    PROTO="$SELF_TEMPDIR/proto_trimmed"
+fi
+
+oPATH="$PATH"
+PATH="${SELF_TEMPDIR}/bin:${PROTO}/bin:${PROTO}/usr/bin"
+
+if [ "$NOSHARUN" = 1 ]; then
+    if [ -z "$LD_LIBRARY_PATH" ]; then
+        LD_LIBRARY_PATH="${SELF_TEMPDIR}/shared/lib:${PROTO}/lib:${PROTO}/usr/lib"
+    else
+        LD_LIBRARY_PATH="${SELF_TEMPDIR}/shared/lib:${PROTO}/lib:${PROTO}/usr/lib:$LD_LIBRARY_PATH"
+    fi
+fi
+
+# What command shall we exec?
+if _cmd="$(command -v "${ARGV0#./}")" >/dev/null 2>&1; then
+    PATH="$PATH:$oPATH"
+elif _cmd="$(command -v "$CMD")" >/dev/null 2>&1; then
+    shift
+    PATH="$PATH:$oPATH"
+elif _cmd="$(command -v "$FALLBACK")" >/dev/null 2>&1; then
+    PATH="$PATH:$oPATH"
+else
+    echo "Error: Neither ARGV0 ('${ARGV0%.*}') nor ARGS ('$CMD') are available in \$PATH"
+    exit 1
+fi
+
+if [ ! -d "$PROTO" ] || [ "$DIRECT_EXEC" = "1" ]; then
+    eval "$_cmd" "$*"
+<<<<<<< HEAD
+    exit $?
+=======
+>>>>>>> 38e370665994f542df8d7e2537285ec1c5b3cd06
+fi
+
+# proto/rootfs mode handling ->
+
+ # Find bwrap
+BWRAP_BIN="${SELF_TEMPDIR}/usr/bin/bwrap"
+[ ! -f "$BWRAP_BIN" ] && BWRAP_BIN="bwrap"
+OVFSFUSE_BIN="${SELF_TEMPDIR}/usr/bin/fuse-overlayfs"
+[ ! -f "$OVFSFUSE_BIN" ] && OVFSFUSE_BIN="fuse-overlayfs"
+
+_dirname() { # DIRNAME but made entirely in POSIX SH
+    dir=${1:-.} ; dir=${dir%%"${dir##*[!/]}"} ; [ "${dir##*/*}" ] && dir=. ; dir=${dir%/*} ; dir=${dir%%"${dir##*[!/]}"} ; printf '%s\n' "${dir:-/}"
+}
+
+# Set up overlay filesystem directories using _dirname on SELF_TEMPDIR
+OVFS_DIR="$(_dirname "$SELF_TEMPDIR")/ovfs"
+mkdir -p "$OVFS_DIR"
+
+# Create temp directories for overlayfs
+TEMP_DIR="$(mktemp -d)"
+MOUNT_DIR="$TEMP_DIR/mount_dir"
+WORK_DIR="$TEMP_DIR/work_dir"
+mkdir -p "$MOUNT_DIR" "$WORK_DIR"
+# Mount the overlay
+"$OVFSFUSE_BIN" -o lowerdir=/,upperdir="$PROTO",workdir="$WORK_DIR" "$MOUNT_DIR" # &
+#OVFSFUSE_PID="$!"
+
+cleanup() {
+    (
+        # Attempt to unmount
+        fusermount -u "$MOUNT_DIR" 2>/dev/null
+
+        # Wait and check if the mount point is unmounted
+        for i in 1 2 3 4 5; do
+            if mountpoint -q "$MOUNT_DIR"; then
+                sleep "$i"
+            else
+                break
+            fi
+        done
+
+        # Force unmount if still mounted
+        if mountpoint -q "$MOUNT_DIR"; then
+            fusermount -uz "$MOUNT_DIR" 2>/dev/null
+        fi
+
+        # Remove temporary directories
+        rmdir "$MOUNT_DIR" 2>/dev/null || true
+        rmdir "$WORK_DIR" 2>/dev/null || true
+        rm -rf "$TEMP_DIR" 2>/dev/null || true
+
+        #if pgrep -P "$OVFSFUSE_PID"; then
+        #    pkill -9 "$OVFSFUSE_PID"
+        #fi
+
+    ) & # Run cleanup in the background
+}
+trap cleanup INT TERM HUP QUIT EXIT
+
+# Initialize the bwrap command
+bwrap_cmd="$BWRAP_BIN --bind $MOUNT_DIR / --bind /tmp /tmp"
+# Add special flags which are needed to "unsandbox" bwrap ("not a security boundary"):
+bwrap_cmd="$bwrap_cmd --share-net"
+bwrap_cmd="$bwrap_cmd --proc /proc"
+bwrap_cmd="$bwrap_cmd --dev-bind /dev /dev"
+bwrap_cmd="$bwrap_cmd --cap-add CAP_SYS_ADMIN"
+
+eval "$bwrap_cmd" -- "$_cmd" "$*"
