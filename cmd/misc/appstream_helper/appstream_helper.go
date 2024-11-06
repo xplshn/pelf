@@ -215,8 +215,8 @@ func writeComponentToFile(component Component, outputFile string) error {
 func main() {
 	// Define flags
 	inputDir := flag.String("input-dir", "", "Path to the input directory containing .AppBundle files")
-	outputDir := flag.String("outdir", "", "Directory to save the output XML files")
-	outputJSON := flag.String("outfile", "", "Path to the output JSON file")
+	outputDir := flag.String("output-dir", "", "Directory to save the output XML files")
+	outputJSON := flag.String("output-file", "", "Path to the output JSON file")
 	flag.Parse()
 
 	if *inputDir == "" || *outputDir == "" || *outputJSON == "" {
