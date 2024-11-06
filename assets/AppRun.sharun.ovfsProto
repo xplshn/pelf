@@ -17,7 +17,7 @@ if [ -d "$SELF_TEMPDIR/proto" ]; then
     PROTO="$SELF_TEMPDIR/proto"
 elif [ -d "$SELF_TEMPDIR/rootfs" ]; then
     PROTO="$SELF_TEMPDIR/rootfs"
-elif [ -d "$SELF_TEMPDIR/proto_trimmed" ]; then
+else
     PROTO="$SELF_TEMPDIR/proto_trimmed"
 fi
 
@@ -43,6 +43,10 @@ elif _cmd="$(command -v "$FALLBACK")" >/dev/null 2>&1; then
 else
     echo "Error: Neither ARGV0 ('${ARGV0%.*}') nor ARGS ('$CMD') are available in \$PATH"
     exit 1
+fi
+
+if [ ! -d "$PROTO" ] || [ "$DIRECT_EXEC" = "1" ]; then
+    eval "$_cmd" "$*"
 fi
 
 # proto/rootfs mode handling ->
