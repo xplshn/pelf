@@ -64,6 +64,8 @@ func main() {
 	version := flag.Bool("version", false, "Print the version number")
 	integratePath := flag.String("integrate", "", "Manually integrate a specific file or directory")
 	deintegratePath := flag.String("deintegrate", "", "Manually de-integrate a specific file or directory")
+	extractPath := flag.String("extract", "", "Extract .DirIcon and .desktop to the specified directory")
+	outDir := flag.String("outdir", "", "For use with --extract")
 	flag.Parse()
 
 	// Handle version flag
@@ -73,6 +75,16 @@ func main() {
 	}
 
 	config := loadConfig(configFilePath, usr.HomeDir)
+
+	// Handle extract flag
+	if *extractPath != "" && *outDir != "" {
+		if !fileExists(*extractPath) {
+			logMessage("ERR", fmt.Sprintf("Specified file for extraction does not exist: %s", *extractPath))
+			return
+		}
+		extractMetadata(*extractPath, config.Options.IconDir, *outDir)
+		return
+	}
 
 	// Create necessary directories
 	os.MkdirAll(config.Options.IconDir, 0755)
@@ -95,6 +107,26 @@ func main() {
 	for {
 		integrateBundle(config, config.Options.DirectoriesToWalk, usr.HomeDir, configFilePath)
 		time.Sleep(probeInterval)
+	}
+}
+
+func extractMetadata(filePath, iconDir, appDir string) {
+	baseName := strings.TrimSuffix(filepath.Base(filePath), filepath.Ext(filePath))
+
+	// Extract .DirIcon
+	iconPath := filepath.Join(iconDir, baseName+".png")
+	if extractedIcon := extractAppImageMetadata("icon", filePath, iconPath); extractedIcon != "" {
+		logMessage("INF", fmt.Sprintf("Icon extracted to: %s", extractedIcon))
+	} else {
+		logMessage("WRN", "Failed to extract icon")
+	}
+
+	// Extract .desktop
+	desktopPath := filepath.Join(appDir, baseName+".desktop")
+	if extractedDesktop := extractAppImageMetadata("desktop", filePath, desktopPath); extractedDesktop != "" {
+		logMessage("INF", fmt.Sprintf("Desktop file extracted to: %s", extractedDesktop))
+	} else {
+		logMessage("WRN", "Failed to extract desktop file")
 	}
 }
 
