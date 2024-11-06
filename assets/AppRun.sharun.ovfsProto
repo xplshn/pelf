@@ -47,10 +47,7 @@ fi
 
 if [ ! -d "$PROTO" ] || [ "$DIRECT_EXEC" = "1" ]; then
     eval "$_cmd" "$*"
-<<<<<<< HEAD
     exit $?
-=======
->>>>>>> 38e370665994f542df8d7e2537285ec1c5b3cd06
 fi
 
 # proto/rootfs mode handling ->
