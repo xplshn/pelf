@@ -14,6 +14,8 @@ import (
 	"strings"
 )
 
+const url_prefix = "https://github.com/xplshn/AppBundleHUB/releases/download/latest_metadata/"
+
 type Item struct {
 	Pkg             string   `json:"pkg"`
 	PkgName         string   `json:"pkg_name,omitempty"`
@@ -21,6 +23,7 @@ type Item struct {
 	Icon            string   `json:"icon,omitempty"`
 	Description     string   `json:"description,omitempty"`
 	RichDescription string   `json:"rich_description,omitempty"`
+	Desktop         string   `json:"desktop,omitempty"`
 	Screenshots     []string `json:"screenshots,omitempty"`
 	Version         string   `json:"version,omitempty"`
 	DownloadURL     string   `json:"download_url,omitempty"`
@@ -252,11 +255,21 @@ func main() {
 				}
 			}
 
+			// Get the size of the AppBundle file
+			fileInfo, err := os.Stat(path)
+			if err != nil {
+				fmt.Printf("Error getting file info for %s: %v\n", path, err)
+				return nil
+			}
+			sizeInMegabytes := float64(fileInfo.Size()) / (1024 * 1024)
+
 			// Convert matching component to JSON
 			item := ConvertComponentToItem(*matchingComponent)
 			item.Pkg = appBundleBasename
-			item.Icon = potentialId + ".png"
-			item.Appstream = potentialId + ".appstream.xml"
+			item.Icon = url_prefix + potentialId + ".png"
+			item.Desktop = url_prefix + potentialId + ".desktop"
+			item.Appstream = url_prefix + potentialId + ".appstream.xml"
+			item.Size = fmt.Sprintf("%.2f MB", sizeInMegabytes)
 			packageList.Pkg = append(packageList.Pkg, item)
 
 			// Write individual component XML
