@@ -233,7 +233,11 @@ handle_desktop_file() {
 			create_entrypoint
 
 			if [ -n "$ICON_NAME" ]; then
-				ICON_PATH=$(find "$APPDIR/proto/usr/share/icons" -type f -name "$ICON_NAME.*" 2>/dev/null | sort | head -n 1)
+				# Exclude resolutions below 128x128 and select PNG files only
+				ICON_PATH=$(find "$APPDIR/proto/usr/share/icons" -type f -name "$ICON_NAME*.png" 2>/dev/null \
+					| grep -v '/\(16x16\|24x24\|32x32\|48x48\|64x64\|96x96\)/' \
+					| sort -n | head -n 1)
+
 				if [ -n "$ICON_PATH" ]; then
 					cp "$ICON_PATH" "$APPDIR/.DirIcon" || {
 						echo "Failed to copy icon $ICON_PATH"
@@ -241,6 +245,15 @@ handle_desktop_file() {
 					}
 				else
 					echo "Icon $ICON_NAME not found in $APPDIR/proto/usr/share/icons/"
+				fi
+
+				# Also copy an SVG version if available
+				SVG_ICON_PATH=$(find "$APPDIR/proto/usr/share/icons" -type f -name "$ICON_NAME*.svg" 2>/dev/null | head -n 1)
+				if [ -n "$SVG_ICON_PATH" ]; then
+					cp "$SVG_ICON_PATH" "$APPDIR/.DirIcon.svg" || {
+						echo "Failed to copy SVG icon $SVG_ICON_PATH"
+						exit 1
+					}
 				fi
 			else
 				echo "No Icon entry found in $APPDIR/proto/usr/share/applications/$ENTRYPOINT"
