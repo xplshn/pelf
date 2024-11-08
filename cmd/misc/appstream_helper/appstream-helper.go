@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"encoding/xml"
@@ -12,6 +13,9 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/tdewolff/minify/v2"
+	"github.com/tdewolff/minify/v2/html"
 )
 
 const url_prefix = "https://github.com/xplshn/AppBundleHUB/releases/download/latest_metadata/"
@@ -286,15 +290,20 @@ func main() {
 		return
 	}
 
-	// Write final JSON output
-	jsonData, err := json.MarshalIndent(packageList, "", "  ")
-	if err != nil {
+	// Create an encoder that doesn't escape HTML/Unicode
+	buffer := &bytes.Buffer{}
+	encoder := json.NewEncoder(buffer)
+	encoder.SetEscapeHTML(false)
+	encoder.SetIndent("", "  ")
+
+	// Encode the package list
+	if err := encoder.Encode(packageList); err != nil {
 		fmt.Println("Error creating JSON:", err)
 		return
 	}
 
-	err = os.WriteFile(*outputJSON, jsonData, 0644)
-	if err != nil {
+	// Write the buffer to file
+	if err := os.WriteFile(*outputJSON, buffer.Bytes(), 0644); err != nil {
 		fmt.Println("Error writing JSON file:", err)
 		return
 	}
@@ -325,6 +334,7 @@ func ConvertComponentToItem(c Component) Item {
 	var version string
 	if len(c.Releases.Release) > 0 {
 		version = c.Releases.Release[0].Version
+		version += " (may be inaccurate)"
 	}
 
 	// Extract content for name, summary, description, and keywords based on missing xml:lang attribute
@@ -346,8 +356,11 @@ func ConvertComponentToItem(c Component) Item {
 	}
 
 	for _, item := range c.Description {
-		if item.Lang == "" { // FIXME: For some reason, I get russian sometimes?
-			richDescription = sanitizeString(item.Content)
+		if item.Lang == "" {
+			// Only escape quotes and backslashes for JSON validity
+			content := strings.ReplaceAll(item.Content, "\\", "\\\\")
+			content = strings.ReplaceAll(content, "\"", "\\\"")
+			richDescription = content
 			break
 		}
 	}
@@ -358,8 +371,30 @@ func ConvertComponentToItem(c Component) Item {
 		}
 	}
 
+	// Minify HTML content
+	minifiedSummary, err := minifyHTML(summary)
+	if err != nil {
+		fmt.Printf("Error minifying summary: %v\n", err)
+	}
+	summary = minifiedSummary
+
+	minifiedRichDescription, err := minifyHTML(richDescription)
+	if err != nil {
+		fmt.Printf("Error minifying rich description: %v\n", err)
+	}
+	richDescription = minifiedRichDescription
+
+	minifiedKeywords := make([]string, len(keywords))
+	for i, keyword := range keywords {
+		minifiedKeyword, err := minifyHTML(keyword)
+		if err != nil {
+			fmt.Printf("Error minifying keyword: %v\n", err)
+		}
+		minifiedKeywords[i] = minifiedKeyword
+	}
+
 	// Join keywords for single-field output
-	joinedKeywords := strings.Join(keywords, ", ")
+	joinedKeywords := strings.Join(minifiedKeywords, ", ")
 
 	return Item{
 		PkgName:         name,
@@ -407,4 +442,24 @@ func sanitizeURL(input string) string {
 		return ""
 	}
 	return u.String()
+}
+
+func minifyHTML(input string) (string, error) {
+	m := minify.New()
+	minifier := &html.Minifier{
+		KeepComments:            false,
+		KeepConditionalComments: false,
+		KeepDefaultAttrVals:     false,
+		KeepDocumentTags:        false,
+		KeepEndTags:             false,
+		KeepQuotes:              false,
+		KeepWhitespace:          false,
+	}
+	m.AddFunc("text/html", minifier.Minify)
+
+	var buf bytes.Buffer
+	if err := m.Minify("text/html", &buf, strings.NewReader(input)); err != nil {
+		return "", err
+	}
+	return buf.String(), nil
 }
