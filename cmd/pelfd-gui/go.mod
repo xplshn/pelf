@@ -4,8 +4,10 @@ go 1.22.0
 
 require (
 	fyne.io/fyne/v2 v2.5.2
+	github.com/emmansun/base64 v0.6.0
 	github.com/goccy/go-json v0.10.3
 	github.com/liamg/tml v0.7.0
+	github.com/minio/md5-simd v1.1.2
 	github.com/zeebo/blake3 v0.2.4
 )
 
@@ -35,7 +37,7 @@ require (
 	github.com/stretchr/testify v1.9.0 // indirect
 	github.com/yuin/goldmark v1.7.8 // indirect
 	golang.org/x/image v0.21.0 // indirect
-	golang.org/x/mobile v0.0.0-20241016134751-7ff83004ec2c // indirect
+	golang.org/x/mobile v0.0.0-20241105203220-2b9d635e74e5 // indirect
 	golang.org/x/net v0.30.0 // indirect
 	golang.org/x/sys v0.26.0 // indirect
 	golang.org/x/text v0.19.0 // indirect

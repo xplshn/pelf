@@ -1,7 +1,6 @@
 package main
 
 import (
-	"crypto/md5"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -22,6 +21,7 @@ import (
 
 	"github.com/goccy/go-json"
 	"github.com/liamg/tml"
+	"github.com/minio/md5-simd"
 	"github.com/zeebo/blake3"
 )
 
