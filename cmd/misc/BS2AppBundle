@@ -1,5 +1,12 @@
 #!/bin/sh
 
+if [ -n "$OVERRIDE_ENTRYPOINT" ]; then
+    echo "OVERRIDE_ENTRYPOINT is set to: $OVERRIDE_ENTRYPOINT. It will be used as the entrypoint."
+fi
+if [ -n "$OVERRIDE_DESKTOP" ]; then
+    echo "OVERRIDE_DESKTOP will be passed to a sed command"
+fi
+
 # Check if an AppImage was provided
 if [ -z "$1" ]; then
     echo "Usage: $0 <AppImage>"
@@ -91,8 +98,19 @@ fi
 # Find the .desktop file and extract the Exec= line
 DESKTOP_FILE=$(find ./rootfs-based.AppDir -type f -name "*.desktop" | head -n 1)
 if [ -f "$DESKTOP_FILE" ]; then
+    if [ -n "$OVERRIDE_DESKTOP" ]; then
+        # Apply the custom SED expression if provided
+        sed -i "$OVERRIDE_DESKTOP" "$DESKTOP_FILE"
+        echo "Applied OVERRIDE_DESKTOP SED expression on $DESKTOP_FILE"
+    fi
+
+    # Extract the Exec= line after possible modifications
     EXEC_LINE=$(awk -F"=| " '/Exec=/ {print $2; exit}' "$DESKTOP_FILE")
-    if [ -n "$EXEC_LINE" ]; then
+    if [ -n "$OVERRIDE_ENTRYPOINT" ]; then
+        # Use the provided override if set
+        echo "$OVERRIDE_ENTRYPOINT" > "$WORKDIR/rootfs/entrypoint"
+        echo "Set entrypoint to OVERRIDE_ENTRYPOINT: $OVERRIDE_ENTRYPOINT"
+    elif [ -n "$EXEC_LINE" ]; then
         echo "Exec line found: $EXEC_LINE"
         echo "$EXEC_LINE" > "$WORKDIR/rootfs/entrypoint"
     else
