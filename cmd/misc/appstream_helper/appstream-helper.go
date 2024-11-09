@@ -18,8 +18,6 @@ import (
 	"github.com/tdewolff/minify/v2/html"
 )
 
-const url_prefix = "https://github.com/xplshn/AppBundleHUB/releases/download/latest_metadata/"
-
 type Item struct {
 	Pkg             string   `json:"pkg"`
 	PkgName         string   `json:"pkg_name,omitempty"`
@@ -199,6 +197,8 @@ func main() {
 	outputDir := flag.String("output-dir", "", "Directory to save the output files")
 	outputJSON := flag.String("output-file", "", "Path to the output JSON file")
 	componentsXML := flag.String("components-xml", "", "Path to components XML file")
+	metadataPrefix := flag.String("metadata-prefix", "https://github.com/xplshn/AppBundleHUB/releases/download/latest_metadata/", "Prefix for metadata URLs")
+	downloadURLPrefix := flag.String("download-url-prefix", "https://github.com/xplshn/AppBundleHUB/releases/download/", "Prefix for download URLs")
 	flag.Parse()
 
 	if *inputDir == "" || *outputDir == "" || *outputJSON == "" || *componentsXML == "" {
@@ -270,10 +270,11 @@ func main() {
 			// Convert matching component to JSON
 			item := ConvertComponentToItem(*matchingComponent)
 			item.Pkg = appBundleBasename
-			item.Icon = url_prefix + potentialId + ".png"
-			item.Desktop = url_prefix + potentialId + ".desktop"
-			item.Appstream = url_prefix + potentialId + ".appstream.xml"
+			item.Icon = *metadataPrefix + potentialId + ".png"
+			item.Desktop = *metadataPrefix + potentialId + ".desktop"
+			item.Appstream = *metadataPrefix + potentialId + ".appstream.xml"
 			item.Size = fmt.Sprintf("%.2f MB", sizeInMegabytes)
+			item.DownloadURL = *downloadURLPrefix + appBundleBasename
 			packageList.Pkg = append(packageList.Pkg, item)
 
 			// Write individual component XML
