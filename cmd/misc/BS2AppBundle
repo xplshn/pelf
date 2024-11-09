@@ -45,10 +45,10 @@ fi
 # Check if conty.sh exists in squashfs-root
 if [ -f squashfs-root/conty.sh ]; then
     echo "Found conty.sh. Extracting with dwarfsextract..."
-    
+
     # Create the rootfs-based.AppDir
     mkdir -p rootfs-based.AppDir/rootfs rootfs-based.AppDir/usr/bin
-    
+
     # Extract the conty.sh to the rootfs
     cp ./squashfs-root/*.desktop ./squashfs-root/.DirIcon ./rootfs-based.AppDir
     dwarfs -o offset="auto",ro,auto_unmount "./squashfs-root/conty.sh" "rootfs-based.AppDir/rootfs" && {
@@ -86,6 +86,20 @@ else
               --output-to "$DIROFTHEAPP/${APPNAME}.dwfs.AppBundle" \
               --embed-static-tools \
               --compression "$COMPRESSION_OPTS"
+fi
+
+# Find the .desktop file and extract the Exec= line
+DESKTOP_FILE=$(find ./rootfs-based.AppDir -type f -name "*.desktop" | head -n 1)
+if [ -f "$DESKTOP_FILE" ]; then
+    EXEC_LINE=$(awk -F"=| " '/Exec=/ {print $2; exit}' "$DESKTOP_FILE")
+    if [ -n "$EXEC_LINE" ]; then
+        echo "Exec line found: $EXEC_LINE"
+        echo "$EXEC_LINE" > "$WORKDIR/rootfs/entrypoint"
+    else
+        echo "Exec line not found in $DESKTOP_FILE"
+    fi
+else
+    echo "No .desktop file found in rootfs-based.AppDir"
 fi
 
 echo "AppBundle created successfully in $DIROFTHEAPP."
