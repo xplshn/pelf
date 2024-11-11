@@ -129,7 +129,8 @@ type Component struct {
 	Screenshots   []Screenshot  `xml:"screenshots>screenshot"`
 	Releases      Releases      `xml:"releases"`
 	ContentRating ContentRating `xml:"content_rating"`
-	Keywords      []Tag         `xml:"keywords"`
+	Keywords      []Tag         `xml:"keywords>keyword"`
+	Categories    []Tag         `xml:"categories>category"`
 }
 
 type Components struct {
@@ -372,6 +373,20 @@ func ConvertComponentToItem(c Component) Item {
 		}
 	}
 
+	// Extract categories and convert them to lowercase, comma-separated list
+	var categories []string
+	for _, item := range c.Categories {
+		categories = append(categories, strings.ToLower(item.Content))
+	}
+	categoryList := strings.Join(categories, ", ")
+
+	// Extract keywords and convert them to lowercase, comma-separated list
+	var lowercasedKeywords []string
+	for _, keyword := range keywords {
+		lowercasedKeywords = append(lowercasedKeywords, strings.ToLower(keyword))
+	}
+	keywordList := strings.Join(lowercasedKeywords, ", ")
+
 	// Minify HTML content
 	minifiedSummary, err := minifyHTML(summary)
 	if err != nil {
@@ -385,18 +400,6 @@ func ConvertComponentToItem(c Component) Item {
 	}
 	richDescription = minifiedRichDescription
 
-	minifiedKeywords := make([]string, len(keywords))
-	for i, keyword := range keywords {
-		minifiedKeyword, err := minifyHTML(keyword)
-		if err != nil {
-			fmt.Printf("Error minifying keyword: %v\n", err)
-		}
-		minifiedKeywords[i] = minifiedKeyword
-	}
-
-	// Join keywords for single-field output
-	joinedKeywords := strings.Join(minifiedKeywords, ", ")
-
 	return Item{
 		PkgName:         name,
 		PkgId:           c.Id,
@@ -407,8 +410,8 @@ func ConvertComponentToItem(c Component) Item {
 		DownloadURL:     downloadURL,
 		SrcURL:          srcURL,
 		Homepage:        webURL,
-		Category:        c.Type,
-		Keywords:        joinedKeywords,
+		Category:        categoryList,
+		Keywords:        keywordList,
 		Note:            "Courtesy of AppBundleHUB",
 	}
 }
