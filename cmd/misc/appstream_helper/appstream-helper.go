@@ -236,7 +236,7 @@ func main() {
 			return err
 		}
 
-		if !info.IsDir() && strings.HasSuffix(path, ".dwfs.AppBundle") {
+		if !info.IsDir() && strings.HasSuffix(path, ".AppBundle") {
 			appBundleBasename := filepath.Base(path)
 			potentialId := extractAppstreamId(appBundleBasename)
 
@@ -368,7 +368,7 @@ func ConvertComponentToItem(c Component) Item {
 	}
 
 	for _, item := range c.Keywords {
-		if item.Lang == "" {
+		if item.Lang == "" || item.Lang == "en" {
 			keywords = append(keywords, sanitizeString(item.Content))
 		}
 	}
