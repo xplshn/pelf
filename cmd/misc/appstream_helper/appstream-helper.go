@@ -2,11 +2,14 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/xml"
 	"flag"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"os/exec"
@@ -16,6 +19,7 @@ import (
 
 	"github.com/tdewolff/minify/v2"
 	"github.com/tdewolff/minify/v2/html"
+	"github.com/zeebo/blake3"
 )
 
 type Item struct {
@@ -268,6 +272,18 @@ func main() {
 			}
 			sizeInMegabytes := float64(fileInfo.Size()) / (1024 * 1024)
 
+			// Compute bsum and shasum
+			bsum, err := computeB3SUM(path)
+			if err != nil {
+				fmt.Printf("Error computing B3SUM for %s: %v\n", path, err)
+				return nil
+			}
+			shasum, err := computeSHA256(path)
+			if err != nil {
+				fmt.Printf("Error computing SHA256 for %s: %v\n", path, err)
+				return nil
+			}
+
 			// Convert matching component to JSON
 			item := ConvertComponentToItem(*matchingComponent)
 			item.Pkg = appBundleBasename
@@ -276,6 +292,8 @@ func main() {
 			item.Appstream = *metadataPrefix + potentialId + ".appstream.xml"
 			item.Size = fmt.Sprintf("%.2f MB", sizeInMegabytes)
 			item.DownloadURL = *downloadURLPrefix + appBundleBasename
+			item.Bsum = bsum
+			item.Shasum = shasum
 			packageList.Pkg = append(packageList.Pkg, item)
 
 			// Write individual component XML
@@ -466,4 +484,36 @@ func minifyHTML(input string) (string, error) {
 		return "", err
 	}
 	return buf.String(), nil
+}
+
+// computeB3SUM computes the Blake3 hash of the file at the given path.
+func computeB3SUM(path string) (string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return "", fmt.Errorf("failed to open file %s: %v", path, err)
+	}
+	defer file.Close()
+
+	hasher := blake3.New()
+	if _, err := io.Copy(hasher, file); err != nil {
+		return "", fmt.Errorf("failed to compute Blake3 hash of %s: %v", path, err)
+	}
+
+	return hex.EncodeToString(hasher.Sum(nil)), nil
+}
+
+// computeSHA256 computes the SHA256 hash of the file at the given path.
+func computeSHA256(path string) (string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return "", fmt.Errorf("failed to open file %s: %v", path, err)
+	}
+	defer file.Close()
+
+	hasher := sha256.New()
+	if _, err := io.Copy(hasher, file); err != nil {
+		return "", fmt.Errorf("failed to compute SHA256 hash of %s: %v", path, err)
+	}
+
+	return hex.EncodeToString(hasher.Sum(nil)), nil
 }
