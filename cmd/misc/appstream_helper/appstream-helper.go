@@ -149,7 +149,7 @@ func extractAppstreamId(filename string) string {
 	// Remove .dwfs.AppBundle suffix
 	name := strings.TrimSuffix(filename, ".dwfs.AppBundle")
 
-	// Remove date pattern (assuming format like -DD_MM_YYYY)
+	// Remove date pattern (expects -DD_MM_YYYY)
 	re := regexp.MustCompile(`-\d{2}_\d{2}_\d{4}$`)
 	name = re.ReplaceAllString(name, "")
 
@@ -344,10 +344,12 @@ func ConvertComponentToItem(c Component) Item {
 		}
 	}
 
-	// Extract screenshots
+	// Extract screenshots of type "source"
 	var screenshots []string
 	for _, s := range c.Screenshots {
-		screenshots = append(screenshots, sanitizeURL(s.Image.Url))
+		if s.Image.Type == "source" {
+			screenshots = append(screenshots, sanitizeURL(s.Image.Url))
+		}
 	}
 
 	// Get the latest release version
