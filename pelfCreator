@@ -358,7 +358,12 @@ tidyup() {
 	           "$APPDIR/proto/etc/group" "$APPDIR/proto/etc/hosts" \
 	           "$APPDIR/proto/etc/hostname" "$APPDIR/proto/etc/localtime" \
 	           "$APPDIR/proto/__w" "$APPDIR/proto/github"
-	   [ "$SANDBOX" != "1" ] && rm -rf "$APPDIR/proto/home"
+	   [ "$SANDBOX" = "1" ] && {
+            touch "$APPDIR/proto/etc/machine-id" \
+	              "$APPDIR/proto/etc/hostname"   \
+	              "$APPDIR/proto/etc/localtime"  \
+	              "$APPDIR/proto/etc/resolv.conf"
+        }
     }
 }
 
