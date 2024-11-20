@@ -71,36 +71,34 @@ TEMP_DIR="$(mktemp -d)"
 MOUNT_DIR="$TEMP_DIR/mount_dir"
 WORK_DIR="$TEMP_DIR/work_dir"
 mkdir -p "$MOUNT_DIR" "$WORK_DIR"
-# Mount the overlay (using external fuse-overlayfs)
-#"$OVFSFUSE_BIN" -o lowerdir=/,upperdir="$PROTO",workdir="$WORK_DIR" "$MOUNT_DIR" # &
+# Mount the overlay
+"$OVFSFUSE_BIN" -o lowerdir=/,upperdir="$PROTO",workdir="$WORK_DIR" "$MOUNT_DIR" # &
 #OVFSFUSE_PID="$!"
 
 cleanup() {
     (
-        # (when using fuse-overlayfs)
-        ## Attempt to unmount
-        #fusermount -u "$MOUNT_DIR" 2>/dev/null
-        #
-        ## Wait and check if the mount point is unmounted
-        #for i in 1 2 3 4 5; do
-        #    if mountpoint -q "$MOUNT_DIR"; then
-        #        sleep "$i"
-        #    else
-        #        break
-        #    fi
-        #done
-        #
-        ## Force unmount if still mounted
-        #if mountpoint -q "$MOUNT_DIR"; then
-        #    fusermount -uz "$MOUNT_DIR" 2>/dev/null
-        #fi
+        # Attempt to unmount
+        fusermount -u "$MOUNT_DIR" 2>/dev/null
+
+        # Wait and check if the mount point is unmounted
+        for i in 1 2 3 4 5; do
+            if mountpoint -q "$MOUNT_DIR"; then
+                sleep "$i"
+            else
+                break
+            fi
+        done
+
+        # Force unmount if still mounted
+        if mountpoint -q "$MOUNT_DIR"; then
+            fusermount -uz "$MOUNT_DIR" 2>/dev/null
+        fi
 
         # Remove temporary directories
         rmdir "$MOUNT_DIR" 2>/dev/null || true
         rmdir "$WORK_DIR" 2>/dev/null || true
         rm -rf "$TEMP_DIR" 2>/dev/null || true
 
-        # (when using fuse-overlayfs)
         #if pgrep -P "$OVFSFUSE_PID"; then
         #    pkill -9 "$OVFSFUSE_PID"
         #fi
@@ -110,12 +108,11 @@ cleanup() {
 trap cleanup INT TERM HUP QUIT EXIT
 
 # Initialize the bwrap command
-bwrap_cmd="$BWRAP_BIN --overlay-src "$PWD/AppDir/rootfs" --overlay "$PWD/upperdir" "$PWD/workdir""
-bwrap_cmd="$BWRAP_BIN --bind $MOUNT_DIR / --bind-try /tmp /tmp --bind-try /home /home --bind-try /var /var --bind-try /run /run --bind-try /sys /sys"
+bwrap_cmd="$BWRAP_BIN --bind $MOUNT_DIR / --bind /tmp /tmp --bind-try /home /home --bind-try /var /var --bind-try /run /run"
 # Add special flags which are needed to "unsandbox" bwrap ("not a security boundary"):
 bwrap_cmd="$bwrap_cmd --share-net"
 bwrap_cmd="$bwrap_cmd --proc /proc"
 bwrap_cmd="$bwrap_cmd --dev-bind /dev /dev"
 bwrap_cmd="$bwrap_cmd --cap-add CAP_SYS_ADMIN"
 
-"$bwrap_cmd" -- "$_cmd" $*
+eval "$bwrap_cmd" -- "$_cmd" "$*"
