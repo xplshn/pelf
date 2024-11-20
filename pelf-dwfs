@@ -278,15 +278,17 @@ check_fuse() {
 mount_dwarfs() {
 	check_fuse
 	# Mount the embedded DwarFS archive using the offset
-	mkdir -p "$_VAR_MOUNT_DIR" && {
-		dwarfs -o offset="auto",ro,auto_unmount "$SELF" "$_VAR_MOUNT_DIR" >"${_VAR_BWORK_DIR}/.dwarfs.log" 2>&1 || {
-			log "ERROR: Failed to mount DwarFS archive."
-			log "W: DEBUG INFO:"
-			log "  \$0 is set to $0"
-			log "  The realpath to \$0 is $SELF"
-			exit 1
-		}
+	if [ ! -f "${_VAR_BWORK_DIR}/.dwarfs.log" ]; then
+	    mkdir -p "$_VAR_MOUNT_DIR" && {
+	    	dwarfs -o offset="auto",ro,auto_unmount "$SELF" "$_VAR_MOUNT_DIR" >"${_VAR_BWORK_DIR}/.dwarfs.log" 2>&1 || {
+	            log "ERROR: Failed to mount DwarFS archive."
+	            log "W: DEBUG INFO:"
+	            log "  \$0 is set to $0"
+	            log "  The realpath to \$0 is $SELF"
+	            exit 1
+	    }
 	}
+	fi
 }
 
 determine_home() {
@@ -352,13 +354,16 @@ main() {
 	_BIN_DIRs="$_VAR_MOUNT_DIR/bin:$_VAR_MOUNT_DIR/usr/bin:$_VAR_MOUNT_DIR/shared/bin"
 	_LIB_DIRs="$_VAR_MOUNT_DIR/lib:$_VAR_MOUNT_DIR/usr/lib:$_VAR_MOUNT_DIR/shared/lib:$_VAR_MOUNT_DIR/lib64:$_VAR_MOUNT_DIR/usr/lib64:$_VAR_MOUNT_DIR/lib32:$_VAR_MOUNT_DIR/usr/lib32:$_VAR_MOUNT_DIR/libx32:$_VAR_MOUNT_DIR/usr/libx32"
 
-	# Add extra binaries to the PATH if they exist
-	if [ "$_VAR_FOUND_RUNNING_INSTANCE" != "1" ]; then
-		# Export directories with transformed variable names
+	# Export directories with transformed variable names
 		export "${rEXE_NAME}_binDir=$_BIN_DIRs"
 		export "${rEXE_NAME}_libDir=$_LIB_DIRs"
-		export "${rEXE_NAME}_mountDir=$_VAR_MOUNT_DIR"
-	fi
+
+	    if [ -z "${rEXE_NAME}_mountDir" ]; then
+    	    export "${rEXE_NAME}_mountDir=$_VAR_MOUNT_DIR"
+        else
+            export "_VAR_MOUNT_DIR=${rEXE_NAME}_mountDir"
+    	    export "${rEXE_NAME}_mountDir=$_VAR_MOUNT_DIR"
+        fi
 
 	# Figure out what we do
 	case "$1" in

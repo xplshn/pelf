@@ -1,3 +1,4 @@
+// TODO: Use screenshots of type "source"
 package main
 
 import (
@@ -347,9 +348,10 @@ func ConvertComponentToItem(c Component) Item {
 	// Extract screenshots of type "source"
 	var screenshots []string
 	for _, s := range c.Screenshots {
-		if s.Image.Type == "source" {
-			screenshots = append(screenshots, sanitizeURL(s.Image.Url))
-		}
+		fmt.Println(s.Image.Type)
+		//if s.Image.Type == "source" {
+		screenshots = append(screenshots, sanitizeURL(s.Image.Url))
+		//}
 	}
 
 	// Get the latest release version
