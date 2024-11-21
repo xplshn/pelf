@@ -198,10 +198,14 @@ fi
 }
 
 # Create a self-extracting archive
-_VAR_HOST_INFO="$(uname -mrspv)"
-CONST_VERSION="1.9_dwfs_raw" # (vanilla)
+if [ "$_VAR_REPRODUCIBLE" ]; then
+    _VAR_HOST_INFO="$(uname -mrsp)"
+else
+    _VAR_HOST_INFO="$(uname -mrspv)"
+fi
+CONST_VERSION="2.0_dwfs_raw" # (vanilla)
 
-# Generate the loader script with conditional LD_LIBRARY_PATH replacements
+# Generate the loader script with conditional replacements
 LOADER_SCRIPT=$(
 	sed -e "s|__ENTRY_POINT__|${_VAR_APPBUNDLE_ID##*/}|g" \
 		-e "s|__PELF_VERSION__|${CONST_VERSION}|g" \
@@ -222,17 +226,19 @@ LOADER_SCRIPT=$(
 rEXE_NAME="$(echo "$EXE_NAME" | tr -dc '[:alnum:]_')"
 
 # Important variables
-_VAR_POOL_DIR="${TMPDIR:-/tmp}/.pelfbundles"                                      # Temporary pool directory
-_VAR_BWORK_DIR="${_VAR_POOL_DIR}/pbundle_${rEXE_NAME}$(date '+%s%M%S')_${RANDOM}" # Temporary work directory
-_VAR_MOUNT_DIR="$_VAR_BWORK_DIR/mounted"                                          # Temporary directory for mounting
-_VAR_EXEC_FILE="${_VAR_MOUNT_DIR}/AppRun"                                         # The file to execute
-SELF="$(realpath "$0")"                                                           # Path to the .AppBundle itself
+_VAR_POOL_DIR="${TMPDIR:-/tmp}/.pelfbundles"                                                                  # Temporary pool directory
+eval "_VAR_BWORK_DIR=\$${rEXE_NAME}_workDir"                                                                  # Temporary per-AppBundle work directory (allows for overrides)
+[ "$_VAR_BWORK_DIR" = "" ] && _VAR_BWORK_DIR="${_VAR_POOL_DIR}/pbundle_${rEXE_NAME}$(date '+%s%M%S')_$RANDOM" # Temporary per-AppBundle work directory
+_VAR_MOUNT_DIR="$_VAR_BWORK_DIR/mounted"                                                                      # Temporary directory for mounting
+_VAR_EXEC_FILE="${_VAR_MOUNT_DIR}/AppRun"                                                                     # The file to execute
+SELF="$(realpath "$0")"                                                                                       # Path to the .AppBundle itself
 mkdir -p "$_VAR_BWORK_DIR"
 
 # Nice variables
-__RED="\033[0;31m"
-__YELLOW="\033[0;33m"
-__RESET="\033[0m"
+__RED="\x1b[0;31m"
+__BLUE="\x1b[0;34m"
+__YELLOW="\x1b[0;33m"
+__RESET="\x1b[0m"
 # Functions that are called when things aren't going well
 log() {
 	printf >&2 "AppBundle Runtime ${__YELLOW}Warning${__RESET}: %s\n" "$*"
@@ -279,44 +285,44 @@ mount_dwarfs() {
 	check_fuse
 	# Mount the embedded DwarFS archive using the offset
 	if [ ! -f "${_VAR_BWORK_DIR}/.dwarfs.log" ]; then
-	    mkdir -p "$_VAR_MOUNT_DIR" && {
-	    	dwarfs -o offset="auto",ro,auto_unmount "$SELF" "$_VAR_MOUNT_DIR" >"${_VAR_BWORK_DIR}/.dwarfs.log" 2>&1 || {
-	            log "ERROR: Failed to mount DwarFS archive."
-	            log "W: DEBUG INFO:"
-	            log "  \$0 is set to $0"
-	            log "  The realpath to \$0 is $SELF"
-	            exit 1
-	    }
-	}
+		mkdir -p "$_VAR_MOUNT_DIR" && {
+			dwarfs -o offset="auto",ro,auto_unmount "$SELF" "$_VAR_MOUNT_DIR" >"${_VAR_BWORK_DIR}/.dwarfs.log" 2>&1 || {
+				log "ERROR: Failed to mount DwarFS archive."
+				log "W: DEBUG INFO:"
+				log "  \$0 is set to $0"
+				log "  The realpath to \$0 is $SELF"
+				exit 1
+			}
+		}
 	fi
 }
 
 determine_home() {
-    setEnvIfExists() {
-        dirSuffix="$1"
-        envVar="$2"
-        oldEnvVar="$3"
-        wouldbeVar="$4"
+	setEnvIfExists() {
+		dirSuffix="$1"
+		envVar="$2"
+		oldEnvVar="$3"
+		wouldbeVar="$4"
 
-        dir="$SELF$dirSuffix"
+		dir="$SELF$dirSuffix"
 
-        if [ -d "$dir" ]; then
-            # Check if the old environment variable is empty and set it
-            oldValue=$(eval "echo \$$oldEnvVar")
-            if [ -z "$oldValue" ]; then
-                envValue=$(eval "echo \$$envVar")
-                export "$oldEnvVar=$envValue"
-            fi
-            eval export "$envVar=\"$dir\""
-        else
-            eval export "$wouldbeVar=\"$dir\""
-        fi
-    }
+		if [ -d "$dir" ]; then
+			# Check if the old environment variable is empty and set it
+			oldValue=$(eval "echo \$$oldEnvVar")
+			if [ -z "$oldValue" ]; then
+				envValue=$(eval "echo \$$envVar")
+				export "$oldEnvVar=$envValue"
+			fi
+			eval export "$envVar=\"$dir\""
+		else
+			eval export "$wouldbeVar=\"$dir\""
+		fi
+	}
 
-    setEnvIfExists ".home" "HOME" "OLD_HOME" "WOULDBE_HOME"
-    if [ ! -d "${SELF}.home" ]; then
-        setEnvIfExists ".config" "XDG_CONFIG_HOME" "OLD_XDG_CONFIG_HOME" "WOULDBE_CONFIG"
-    fi
+	setEnvIfExists ".home" "HOME" "OLD_HOME" "WOULDBE_HOME"
+	if [ ! -d "${SELF}.home" ]; then
+		setEnvIfExists ".config" "XDG_CONFIG_HOME" "OLD_XDG_CONFIG_HOME" "WOULDBE_CONFIG"
+	fi
 }
 determine_home
 
@@ -355,21 +361,18 @@ main() {
 	_LIB_DIRs="$_VAR_MOUNT_DIR/lib:$_VAR_MOUNT_DIR/usr/lib:$_VAR_MOUNT_DIR/shared/lib:$_VAR_MOUNT_DIR/lib64:$_VAR_MOUNT_DIR/usr/lib64:$_VAR_MOUNT_DIR/lib32:$_VAR_MOUNT_DIR/usr/lib32:$_VAR_MOUNT_DIR/libx32:$_VAR_MOUNT_DIR/usr/libx32"
 
 	# Export directories with transformed variable names
-		export "${rEXE_NAME}_binDir=$_BIN_DIRs"
-		export "${rEXE_NAME}_libDir=$_LIB_DIRs"
-
-	    if [ -z "${rEXE_NAME}_mountDir" ]; then
-    	    export "${rEXE_NAME}_mountDir=$_VAR_MOUNT_DIR"
-        else
-            export "_VAR_MOUNT_DIR=${rEXE_NAME}_mountDir"
-    	    export "${rEXE_NAME}_mountDir=$_VAR_MOUNT_DIR"
-        fi
+	export "${rEXE_NAME}_libDir=$_LIB_DIRs"
+	export "${rEXE_NAME}_binDir=$_BIN_DIRs"
+	export "${rEXE_NAME}_mountDir=$_VAR_MOUNT_DIR"
 
 	# Figure out what we do
 	case "$1" in
 	--pbundle_help)
-		printf "This bundle was generated automatically by PELF __PELF_VERSION__, the machine on which it was created has the following \"uname -mrspv\":\n %s \n" "__PELF_HOST__"
+		printf "This bundle was generated automatically by PELF __PELF_VERSION__, the machine on which it was created has the following \"uname -mrsp(v)\":\n %s \n" "__PELF_HOST__"
+		printf "Internal variables set: \n EXE_NAME: $__BLUE%s$__RESET;\n rEXE_NAME: $__BLUE%s$__RESET;\n _VAR_MOUNT_DIR: $__BLUE%s$__RESET;\n _VAR_BWORK_DIR: $__BLUE%s$__RESET;\n" "$EXE_NAME" "$rEXE_NAME" "$_VAR_MOUNT_DIR" "$_VAR_BWORK_DIR"
 		printf "Usage:\n <|--pbundle_help|--pbundle_list|--pbundle_link <binary>|--pbundle_pngIcon|--pbundle_svgIcon|--pbundle_desktop|--pbundle_appstream|--pbundle_portableHome|--pbundle_portableConfig|> <args...>\n"
+		printf "NOTE: EXE_NAME is the AppBundleID -> rEXE_NAME is the AppBundleID but validated/transformed for use as a directory name & variable name\n"
+		printf "NOTE: The -v option in uname may have not been saved, to allow for reproducibility (since uname -v will output the current date)\n"
 		exit 1
 		;;
 	--pbundle_list)
@@ -414,7 +417,7 @@ main() {
 		done
 		exit 1
 		;;
-    --pbundle_appstream)
+	--pbundle_appstream)
 		for file in "$_VAR_MOUNT_DIR"/*.xml; do
 			if [ -e "$file" ]; then
 				base64 "$file"
@@ -424,17 +427,17 @@ main() {
 		exit 1
 		;;
 	--pbundle_portableHome)
-	    if [ -z "$WOULDBE_HOME" ] && [ -n "$WOULDBE_CONFIG" ] && [ -d "$WOULDBE_CONFIG" ]; then
-            error "You cannot have a portable .home & .config of this AppBundle"
-	    fi
+		if [ -z "$WOULDBE_HOME" ] && [ -n "$WOULDBE_CONFIG" ] && [ -d "$WOULDBE_CONFIG" ]; then
+			error "You cannot have a portable .home & .config of this AppBundle"
+		fi
 		mkdir -p "$WOULDBE_HOME"
 		determine_home
 		shift
 		;;
 	--pbundle_portableConfig)
-	    if [ -z "$WOULDBE_CONFIG" ] && [ -n "$WOULDBE_HOME" ] && [ -d "$WOULDBE_HOME" ]; then
-            error "You cannot have a portable .config & .home of this AppBundle"
-	    fi
+		if [ -z "$WOULDBE_CONFIG" ] && [ -n "$WOULDBE_HOME" ] && [ -d "$WOULDBE_HOME" ]; then
+			error "You cannot have a portable .config & .home of this AppBundle"
+		fi
 		mkdir -p "$WOULDBE_CONFIG"
 		determine_home
 		shift
