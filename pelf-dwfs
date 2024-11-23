@@ -1,9 +1,8 @@
 #!/bin/sh
 
 # Create a temporary directory for bundling the files
-_VAR_WORKDIR="/tmp/pelf_$(date '+%s%M%S')"
-_VAR_TO_BE_BUNDLED="$_VAR_WORKDIR/blob"
-mkdir -p "$_VAR_TO_BE_BUNDLED" || exit 1
+_VAR_WORKDIR="/tmp/pelf_$(date '+%s%M%S')" # TODO: Only use this for the static tools and misc things
+mkdir -p "$_VAR_WORKDIR" || exit 1
 # Trap all termination signals
 trap 'rm -rf "$_VAR_WORKDIR"' INT TERM HUP QUIT EXIT
 #
@@ -152,12 +151,6 @@ fi
 			fi
 			chmod +x "$_VAR_APPDIR/AppRun"
 		fi
-
-		# Process the directory and copy items
-		check_and_process "$_VAR_APPDIR" "true" &&
-			find "$_VAR_APPDIR" -mindepth 1 -maxdepth 1 | while IFS= read -r item; do
-				cp -dR "$item" "${_VAR_TO_BE_BUNDLED}/"
-			done
 	else
 		echo "[$_VAR_APPDIR] is not an existing directory" >&2
 		exit 1
@@ -192,7 +185,7 @@ fi
 
 	[ -n "$_VAR_COMPRESS_ARG" ] || _VAR_COMPRESS_ARG="-l7 -C zstd:level=22 --metadata-compression null -S 21 -B 8 --order nilsimsa -W 12 -w 4" # --max-lookback-blocks=5 --block-size-bits=18 --compression zstd:level=22 # --max-lookback-blocks=5 --no-history --categorize=pcmaudio --compression pcmaudio/waveform::flac:level=8:exhaustive #_VAR_COMPRESS_ARG="--max-lookback-blocks=5 --categorize=pcmaudio --compression pcmaudio/waveform::flac:level=8"
 	# shellcheck disable=SC2086
-	if ! mkdwarfs --set-owner 0 --set-group 0 --no-create-timestamp --no-history --input "$_VAR_TO_BE_BUNDLED" --output "$_VAR_WORKDIR/archive.dwfs" --progress=ascii $_VAR_COMPRESS_ARG; then
+	if ! mkdwarfs --set-owner 0 --set-group 0 --no-create-timestamp --no-history --input "$_VAR_APPDIR" --output "$_VAR_WORKDIR/archive.dwfs" --progress=ascii $_VAR_COMPRESS_ARG; then
 		error "Compression failed"
 	fi
 }
