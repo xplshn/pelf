@@ -185,6 +185,7 @@ pkg_add() {
 	_command="--Xbwrap --uid 0 --gid 0 -- apk -X \"https://dl-cdn.alpinelinux.org/alpine/edge/main\" -X \"https://dl-cdn.alpinelinux.org/alpine/edge/community\" -X \"https://dl-cdn.alpinelinux.org/alpine/edge/testing\" -U --allow-untrusted --no-cache --no-interactive --initdb add \"$PKG_ADD\""
 
 	if [ -f "$LOCAL_PATH/pkgadd.sh" ]; then
+	    _command="!disabled"
 		HOME="$HOME" PWD="$PWD" PATH="$PATH" "$APPDIR/AppRun" --Xbwrap --uid 0 --gid 0 -- sh "$LOCAL_PATH/pkgadd.sh" "$PKG_ADD" || return $?
 	fi
 
@@ -193,14 +194,10 @@ pkg_add() {
 	fi
 	echo "sh" >"$APPDIR/proto/entrypoint"
 
-	eval env -i HOME="$HOME" PWD="$PWD" PATH="$PATH" "$APPDIR/AppRun" "$_command"
-	ENTRYPOINT_DEST="$APPDIR/entrypoint"
+	[ "$_command" != "!disabled" ]  && eval env -i HOME="$HOME" PWD="$PWD" PATH="$PATH" "$APPDIR/AppRun" "$_command"
+
 	[ "$SANDBOX" = "1" ] && {
-		ENTRYPOINT_DEST="$APPDIR/proto/usr/local/bin/default"
-		echo "/usr/local/bin/LAUNCH" >"$ENTRYPOINT_DEST"
-
-		ENTRYPOINT_DEST="$APPDIR/proto/entrypoint"
-
+		echo "/usr/local/bin/LAUNCH" >"$APPDIR/proto/usr/local/bin/default"
 		mkdir -p "$APPDIR/proto/usr/local/bin"
 		# Either download or copy LAUNCH (multicall helper for rootfs-based)
 		if [ -f "$LOCAL_PATH/LAUNCH" ]; then
@@ -217,52 +214,67 @@ pkg_add() {
 }
 
 create_entrypoint() {
-	echo "$ENTRYPOINT" >"$ENTRYPOINT_DEST"
+    echo "$ENTRYPOINT" > "$APPDIR/$ENTRYPOINT" || {
+        echo "Failed to create entrypoint file at $ENTRYPOINT_DEST"
+        exit 1
+    }
+    
+    chmod +x "$ENTRYPOINT_DEST" || {
+        echo "Failed to make entrypoint executable"
+        exit 1
+    }
 }
 
 handle_desktop_file() {
-	if [ "${ENTRYPOINT##*.}" = "desktop" ]; then
-		if [ -f "$APPDIR/proto/usr/share/applications/$ENTRYPOINT" ]; then
-			ln -f "$APPDIR/proto/usr/share/applications/$ENTRYPOINT" "$APPDIR/$ENTRYPOINT" || {
-				echo "Failed to link $APPDIR/proto/usr/share/applications/$ENTRYPOINT"
-				exit 1
-			}
+    if [ "${ENTRYPOINT##*.}" = "desktop" ]; then
+        if [ -f "$APPDIR/proto/usr/share/applications/$ENTRYPOINT" ]; then
+            ln -f "$APPDIR/proto/usr/share/applications/$ENTRYPOINT" "$APPDIR/$ENTRYPOINT" || {
+                echo "Failed to link $APPDIR/proto/usr/share/applications/$ENTRYPOINT"
+                exit 1
+            }
 
-			ICON_NAME="$(awk -F"=" '/Icon/ {print $2; exit}' "$APPDIR/proto/usr/share/applications/$ENTRYPOINT" 2>/dev/null)"
-			ENTRYPOINT=$(awk -F"=| " '/Exec=/ {print $2; exit}' "$APPDIR/proto/usr/share/applications/$ENTRYPOINT" 2>/dev/null)
-			create_entrypoint
+            ICON_NAME="$(awk -F"=" '/Icon/ {print $2; exit}' "$APPDIR/$ENTRYPOINT" 2>/dev/null)"
+            # Modified awk command to better handle Exec= entries
+            ENTRYPOINT="$(awk -F"=" '/^Exec=/ {sub("^Exec=", ""); print $1; exit}' "$APPDIR/$ENTRYPOINT" 2>/dev/null)"
+            
+            if [ -z "$ENTRYPOINT" ]; then
+                echo "Failed to extract Exec entry from desktop file"
+                exit 1
+            fi
+            
+            create_entrypoint
 
-			if [ -n "$ICON_NAME" ]; then
-				# Exclude resolutions below 128x128 and select PNG files only
-				ICON_PATH=$(find "$APPDIR/proto/usr/share/icons" -type f -name "$ICON_NAME*.png" 2>/dev/null \
-					| grep -v '/\(16x16\|24x24\|32x32\|48x48\|64x64\|96x96\)/' \
-					| sort -n | head -n 1)
+            if [ -n "$ICON_NAME" ]; then
+                # Exclude resolutions below 128x128 and select PNG files only
+                ICON_PATH=$(find "$APPDIR/proto/usr/share/icons" -type f -name "$ICON_NAME*.png" 2>/dev/null \
+                    | grep -v '/\(16x16\|24x24\|32x32\|48x48\|64x64\|96x96\)/' \
+                    | sort -n | head -n 1)
 
-				if [ -n "$ICON_PATH" ]; then
-					cp "$ICON_PATH" "$APPDIR/.DirIcon" || {
-						echo "Failed to copy icon $ICON_PATH"
-						exit 1
-					}
-				else
-					echo "Icon $ICON_NAME not found in $APPDIR/proto/usr/share/icons/"
-				fi
+                if [ -n "$ICON_PATH" ]; then
+                    ln -f "$ICON_PATH" "$APPDIR/.DirIcon" || {
+                        echo "Failed to copy icon $ICON_PATH"
+                        exit 1
+                    }
+                else
+                    echo "Icon $ICON_NAME not found in $APPDIR/proto/usr/share/icons/"
+                fi
 
-				# Also copy an SVG version if available
-				SVG_ICON_PATH=$(find "$APPDIR/proto/usr/share/icons" -type f -name "$ICON_NAME*.svg" 2>/dev/null | head -n 1)
-				if [ -n "$SVG_ICON_PATH" ]; then
-					cp "$SVG_ICON_PATH" "$APPDIR/.DirIcon.svg" || {
-						echo "Failed to copy SVG icon $SVG_ICON_PATH"
-						exit 1
-					}
-				fi
-			else
-				echo "No Icon entry found in $APPDIR/proto/usr/share/applications/$ENTRYPOINT"
-			fi
-		else
-			echo "No such desktop file: $APPDIR/proto/usr/share/applications/$ENTRYPOINT"
-			exit 1
-		fi
-	fi
+                # Also copy an SVG version if available
+                SVG_ICON_PATH=$(find "$APPDIR/proto/usr/share/icons" -type f -name "$ICON_NAME*.svg" 2>/dev/null | head -n 1)
+                if [ -n "$SVG_ICON_PATH" ]; then
+                    cp "$SVG_ICON_PATH" "$APPDIR/.DirIcon.svg" || {
+                        echo "Failed to copy SVG icon $SVG_ICON_PATH"
+                        exit 1
+                    }
+                fi
+            else
+                echo "No Icon entry found in $APPDIR/proto/usr/share/applications/$ENTRYPOINT"
+            fi
+        else
+            echo "No such desktop file: $APPDIR/proto/usr/share/applications/$ENTRYPOINT"
+            exit 1
+        fi
+    fi
 }
 
 select_structure_and_apprun() {
