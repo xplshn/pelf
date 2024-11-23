@@ -395,19 +395,18 @@ func ConvertComponentToItem(c Component) Item {
 		}
 	}
 
-	// Extract categories and convert them to lowercase, comma-separated list
+	// Extract categories and convert them to comma-separated list
 	var categories []string
 	for _, item := range c.Categories {
-		categories = append(categories, strings.ToLower(item.Content))
+		categories = append(categories, item.Content)
 	}
 	categoryList := strings.Join(categories, ", ")
 
 	// Extract keywords and convert them to lowercase, comma-separated list
-	var lowercasedKeywords []string
 	for _, keyword := range keywords {
-		lowercasedKeywords = append(lowercasedKeywords, strings.ToLower(keyword))
+		keywords = append(keywords, keyword)
 	}
-	keywordList := strings.Join(lowercasedKeywords, ", ")
+	keywordList := strings.Join(keywords, ", ")
 
 	// Minify HTML content
 	minifiedSummary, err := minifyHTML(summary)
