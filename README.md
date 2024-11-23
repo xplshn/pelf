@@ -31,4 +31,4 @@ Additionally, we embed the tools used for mounting and unmounting the `.AppBundl
 - Make pelfCreator use the appstream-helper automatically if you use an AppStream id as the `--name`?
 
 #### Resources:
-- The [AppBundleHUB](https://github.com/xplshn/AppBundleHUB) a repo which builds a ton of portable AppBundles in an automated fashion, using GH actions. (we have a webStore too, tho that is WIP)
+- The [AppBundleHUB](https://github.com/xplshn/AppBundleHUB) a repo which builds a ton of portable AppBundles in an automated fashion, using GH actions. (we have a [webStore](https://fatbuffalo.neocities.org/AppBundleHUBStore) too, tho that is WIP)
