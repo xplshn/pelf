@@ -55,7 +55,7 @@ _cat() {
             printf '%s\n' "$line"
         done <"$file"
     done
-} ; SELF_ARGS="-- $(_cat "$BWROOTFS/entrypoint")"
+} ; SELF_ARGS="-- $(_cat "$SELF_TEMPDIR/entrypoint")"
 
 # Parse other arguments
 while [ "$#" -gt 0 ]; do
