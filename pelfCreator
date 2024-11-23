@@ -215,11 +215,11 @@ pkg_add() {
 
 create_entrypoint() {
     echo "$ENTRYPOINT" > "$APPDIR/$ENTRYPOINT" || {
-        echo "Failed to create entrypoint file at $ENTRYPOINT_DEST"
+        echo "Failed to create entrypoint file at \"$APPDIR/$ENTRYPOINT\""
         exit 1
     }
     
-    chmod +x "$ENTRYPOINT_DEST" || {
+    chmod +x "$APPDIR/$ENTRYPOINT" || {
         echo "Failed to make entrypoint executable"
         exit 1
     }
@@ -404,7 +404,6 @@ create_bundle() {
 }
 
 main() {
-	ENTRYPOINT_DEST="$APPDIR/entrypoint"
 	parse_arguments "$@"
 	check_required_arguments
 	setup_local_path
