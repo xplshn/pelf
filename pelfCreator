@@ -214,12 +214,12 @@ pkg_add() {
 }
 
 create_entrypoint() {
-    echo "$ENTRYPOINT" > "$APPDIR/$ENTRYPOINT" || {
-        echo "Failed to create entrypoint file at \"$APPDIR/$ENTRYPOINT\""
+    echo "$ENTRYPOINT" > "$APPDIR/entrypoint" || {
+        echo "Failed to create entrypoint file at \"$APPDIR/entrypoint\""
         exit 1
     }
     
-    chmod +x "$APPDIR/$ENTRYPOINT" || {
+    chmod +x "$APPDIR/entrypoint" || {
         echo "Failed to make entrypoint executable"
         exit 1
     }
