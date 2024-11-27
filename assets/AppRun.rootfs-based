@@ -42,8 +42,8 @@ is_enabled() {
 # Defaults with file-based overrides
 SHARE_LOOK="$(is_enabled "SHARE_LOOK" 1)"
 SHARE_FONTS="$(is_enabled "SHARE_FONTS" 1)"
-SHARE_XDG_RUNTIME_DIR="$(is_enabled "SHARE_XDG_RUNTIME_DIR" 0)"
 SHARE_AUDIO="$(is_enabled "SHARE_AUDIO" 1)"
+SHARE_XDG_RUNTIME_DIR="$(is_enabled "SHARE_XDG_RUNTIME_DIR" 1)"
 SHARE_OPT="$(is_enabled "SHARE_OPT" 1)"
 UID0_GID0="$(is_enabled "UID0_GID0" 0)"
 
@@ -150,8 +150,8 @@ build_bwrap_options() {
         [ -d /usr/share/fonts ] && BWRAP_OPTIONS="$BWRAP_OPTIONS --bind-try /usr/share/fonts /usr/share/fonts"
     fi
 
-    fUID="$(id -u)"
-    [ -z "$XDG_RUNTIME_DIR" ] && [ -d "/run/user/$fUID" ] && XDG_RUNTIME_DIR="/run/user/$fUID"
+    UID="$(id -u)"
+    [ -z "$XDG_RUNTIME_DIR" ] && [ -d "/run/user/$UID" ] && XDG_RUNTIME_DIR="/run/user/$UID"
 
     # Add optional XDG_RUNTIME_DIR binding if enabled
     [ "$SHARE_XDG_RUNTIME_DIR" = "1" ] && [ -n "$XDG_RUNTIME_DIR" ] && BWRAP_OPTIONS="$BWRAP_OPTIONS --bind-try $XDG_RUNTIME_DIR $XDG_RUNTIME_DIR"
