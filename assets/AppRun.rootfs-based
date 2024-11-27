@@ -150,8 +150,8 @@ build_bwrap_options() {
         [ -d /usr/share/fonts ] && BWRAP_OPTIONS="$BWRAP_OPTIONS --bind-try /usr/share/fonts /usr/share/fonts"
     fi
 
-    UID="$(id -u)"
-    [ -z "$XDG_RUNTIME_DIR" ] && [ -d "/run/user/$UID" ] && XDG_RUNTIME_DIR="/run/user/$UID"
+    fUID="$(id -u)"
+    [ -z "$XDG_RUNTIME_DIR" ] && [ -d "/run/user/$fUID" ] && XDG_RUNTIME_DIR="/run/user/$fUID"
 
     # Add optional XDG_RUNTIME_DIR binding if enabled
     [ "$SHARE_XDG_RUNTIME_DIR" = "1" ] && [ -n "$XDG_RUNTIME_DIR" ] && BWRAP_OPTIONS="$BWRAP_OPTIONS --bind-try $XDG_RUNTIME_DIR $XDG_RUNTIME_DIR"
