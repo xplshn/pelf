@@ -52,28 +52,30 @@ fi
 
 # proto/rootfs mode handling ->
 
- # Find bwrap
+# Find unionfs-fuse
+UNIONFS_BIN="${SELF_TEMPDIR}/usr/bin/unionfs"
+[ ! -f "$UNIONFS_BIN" ] && UNIONFS_BIN="unionfs"
+
+# Find bwrap
 BWRAP_BIN="${SELF_TEMPDIR}/usr/bin/bwrap"
 [ ! -f "$BWRAP_BIN" ] && BWRAP_BIN="bwrap"
-OVFSFUSE_BIN="${SELF_TEMPDIR}/usr/bin/fuse-overlayfs"
-[ ! -f "$OVFSFUSE_BIN" ] && OVFSFUSE_BIN="fuse-overlayfs"
 
 _dirname() { # DIRNAME but made entirely in POSIX SH
     dir=${1:-.} ; dir=${dir%%"${dir##*[!/]}"} ; [ "${dir##*/*}" ] && dir=. ; dir=${dir%/*} ; dir=${dir%%"${dir##*[!/]}"} ; printf '%s\n' "${dir:-/}"
 }
 
-# Set up overlay filesystem directories using _dirname on SELF_TEMPDIR
-OVFS_DIR="$(_dirname "$SELF_TEMPDIR")/ovfs"
-mkdir -p "$OVFS_DIR"
+# Set up unionfs directories using _dirname on SELF_TEMPDIR
+UNIONFS_DIR="$(_dirname "$SELF_TEMPDIR")/unionfs"
+mkdir -p "$UNIONFS_DIR"
 
-# Create temp directories for overlayfs
+# Create temp directories for unionfs
 TEMP_DIR="$(mktemp -d)"
 MOUNT_DIR="$TEMP_DIR/mount_dir"
-WORK_DIR="$TEMP_DIR/work_dir"
-mkdir -p "$MOUNT_DIR" "$WORK_DIR"
-# Mount the overlay
-"$OVFSFUSE_BIN" -o lowerdir=/,upperdir="$PROTO",workdir="$WORK_DIR" "$MOUNT_DIR" # &
-#OVFSFUSE_PID="$!"
+mkdir -p "$MOUNT_DIR"
+
+# Mount the unionfs
+# Note: Using CoW (copy-on-write) and preserving branch for better compatibility
+"$UNIONFS_BIN" -o cow,preserve_branch "/:$PROTO=RO" "$MOUNT_DIR" # -o cow,preserve_branch,allow_other # allow_other is not enabled in most fuse installs...
 
 cleanup() {
     (
@@ -95,24 +97,75 @@ cleanup() {
         fi
 
         # Remove temporary directories
-        rmdir "$MOUNT_DIR" 2>/dev/null || true
-        rmdir "$WORK_DIR" 2>/dev/null || true
-        rm -rf "$TEMP_DIR" 2>/dev/null || true
-
-        #if pgrep -P "$OVFSFUSE_PID"; then
-        #    pkill -9 "$OVFSFUSE_PID"
-        #fi
-
+        rmdir  "$MOUNT_DIR"   2>/dev/null || true
+        rm -rf "$TEMP_DIR"    2>/dev/null || true
+        rm -rf "$UNIONFS_DIR" 2>/dev/null || true
     ) & # Run cleanup in the background
 }
 trap cleanup INT TERM HUP QUIT EXIT
 
+bool() {
+    case "$1" in
+        false | 0) echo "0" ;;
+        true | 1) echo "1" ;;
+        *) echo "Invalid boolean value: $1" >&2; exit 1 ;;
+    esac
+}
+
+# Function to check if a feature is enabled by file presence
+is_enabled() {
+    _propName="$1"
+    [ -f "$SELF_TEMPDIR/.enabled/$_propName" ] && echo "1" && return 0
+    [ -f "$SELF_TEMPDIR/.disabled/$_propName" ] && echo "0" && return 0
+    echo "$2" ; return 5
+}
+
+# Defaults with file-based overrides
+#SHARE_LOOK="$(is_enabled "SHARE_LOOK" 1)"
+#SHARE_FONTS="$(is_enabled "SHARE_FONTS" 1)"
+#SHARE_AUDIO="$(is_enabled "SHARE_AUDIO" 1)"
+SHARE_XDG_RUNTIME_DIR="$(is_enabled "SHARE_XDG_RUNTIME_DIR" 1)"
+SHARE_VAR="$(is_enabled "SHARE_VAR" 1)"
+SHARE_RUN="$(is_enabled "SHARE_RUN" 1)"
+UID0_GID0="$(is_enabled "UID0_GID0" 0)"
+
 # Initialize the bwrap command
-bwrap_cmd="$BWRAP_BIN --bind $MOUNT_DIR / --bind /tmp /tmp --bind-try /home /home --bind-try /var /var --bind-try /run /run"
+TMPDIR="${TMPDIR:-/tmp}"
+bwrap_cmd="$BWRAP_BIN --dev-bind $MOUNT_DIR / --bind-try $TMPDIR /tmp --bind-try /home /home"
+[ "$UID0_GID0" = "1" ] && bwrap_cmd="$bwrap_cmd --uid 0 --gid 0"
+[ "$SHARE_VAR" = "1" ] && bwrap_cmd="$bwrap_cmd --bind-try /var /var"
+[ "$SHARE_RUN" = "1" ] && bwrap_cmd="$bwrap_cmd --bind-try /run /run"
+
+# Add optional XDG_RUNTIME_DIR binding if enabled
+[ "$SHARE_XDG_RUNTIME_DIR" = "1" ] && [ -n "$XDG_RUNTIME_DIR" ] && bwrap_cmd="$bwrap_cmd --bind-try $XDG_RUNTIME_DIR $XDG_RUNTIME_DIR"
+
+# Themes & Icons
+#if [ "$SHARE_LOOK" = "1" ]; then
+#    [ -d /usr/share/icons ] && BWRAP_OPTIONS="$BWRAP_OPTIONS --ro-bind-try /usr/share/icons /usr/share/icons"
+#    [ -d /usr/share/themes ] && BWRAP_OPTIONS="$BWRAP_OPTIONS --ro-bind-try /usr/share/themes /usr/share/themes"
+#fi
+#
+## Fonts
+#if [ "$SHARE_FONTS" = 1 ]; then
+#    [ -d /usr/share/fontconfig ] && BWRAP_OPTIONS="$BWRAP_OPTIONS --bind-try /usr/share/fontconfig /usr/share/fontconfig"
+#    [ -d /usr/share/fonts ] && BWRAP_OPTIONS="$BWRAP_OPTIONS --bind-try /usr/share/fonts /usr/share/fonts"
+#fi
+#
+## Audio support
+#if [ "$SHARE_AUDIO" = "1" ] && [ -n "$XDG_RUNTIME_DIR" ]; then
+#    bwrap_cmd="$bwrap_cmd \
+#        --bind-try /etc/asound.conf /etc/asound.conf \
+#        --bind-try $XDG_RUNTIME_DIR/pulse $XDG_RUNTIME_DIR/pulse \
+#        --bind-try $XDG_RUNTIME_DIR/pipewire-0 $XDG_RUNTIME_DIR/pipewire-0 \
+#        --bind-try $XDG_RUNTIME_DIR/pipewire-0.lock $XDG_RUNTIME_DIR/pipewire-0.lock \
+#        --bind-try $XDG_RUNTIME_DIR/pipewire-0-manager $XDG_RUNTIME_DIR/pipewire-0-manager \
+#        --bind-try $XDG_RUNTIME_DIR/pipewire-0-manager.lock $XDG_RUNTIME_DIR/pipewire-0-manager.lock"
+#fi
+
 # Add special flags which are needed to "unsandbox" bwrap ("not a security boundary"):
-bwrap_cmd="$bwrap_cmd --share-net"
 bwrap_cmd="$bwrap_cmd --proc /proc"
-bwrap_cmd="$bwrap_cmd --dev-bind /dev /dev"
+bwrap_cmd="$bwrap_cmd --dev-bind /dev /dev --ro-bind-try /sys /sys"
 bwrap_cmd="$bwrap_cmd --cap-add CAP_SYS_ADMIN"
+bwrap_cmd="$bwrap_cmd --share-net"
 
 eval "$bwrap_cmd" -- "$_cmd" "$*"

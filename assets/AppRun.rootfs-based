@@ -42,8 +42,8 @@ is_enabled() {
 # Defaults with file-based overrides
 SHARE_LOOK="$(is_enabled "SHARE_LOOK" 1)"
 SHARE_FONTS="$(is_enabled "SHARE_FONTS" 1)"
-SHARE_XDG_RUNTIME_DIR="$(is_enabled "SHARE_XDG_RUNTIME_DIR" 0)"
 SHARE_AUDIO="$(is_enabled "SHARE_AUDIO" 1)"
+SHARE_XDG_RUNTIME_DIR="$(is_enabled "SHARE_XDG_RUNTIME_DIR" 1)"
 SHARE_OPT="$(is_enabled "SHARE_OPT" 1)"
 UID0_GID0="$(is_enabled "UID0_GID0" 0)"
 
