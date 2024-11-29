@@ -334,17 +334,17 @@ select_structure_and_apprun() {
 	fi
     # Finalized AppDir/proto or AppDir/proto_trimmed
 
-	# Either download or copy fuse-overlayfs
-	if [ -f "$LOCAL_PATH/fuse-overlayfs" ]; then
-		cp "$LOCAL_PATH/fuse-overlayfs" "$APPDIR/usr/bin/fuse-overlayfs"
+	# Either download or copy unionfs
+	if [ -f "$LOCAL_PATH/unionfs" ]; then
+		cp "$LOCAL_PATH/unionfs" "$APPDIR/usr/bin/unionfs"
 	else
-		if ! wget -qO "$APPDIR/usr/bin/fuse-overlayfs" \
-			"https://bin.ajam.dev/$(uname -m)/fuse-overlayfs"; then
-			echo "Unable to install fuse-overlayfs to $APPDIR/usr/bin/fuse-overlayfs"
+		if ! wget -qO "$APPDIR/usr/bin/unionfs" \
+			"https://bin.pkgforge.dev/$(uname -m)/Baseutils/unionfs-fuse3/unionfs"; then
+			echo "Unable to install unionfs to $APPDIR/usr/bin/unionfs"
 			exit 1
 		fi
 	fi
-	chmod +x "$APPDIR/usr/bin/fuse-overlayfs"
+	chmod +x "$APPDIR/usr/bin/unionfs"
 
 	# Either download or copy AppRun.sharun.ovfsProto
 	if [ -f "$LOCAL_PATH/AppRun.sharun.ovfsProto" ]; then
