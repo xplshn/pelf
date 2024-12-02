@@ -106,18 +106,52 @@ fi
 
 # Function to build bwrap options
 build_bwrap_options() {
-    BWRAP_OPTIONS="\
-        --dev-bind    /                   /                 \
-        --ro-bind-try $BWROOTFS/usr/lib   /usr              \
-        --ro-bind-try $BWROOTFS/lib       /lib              \
-        --ro-bind-try $BWROOTFS/bin       /bin              \
-        --ro-bind-try $BWROOTFS/sbin      /sbin             \
-        --ro-bind-try $BWROOTFS/etc       /etc              \
-        --setenv BWROOTFS                \"$BWROOTFS\"      \
-        --setenv ARGV0                   \"$ARGV0\"         \
-        --setenv ARGS                    \"$SELF_ARGS\"     \
-        --setenv WITHIN_BWRAP            \"1\"              \
-        --cap-add CAP_SYS_ADMIN"
+    #BWRAP_OPTIONS="\
+    #    --dev-bind    /                   /                 \
+    #    --ro-bind-try $BWROOTFS/usr/lib   /usr/lib          \
+    #    --ro-bind-try $BWROOTFS/usr/lib64 /usr/lib64        \
+    #    --ro-bind-try $BWROOTFS/usr/lib32 /usr/lib32        \
+    #    --ro-bind-try $BWROOTFS/lib       /lib              \
+    #    --ro-bind-try $BWROOTFS/lib64     /lib64            \
+    #    --ro-bind-try $BWROOTFS/lib32     /lib32            \
+    #    --ro-bind-try $BWROOTFS/usr/bin   /usr/bin          \
+    #    --ro-bind-try $BWROOTFS/usr/sbin  /usr/sbin         \
+    #    --ro-bind-try $BWROOTFS/bin       /bin              \
+    #    --ro-bind-try $BWROOTFS/sbin      /sbin             \
+    #    --ro-bind-try $BWROOTFS/etc       /etc              \
+    #    --setenv      BWROOTFS           \"$BWROOTFS\"      \
+    #    --setenv      ARGV0              \"$ARGV0\"         \
+    #    --setenv      ARGS               \"$SELF_ARGS\"     \
+    #    --setenv      WITHIN_BWRAP       \"1\"              \
+    #    --cap-add     CAP_SYS_ADMIN"
+
+    BWRAP_OPTIONS="--bind $BWROOTFS / 							\
+        --share-net 											\
+        --dev-bind		/dev /dev 								\
+        --bind-try		/run /run 								\
+        --bind-try		/sys /sys 								\
+        --bind-try		/tmp /tmp 								\
+        --bind-try		/media /media						 	\
+        --bind-try		/mnt /mnt 								\
+        --bind-try		/home /home 							\
+        --ro-bind-try	/etc/localtime /etc/localtime 			\
+        --ro-bind-try	/etc/machine-id /etc/machine-id 		\
+        --ro-bind-try	/etc/resolv.conf /etc/resolv.conf 		\
+        --ro-bind-try	/lib/firmware /lib/firmware 			\
+        --ro-bind-try	/etc/passwd /etc/passwd 				\
+        --ro-bind-try	/etc/group /etc/group 					\
+        --ro-bind-try	/etc/hosts /etc/hosts 					\
+        --ro-bind-try	/etc/nsswitch.conf /etc/nsswitch.conf	\
+        --ro-bind-try	/etc/hostname /etc/hostname 			\
+        --bind-try		\"$SELF_TEMPDIR\" /app 					\
+        --setenv		SELF \"$SELF\" 							\
+        --setenv		SELF_TEMPDIR \"$SELF_TEMPDIR\" 			\
+        --setenv		BWROOTFS \"$BWROOTFS\" 					\
+        --setenv		ARGV0 \"$ARGV0\" 						\
+        --setenv		ARGS \"$SELF_ARGS\" 					\
+        --setenv		WITHIN_BWRAP \"1\" 						\
+        --proc			/proc 									\
+        --cap-add 		CAP_SYS_ADMIN"    
     # Conditionally add optional directories
 
     # Arch is a BS os, and programs get installed to /opt

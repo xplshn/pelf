@@ -192,8 +192,8 @@ pkg_add() {
 	if [ -f "$LOCAL_PATH/pkgadd" ]; then
 		_command="$(cat "$LOCAL_PATH/pkgadd")"
 	fi
-	echo "sh" >"$APPDIR/proto/entrypoint"
-
+	
+	echo "sh" >"$APPDIR/entrypoint"
 	[ "$_command" != "!disabled" ]  && eval env -i HOME="$HOME" PWD="$PWD" PATH="$PATH" "$APPDIR/AppRun" "$_command"
 
 	[ "$SANDBOX" = "1" ] && {
@@ -366,15 +366,19 @@ tidyup() {
 		fi
 	done
 	[ -d "$APPDIR/proto" ] && mkdir -p "$APPDIR/proto/app" "$APPDIR/proto/host" && {
-	    rm -rf "$APPDIR/proto/etc/machine-id" "$APPDIR/proto/etc/machine-id" \
-	           "$APPDIR/proto/etc/resolv.conf" "$APPDIR/proto/etc/passwd"    \
-	           "$APPDIR/proto/etc/group"       "$APPDIR/proto/etc/hosts"     \
-	           "$APPDIR/proto/etc/hostname"    "$APPDIR/proto/etc/localtime" \
+	    rm -rf "$APPDIR/proto/etc/machine-id"  "$APPDIR/proto/etc/machine-id" \
+	           "$APPDIR/proto/etc/resolv.conf" "$APPDIR/proto/etc/passwd"     \
+	           "$APPDIR/proto/etc/group"       "$APPDIR/proto/etc/hosts"      \
+	           "$APPDIR/proto/etc/hostname"    "$APPDIR/proto/etc/localtime"  \
 	           "$APPDIR/proto/__w"             "$APPDIR/proto/github"
 	   [ "$SANDBOX" = "1" ] && {
-            touch "$APPDIR/proto/etc/machine-id"   \
-	              "$APPDIR/proto/etc/hostname"     \
-	              "$APPDIR/proto/etc/localtime"    \
+            touch "$APPDIR/proto/etc/machine-id"    \
+	              "$APPDIR/proto/etc/hostname"      \
+	              "$APPDIR/proto/etc/localtime"     \
+	              "$APPDIR/proto/etc/passwd"        \
+	              "$APPDIR/proto/etc/groups"        \
+	              "$APPDIR/proto/etc/hosts"         \
+	              "$APPDIR/proto/etc/nsswitch.conf" \
 	              "$APPDIR/proto/etc/resolv.conf"
         }
     }
