@@ -108,16 +108,20 @@ fi
 build_bwrap_options() {
     BWRAP_OPTIONS="\
         --dev-bind    /                   /                 \
-        --ro-bind-try $BWROOTFS/usr/lib   /usr              \
+        --ro-bind-try $BWROOTFS/usr/lib   /usr/lib          \
+        --ro-bind-try $BWROOTFS/usr/lib64 /usr/lib64        \
+        --ro-bind-try $BWROOTFS/usr/lib32 /usr/lib32        \
         --ro-bind-try $BWROOTFS/lib       /lib              \
+        --ro-bind-try $BWROOTFS/lib64     /lib64            \
+        --ro-bind-try $BWROOTFS/lib32     /lib32            \
         --ro-bind-try $BWROOTFS/bin       /bin              \
         --ro-bind-try $BWROOTFS/sbin      /sbin             \
         --ro-bind-try $BWROOTFS/etc       /etc              \
-        --setenv BWROOTFS                \"$BWROOTFS\"      \
-        --setenv ARGV0                   \"$ARGV0\"         \
-        --setenv ARGS                    \"$SELF_ARGS\"     \
-        --setenv WITHIN_BWRAP            \"1\"              \
-        --cap-add CAP_SYS_ADMIN"
+        --setenv      BWROOTFS           \"$BWROOTFS\"      \
+        --setenv      ARGV0              \"$ARGV0\"         \
+        --setenv      ARGS               \"$SELF_ARGS\"     \
+        --setenv      WITHIN_BWRAP       \"1\"              \
+        --cap-add     CAP_SYS_ADMIN"
     # Conditionally add optional directories
 
     # Arch is a BS os, and programs get installed to /opt
