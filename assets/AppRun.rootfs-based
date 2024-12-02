@@ -114,6 +114,8 @@ build_bwrap_options() {
         --ro-bind-try $BWROOTFS/lib       /lib              \
         --ro-bind-try $BWROOTFS/lib64     /lib64            \
         --ro-bind-try $BWROOTFS/lib32     /lib32            \
+        --ro-bind-try $BWROOTFS/usr/bin   /usr/bin          \
+        --ro-bind-try $BWROOTFS/usr/sbin   /usr/sbin          \
         --ro-bind-try $BWROOTFS/bin       /bin              \
         --ro-bind-try $BWROOTFS/sbin      /sbin             \
         --ro-bind-try $BWROOTFS/etc       /etc              \
