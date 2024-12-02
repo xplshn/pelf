@@ -6,8 +6,10 @@
 [ "$DEBUG2" = "1" ] && set -v
 
 # Determine the path to the script itself
-SELF=$(readlink -f "$0")
-SELF_TEMPDIR=${SELF%/*}
+[ "$EXT_APPRUN" = "1" ] || {
+    SELF="$(readlink -f "$0")"
+    SELF_TEMPDIR=${SELF%/*}
+}
 
 [ -d "$SELF_TEMPDIR/rootfs" ] && BWROOTFS="$SELF_TEMPDIR/rootfs"
 [ -d "$SELF_TEMPDIR/proto" ] && BWROOTFS="$SELF_TEMPDIR/proto"
@@ -104,75 +106,62 @@ fi
 
 # Function to build bwrap options
 build_bwrap_options() {
-    BWRAP_OPTIONS="--bind $BWROOTFS / \
-        --share-net \
-        --proc /proc \
-        --dev-bind /dev /dev \
-        --bind-try /run /run \
-        --bind-try /sys /sys \
-        --bind-try /tmp /tmp \
-        --bind-try /media /media \
-        --bind-try /mnt /mnt \
-        --bind-try /home /home \
-        --ro-bind-try /etc/localtime /etc/localtime \
-        --ro-bind-try /etc/machine-id /etc/machine-id \
-        --ro-bind-try /etc/resolv.conf /etc/resolv.conf \
-        --ro-bind-try /lib/firmware /lib/firmware \
-        --ro-bind-try /etc/passwd /etc/passwd \
-        --ro-bind-try /etc/group /etc/group \
-        --ro-bind-try /etc/hosts /etc/hosts \
-        --ro-bind-try /etc/nsswitch.conf /etc/nsswitch.conf \
-        --ro-bind-try /etc/hostname /etc/hostname \
-        --bind-try \"$SELF_TEMPDIR\" /app \
-        --setenv SELF \"$SELF\" \
-        --setenv SELF_TEMPDIR \"$SELF_TEMPDIR\" \
-        --setenv BWROOTFS \"$BWROOTFS\" \
-        --setenv ARGV0 \"$ARGV0\" \
-        --setenv ARGS \"$SELF_ARGS\" \
-        --setenv WITHIN_BWRAP \"1\" \
+    BWRAP_OPTIONS="\
+        --dev-bind    /                   /                      \
+        --ro-bind-try $BWROOTFS/usr/lib   /usr               \
+        --ro-bind-try $BWROOTFS/lib       /lib                   \
+        --ro-bind-try $BWROOTFS/bin       /bin                   \
+        --ro-bind-try $BWROOTFS/sbin      /sbin                  \
+        --ro-bind-try $BWROOTFS/etc       /etc                   \
+        --setenv SELF                    \"$SELF\"               \
+        --setenv SELF_TEMPDIR            \"$SELF_TEMPDIR\"       \
+        --setenv BWROOTFS                \"$BWROOTFS\"           \
+        --setenv ARGV0                   \"$ARGV0\"              \
+        --setenv ARGS                    \"$SELF_ARGS\"          \
+        --setenv WITHIN_BWRAP            \"1\"                   \
         --cap-add CAP_SYS_ADMIN"
-    # Conditionally add optional directories
-
-    # Arch is a BS os, and programs get installed to /opt
-    if [ "$SHARE_OPT" = 1 ]; then
-        [ -d /opt ] && BWRAP_OPTIONS="$BWRAP_OPTIONS --bind-try /opt /opt"
-    fi
-
-    # Themes & Icons
-    if [ "$SHARE_LOOK" = "1" ]; then
-        [ -d /usr/share/icons ] && BWRAP_OPTIONS="$BWRAP_OPTIONS --ro-bind-try /usr/share/icons /usr/share/icons"
-        [ -d /usr/share/themes ] && BWRAP_OPTIONS="$BWRAP_OPTIONS --ro-bind-try /usr/share/themes /usr/share/themes"
-    fi
-
-    # Fonts
-    if [ "$SHARE_FONTS" = 1 ]; then
-        [ -d /usr/share/fontconfig ] && BWRAP_OPTIONS="$BWRAP_OPTIONS --bind-try /usr/share/fontconfig /usr/share/fontconfig"
-        [ -d /usr/share/fonts ] && BWRAP_OPTIONS="$BWRAP_OPTIONS --bind-try /usr/share/fonts /usr/share/fonts"
-    fi
-
-    fUID="$(id -u)"
-    [ -z "$XDG_RUNTIME_DIR" ] && [ -d "/run/user/$fUID" ] && XDG_RUNTIME_DIR="/run/user/$fUID"
-
-    # Add optional XDG_RUNTIME_DIR binding if enabled
-    [ "$SHARE_XDG_RUNTIME_DIR" = "1" ] && [ -n "$XDG_RUNTIME_DIR" ] && BWRAP_OPTIONS="$BWRAP_OPTIONS --bind-try $XDG_RUNTIME_DIR $XDG_RUNTIME_DIR"
-
-    # Add optional audio bindings if enabled
-    if [ "$SHARE_AUDIO" = "1" ] && [ -n "$XDG_RUNTIME_DIR" ]; then
-        BWRAP_OPTIONS="$BWRAP_OPTIONS \
-            --bind-try /etc/asound.conf /etc/asound.conf \
-            --bind-try $XDG_RUNTIME_DIR/pulse $XDG_RUNTIME_DIR/pulse \
-            --bind-try $XDG_RUNTIME_DIR/pipewire-0 $XDG_RUNTIME_DIR/pipewire-0 \
-            --bind-try $XDG_RUNTIME_DIR/pipewire-0.lock $XDG_RUNTIME_DIR/pipewire-0.lock \
-            --bind-try $XDG_RUNTIME_DIR/pipewire-0-manager $XDG_RUNTIME_DIR/pipewire-0-manager \
-            --bind-try $XDG_RUNTIME_DIR/pipewire-0-manager.lock $XDG_RUNTIME_DIR/pipewire-0-manager.lock"
-    fi
-
-    # We could be running from a GH runner -> See AppBundleHUB & pelfCreator.
-    [ -d "/__w" ] && BWRAP_OPTIONS="$BWRAP_OPTIONS --bind-try /__w /__w"
-
-    if [ "$UID0_GID0" = "1" ]; then
-        BWRAP_OPTIONS="$BWRAP_OPTIONS --uid 0 --gid 0"
-    fi
+#    # Conditionally add optional directories
+#
+#    # Arch is a BS os, and programs get installed to /opt
+#    if [ "$SHARE_OPT" = 1 ]; then
+#        [ -d /opt ] && BWRAP_OPTIONS="$BWRAP_OPTIONS --bind-try /opt /opt"
+#    fi
+#
+#    # Themes & Icons
+#    if [ "$SHARE_LOOK" = "1" ]; then
+#        [ -d /usr/share/icons ] && BWRAP_OPTIONS="$BWRAP_OPTIONS --ro-bind-try /usr/share/icons /usr/share/icons"
+#        [ -d /usr/share/themes ] && BWRAP_OPTIONS="$BWRAP_OPTIONS --ro-bind-try /usr/share/themes /usr/share/themes"
+#    fi
+#
+#    # Fonts
+#    if [ "$SHARE_FONTS" = 1 ]; then
+#        [ -d /usr/share/fontconfig ] && BWRAP_OPTIONS="$BWRAP_OPTIONS --bind-try /usr/share/fontconfig /usr/share/fontconfig"
+#        [ -d /usr/share/fonts ] && BWRAP_OPTIONS="$BWRAP_OPTIONS --bind-try /usr/share/fonts /usr/share/fonts"
+#    fi
+#
+#    fUID="$(id -u)"
+#    [ -z "$XDG_RUNTIME_DIR" ] && [ -d "/run/user/$fUID" ] && XDG_RUNTIME_DIR="/run/user/$fUID"
+#
+#    # Add optional XDG_RUNTIME_DIR binding if enabled
+#    [ "$SHARE_XDG_RUNTIME_DIR" = "1" ] && [ -n "$XDG_RUNTIME_DIR" ] && BWRAP_OPTIONS="$BWRAP_OPTIONS --bind-try $XDG_RUNTIME_DIR $XDG_RUNTIME_DIR"
+#
+#    # Add optional audio bindings if enabled
+#    if [ "$SHARE_AUDIO" = "1" ] && [ -n "$XDG_RUNTIME_DIR" ]; then
+#        BWRAP_OPTIONS="$BWRAP_OPTIONS \
+#            --bind-try /etc/asound.conf /etc/asound.conf \
+#            --bind-try $XDG_RUNTIME_DIR/pulse $XDG_RUNTIME_DIR/pulse \
+#            --bind-try $XDG_RUNTIME_DIR/pipewire-0 $XDG_RUNTIME_DIR/pipewire-0 \
+#            --bind-try $XDG_RUNTIME_DIR/pipewire-0.lock $XDG_RUNTIME_DIR/pipewire-0.lock \
+#            --bind-try $XDG_RUNTIME_DIR/pipewire-0-manager $XDG_RUNTIME_DIR/pipewire-0-manager \
+#            --bind-try $XDG_RUNTIME_DIR/pipewire-0-manager.lock $XDG_RUNTIME_DIR/pipewire-0-manager.lock"
+#    fi
+#
+#    # We could be running from a GH runner -> See AppBundleHUB & pelfCreator.
+#    [ -d "/__w" ] && BWRAP_OPTIONS="$BWRAP_OPTIONS --bind-try /__w /__w"
+#
+#    if [ "$UID0_GID0" = "1" ]; then
+#        BWRAP_OPTIONS="$BWRAP_OPTIONS --uid 0 --gid 0"
+#    fi
 
     printf '%s\n' "$BWRAP_OPTIONS"
 }

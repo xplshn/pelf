@@ -311,6 +311,7 @@ select_structure_and_apprun() {
 				fi
 			fi
 			chmod +x "$APPDIR/AppRun"
+			"$APPDIR/sharun" -g
 			[ -z "$TOBEKEPT_FILES" ] && rm -rf "$APPDIR/proto" # SHARUN mode without Proto mode
 		fi
 	fi
@@ -361,19 +362,19 @@ select_structure_and_apprun() {
 tidyup() {
 	for EXCLUDED in $GETRID_FILES; do
 		if [ -f "$APPDIR/proto/$EXCLUDED" ] || [ -d "$APPDIR/proto/$EXCLUDED" ]; then
-			rm -rf "${APPDIR:?}/proto/$EXCLUDED"
+		    rm -rf "${APPDIR:?}/proto/$EXCLUDED"
 		fi
 	done
 	[ -d "$APPDIR/proto" ] && mkdir -p "$APPDIR/proto/app" "$APPDIR/proto/host" && {
 	    rm -rf "$APPDIR/proto/etc/machine-id" "$APPDIR/proto/etc/machine-id" \
-	           "$APPDIR/proto/etc/resolv.conf" "$APPDIR/proto/etc/passwd" \
-	           "$APPDIR/proto/etc/group" "$APPDIR/proto/etc/hosts" \
-	           "$APPDIR/proto/etc/hostname" "$APPDIR/proto/etc/localtime" \
-	           "$APPDIR/proto/__w" "$APPDIR/proto/github"
+	           "$APPDIR/proto/etc/resolv.conf" "$APPDIR/proto/etc/passwd"    \
+	           "$APPDIR/proto/etc/group"       "$APPDIR/proto/etc/hosts"     \
+	           "$APPDIR/proto/etc/hostname"    "$APPDIR/proto/etc/localtime" \
+	           "$APPDIR/proto/__w"             "$APPDIR/proto/github"
 	   [ "$SANDBOX" = "1" ] && {
-            touch "$APPDIR/proto/etc/machine-id" \
-	              "$APPDIR/proto/etc/hostname"   \
-	              "$APPDIR/proto/etc/localtime"  \
+            touch "$APPDIR/proto/etc/machine-id"   \
+	              "$APPDIR/proto/etc/hostname"     \
+	              "$APPDIR/proto/etc/localtime"    \
 	              "$APPDIR/proto/etc/resolv.conf"
         }
     }
