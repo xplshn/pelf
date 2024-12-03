@@ -108,11 +108,11 @@ if [ -f "$DESKTOP_FILE" ]; then
     EXEC_LINE=$(awk -F"=| " '/Exec=/ {print $2; exit}' "$DESKTOP_FILE")
     if [ -n "$OVERRIDE_ENTRYPOINT" ]; then
         # Use the provided override if set
-        echo "$OVERRIDE_ENTRYPOINT" > "$WORKDIR/rootfs/entrypoint"
+        echo "$OVERRIDE_ENTRYPOINT" > "$WORKDIR/entrypoint"
         echo "Set entrypoint to OVERRIDE_ENTRYPOINT: $OVERRIDE_ENTRYPOINT"
     elif [ -n "$EXEC_LINE" ]; then
         echo "Exec line found: $EXEC_LINE"
-        echo "$EXEC_LINE" > "$WORKDIR/rootfs/entrypoint"
+        echo "$EXEC_LINE" > "$WORKDIR/entrypoint"
     else
         echo "Exec line not found in $DESKTOP_FILE"
     fi
