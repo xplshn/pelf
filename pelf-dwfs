@@ -495,7 +495,7 @@ fi
     exit 0
 } && {
 	# Check if the runtime file contains __ENTRYPOINT__ (indicating it's a text file)
-	if grep -q "__ENTRYPOINT__" "$_RUNTIME_FILE"; then
+	if grep -q "__ENTRY_POINT__" "$_RUNTIME_FILE"; then
 	    # The file is a normal text file, perform replacements directly
 	    sed -e "s|__ENTRY_POINT__|${_VAR_APPBUNDLE_ID##*/}|g" \
 	        -e "s|__PELF_VERSION__|${CONST_VERSION}|g" \
