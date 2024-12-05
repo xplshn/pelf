@@ -26,9 +26,15 @@ Additionally, we embed the tools used for mounting and unmounting the `.AppBundl
 
 ![image](https://github.com/user-attachments/assets/f4459934-a5b6-4717-8299-86b56dc0cf48)
 
-###### TODO:
-- Make a runtime in Go, with AppImage type II runtime compatibility, and with support for embedding files/swapping out the AppDir during RUNTIME? (we loose the advantages of portability. but we'd still be better than AppImages in the tooling side of things & also because the runtime's code would be much more understandable than AppImage's)
-- Make pelfCreator use the appstream-helper automatically if you use an AppStream id as the `--name`?
+###### MISC:
+- There's a runtime in shell, this one is used by default.
+- There's a runtime made in Go, for those of you that want speed (21~ms improvement)
+
+###### Planned
+- Runtime in ODIN (mostly complete, but I'm too embarrased to share the code, it looks ugly)
+- Runtime in Zig (not yet started)
+- Make the runtimes support various formats at the same time? (sqfs, others?)
+- AppImage type II flags, for compat with existing daemons (I'm salty about adding this. Very much so. Perhaps we could do this in a modular way that can be turned on/off?.. would shell be acceptable? What about `yaegis`? Or something else..?)
 
 #### Resources:
 - The [AppBundleHUB](https://github.com/xplshn/AppBundleHUB) a repo which builds a ton of portable AppBundles in an automated fashion, using GH actions. (we have a [webStore](https://fatbuffalo.neocities.org/AppBundleHUBStore) too, tho that is WIP)
