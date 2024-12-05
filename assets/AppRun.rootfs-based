@@ -167,14 +167,14 @@ build_bwrap_options() {
 
     # Themes & Icons
     if [ "$SHARE_LOOK" = "1" ]; then
-        [ -d /usr/share/icons ] && BWRAP_OPTIONS="$BWRAP_OPTIONS --ro-bind-try /usr/share/icons /usr/share/icons"
+        [ -d /usr/share/icons ]  && BWRAP_OPTIONS="$BWRAP_OPTIONS --ro-bind-try /usr/share/icons /usr/share/icons"
         [ -d /usr/share/themes ] && BWRAP_OPTIONS="$BWRAP_OPTIONS --ro-bind-try /usr/share/themes /usr/share/themes"
     fi
 
     # Fonts
     if [ "$SHARE_FONTS" = 1 ]; then
         [ -d /usr/share/fontconfig ] && BWRAP_OPTIONS="$BWRAP_OPTIONS --bind-try /usr/share/fontconfig /usr/share/fontconfig"
-        [ -d /usr/share/fonts ] && BWRAP_OPTIONS="$BWRAP_OPTIONS --bind-try /usr/share/fonts /usr/share/fonts"
+        [ -d /usr/share/fonts ]      && BWRAP_OPTIONS="$BWRAP_OPTIONS --bind-try /usr/share/fonts /usr/share/fonts"
     fi
 
     fUID="$(id -u)"
@@ -185,13 +185,11 @@ build_bwrap_options() {
 
     # Add optional audio bindings if enabled
     if [ "$SHARE_AUDIO" = "1" ] && [ -n "$XDG_RUNTIME_DIR" ]; then
-        BWRAP_OPTIONS="$BWRAP_OPTIONS \
-            --bind-try /etc/asound.conf /etc/asound.conf \
-            --bind-try $XDG_RUNTIME_DIR/pulse $XDG_RUNTIME_DIR/pulse \
-            --bind-try $XDG_RUNTIME_DIR/pipewire-0 $XDG_RUNTIME_DIR/pipewire-0 \
-            --bind-try $XDG_RUNTIME_DIR/pipewire-0.lock $XDG_RUNTIME_DIR/pipewire-0.lock \
-            --bind-try $XDG_RUNTIME_DIR/pipewire-0-manager $XDG_RUNTIME_DIR/pipewire-0-manager \
-            --bind-try $XDG_RUNTIME_DIR/pipewire-0-manager.lock $XDG_RUNTIME_DIR/pipewire-0-manager.lock"
+        for __E in "/etc/asound.conf" "$XDG_RUNTIME_DIR/pulse" "$XDG_RUNTIME_DIR/pipewire-0" "$XDG_RUNTIME_DIR/pipewire-0.lock" "$XDG_RUNTIME_DIR/pipewire-0-manager" "$XDG_RUNTIME_DIR/pipewire-0-manager.lock"; do
+            if [ -f "$__E" ] || [ -d "$__E" ]; then
+                BWRAP_OPTIONS="$BWRAP_OPTIONS --bind-try $__E $__E"
+            fi
+        done
     fi
 
     # We could be running from a GH runner -> See AppBundleHUB & pelfCreator.
