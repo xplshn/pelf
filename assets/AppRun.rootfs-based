@@ -84,6 +84,10 @@ while [ "$#" -gt 0 ]; do
             SHARE_LOOK=$(bool "$2") # Shares the icons & themes directories with the rootfs
             shift
             ;;
+        --Xbwrap-opt)
+           SHARE_OPT=$(bool "$2") # Binds /opt
+           shift
+           ;;
         --Xbwrap-hostFonts)
             SHARE_FONTS=$(bool "$2") # Shares the host's fonts
             shift
