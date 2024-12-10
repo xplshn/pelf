@@ -372,14 +372,17 @@ tidyup() {
 	           "$APPDIR/proto/etc/hostname"    "$APPDIR/proto/etc/localtime"  \
 	           "$APPDIR/proto/__w"             "$APPDIR/proto/github"
 	   [ "$SANDBOX" = "1" ] && {
-            touch "$APPDIR/proto/etc/machine-id"    \
-	              "$APPDIR/proto/etc/hostname"      \
-	              "$APPDIR/proto/etc/localtime"     \
-	              "$APPDIR/proto/etc/passwd"        \
-	              "$APPDIR/proto/etc/groups"        \
-	              "$APPDIR/proto/etc/hosts"         \
-	              "$APPDIR/proto/etc/nsswitch.conf" \
-	              "$APPDIR/proto/etc/resolv.conf"
+            touch    "$APPDIR/proto/etc/machine-id"       \
+	                 "$APPDIR/proto/etc/hostname"         \
+	                 "$APPDIR/proto/etc/localtime"        \
+	                 "$APPDIR/proto/etc/passwd"           \
+	                 "$APPDIR/proto/etc/groups"           \
+	                 "$APPDIR/proto/etc/hosts"            \
+	                 "$APPDIR/proto/etc/nsswitch.conf"    \
+	                 "$APPDIR/proto/etc/resolv.conf"
+
+	        mkdir -p "$APPDIR/proto/usr/share/fonts"      \
+	        		 "$APPDIR/proto/usr/share/fontconfig"
         }
     }
 }
