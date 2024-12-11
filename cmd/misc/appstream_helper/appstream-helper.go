@@ -29,7 +29,7 @@ type Item struct {
 	PkgId           string   `json:"pkg_id,omitempty"`
 	Icon            string   `json:"icon,omitempty"`
 	Description     string   `json:"description,omitempty"`
-	RichDescription string   `json:"rich_description,omitempty"`
+	LongDescription string   `json:"long_description,omitempty"`
 	Desktop         string   `json:"desktop,omitempty"`
 	Screenshots     []string `json:"screenshots,omitempty"`
 	Version         string   `json:"version,omitempty"`
@@ -130,7 +130,7 @@ type Component struct {
 		Url  string `xml:",chardata"`
 	} `xml:"url"`
 
-	Description   []Tag         `xml:"description"` // -> RichDescription
+	Description   []Tag         `xml:"description"` // -> LongDescription
 	Screenshots   []Screenshot  `xml:"screenshots>screenshot"`
 	Releases      Releases      `xml:"releases"`
 	ContentRating ContentRating `xml:"content_rating"`
@@ -362,7 +362,7 @@ func ConvertComponentToItem(c Component) Item {
 	}
 
 	// Extract content for name, summary, description, and keywords based on missing xml:lang attribute
-	var name, summary, richDescription string
+	var name, summary, LongDescription string
 	var keywords []string
 
 	for _, item := range c.Name {
@@ -384,7 +384,7 @@ func ConvertComponentToItem(c Component) Item {
 			// Only escape quotes and backslashes for JSON validity
 			content := strings.ReplaceAll(item.Content, "\\", "\\\\")
 			content = strings.ReplaceAll(content, "\"", "\\\"")
-			richDescription = content
+			LongDescription = content
 			break
 		}
 	}
@@ -415,17 +415,17 @@ func ConvertComponentToItem(c Component) Item {
 	}
 	summary = minifiedSummary
 
-	minifiedRichDescription, err := minifyHTML(richDescription)
+	minifiedLongDescription, err := minifyHTML(LongDescription)
 	if err != nil {
-		fmt.Printf("Error minifying rich description: %v\n", err)
+		fmt.Printf("Error minifying long_description: %v\n", err)
 	}
-	richDescription = minifiedRichDescription
+	LongDescription = minifiedLongDescription
 
 	return Item{
 		PkgName:         name,
 		PkgId:           c.Id,
 		Description:     summary,
-		RichDescription: richDescription,
+		LongDescription: LongDescription,
 		Screenshots:     screenshots,
 		Version:         version,
 		DownloadURL:     downloadURL,
