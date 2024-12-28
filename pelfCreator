@@ -37,7 +37,7 @@ EOF
 }
 
 parse_arguments() {
-	ARGS=$(getopt -o m:n:p:e:x:k:r:o:sz -l maintainer:,name:,pkg-add:,entrypoint:,sharun:,keep:,getrid:,output:,local:,sandbox,dontpack,help -- "$@") || {
+	ARGS=$(getopt -o m:n:p:e:x:k:r:o:sz -l maintainer:,name:,pkg-add:,entrypoint:,sharun:,keep:,getrid:,output:,local:,custom-runtime:,sandbox,dontpack,help -- "$@") || {
 		echo "Failed to parse arguments." >&2
 		exit 1
 	}

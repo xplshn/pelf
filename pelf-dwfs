@@ -187,7 +187,7 @@ fi
 
 	# Create a DWFS archive of the executable, libraries and additional files
 
-	[ -n "$_VAR_COMPRESS_ARG" ] || _VAR_COMPRESS_ARG="-l7 -C zstd:level=22 --metadata-compression null -S 21 -B 8 --order nilsimsa -W 12 -w 4" # --max-lookback-blocks=5 --block-size-bits=18 --compression zstd:level=22 # --max-lookback-blocks=5 --no-history --categorize=pcmaudio --compression pcmaudio/waveform::flac:level=8:exhaustive #_VAR_COMPRESS_ARG="--max-lookback-blocks=5 --categorize=pcmaudio --compression pcmaudio/waveform::flac:level=8"
+	[ -n "$_VAR_COMPRESS_ARG" ] || _VAR_COMPRESS_ARG="-l7 -C zstd:level=22 --metadata-compression null" # --max-lookback-blocks=5 --block-size-bits=18 --compression zstd:level=22 # --max-lookback-blocks=5 --no-history --categorize=pcmaudio --compression pcmaudio/waveform::flac:level=8:exhaustive #_VAR_COMPRESS_ARG="--max-lookback-blocks=5 --categorize=pcmaudio --compression pcmaudio/waveform::flac:level=8"
 	# shellcheck disable=SC2086
 	if ! mkdwarfs --set-owner 0 --set-group 0 --no-create-timestamp --no-history --input "$_VAR_APPDIR" --output "$_VAR_WORKDIR/archive.dwfs" --progress=ascii $_VAR_COMPRESS_ARG; then
 		error "Compression failed"
@@ -223,7 +223,7 @@ else
 # shellcheck disable=SC2317 # 107,9 # Command appears to be unreachable. Check usage (or *ignore* if invoked indirectly) # We call this function via a `trap`
 
 # Get the binary's name
-[ -n "$EXE_NAME" ] || EXE_NAME="__ENTRY_POINT__"
+[ -n "$EXE_NAME" ] || EXE_NAME="__APPBUNDLE_ID__"
 # rEXE_NAME can be used as a variable name, and it is also used for creating the work dir
 rEXE_NAME="$(echo "$EXE_NAME" | tr -dc '[:alnum:]_')"
 
@@ -486,7 +486,6 @@ exit $?
 _END_OF_LOADER_SCRIPT
 fi
 
-
 # Create RUNTIME
 [ -z "$_VAR_RETRIEVE_RUNTIME" ] || {
     cp "$_RUNTIME_FILE" "$_VAR_RETRIEVE_RUNTIME"
@@ -496,21 +495,21 @@ fi
         2. After that, add the dwarfs archive to the runtime (this file)
         3. Then mark as executable and you're good to go"
     exit 0
-} && {
-	# Check if the runtime file contains __ENTRYPOINT__ (indicating it's a text file)
-	if grep -q "__ENTRY_POINT__" "$_RUNTIME_FILE"; then
-	    # The file is a normal text file, perform replacements directly
-	    sed -e "s|__ENTRY_POINT__|${_VAR_APPBUNDLE_ID##*/}|g" \
-	        -e "s|__PELF_VERSION__|${CONST_VERSION}|g" \
-	        -e "s|__PELF_HOST__|${_VAR_HOST_INFO}|g" \
-	        "$_RUNTIME_FILE" > "$_VAR_OUT_FILE"
-	else
-	    cp "$_RUNTIME_FILE" "$_VAR_OUT_FILE"
-		log "Injecting internal variables into binary runtime"
-	    printf "\n__ENTRY_POINT__: %s\n__PELF_VERSION__: %s\n__PELF_HOST__: %s\n __APPBUNDLE_FS__: %s\n" \
-	        "${_VAR_APPBUNDLE_ID##*/}" "${CONST_VERSION}" "${_VAR_HOST_INFO}" "${CONST_APPBUNDLE_FS}" >> "$_VAR_OUT_FILE"
-	fi
 }
+
+if head -n 1 "$_RUNTIME_FILE" | grep -q '^#!'; then
+    log "The runtime is a script"
+    # The file is a normal text file, perform replacements directly
+    sed -e "s|__APPBUNDLE_ID__|${_VAR_APPBUNDLE_ID##*/}|g" \
+        -e "s|__PELF_VERSION__|${CONST_VERSION}|g" \
+        -e "s|__PELF_HOST__|${_VAR_HOST_INFO}|g" \
+        "$_RUNTIME_FILE" > "$_VAR_OUT_FILE"
+else
+    cp "$_RUNTIME_FILE" "$_VAR_OUT_FILE"
+	log "Injecting internal variables into binary runtime"
+    printf "\n__APPBUNDLE_ID__: %s\n__PELF_VERSION__: %s\n__PELF_HOST__: %s\n__APPBUNDLE_FS__: %s" \
+        "${_VAR_APPBUNDLE_ID##*/}" "${CONST_VERSION}" "${_VAR_HOST_INFO}" "${CONST_APPBUNDLE_FS}" >> "$_VAR_OUT_FILE"
+fi
 
 embed_static_tools() {
 	_VAR_STATIC_TOOLS_DIR="$_VAR_WORKDIR/static/$(uname -om | tr ' ' '_')"
