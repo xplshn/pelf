@@ -28,7 +28,7 @@ Additionally, we embed the tools used for mounting and unmounting the `.AppBundl
 
 ###### MISC:
 - There's a runtime in shell, this one is used by default.
-- There's a runtime made in Go, for those of you that want speed (21~ms improvement)
+- There's a runtime made in Go, for those of you that want speed (121~ms improvement)
 
 ###### Planned
 - Runtime in ODIN (mostly complete, but I'm too embarrased to share the code, it looks ugly)
