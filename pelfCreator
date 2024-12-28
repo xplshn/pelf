@@ -18,6 +18,7 @@ Options:
    -k, --keep         Moves these directories to the appdir's ./proto, this is for use with -x, to conserve the files a program may need while also removing the rest of the rootfs
    -o, --output-to    Set the output file name (optional, default: <name>-<date>.dwfs.AppBundle)
    --local            A directory from which to pick up files such as 'AppRun.sharun', 'rootfs.tgz', 'pelf-dwfs', 'bwrap', etc
+   --custom-runtime   Same as pelf-dwfs's option, it must point to a valid executable file that will be used as runtime for the generated AppBundle
    -h, --help         Display this help and exit
 
 ENV:
@@ -36,7 +37,7 @@ EOF
 }
 
 parse_arguments() {
-	ARGS=$(getopt -o m:n:p:e:x:k:r:o:sz -l maintainer:,name:,pkg-add:,entrypoint:,sharun:,keep:,getrid:,output:,local:,sandbox,dontpack,help -- "$@") || {
+	ARGS=$(getopt -o m:n:p:e:x:k:r:o:sz -l maintainer:,name:,pkg-add:,entrypoint:,sharun:,keep:,getrid:,output:,local:,custom-runtime:,sandbox,dontpack,help -- "$@") || {
 		echo "Failed to parse arguments." >&2
 		exit 1
 	}
@@ -89,6 +90,13 @@ parse_arguments() {
 		--local)
 			LOCAL_PATH="$2"
 			shift 2
+			;;
+		--custom-runtime)
+			export _VAR_CUSTOM_RUNTIME="$2"
+			shift 2
+			if [ ! -f "$_VAR_CUSTOM_RUNTIME" ]; then
+			    echo "Error: --custom-runtime: invalid runtime, not a file" >&2
+			fi
 			;;
 		-h | --help)
 			print_help
@@ -150,7 +158,7 @@ download_and_extract_rootfs() {
 		fi
 	else
         : "${ROOTFS_URL:=https://pub.ajam.dev/utils/alpine-mini-$(uname -m)/rootfs.tar.gz}"
-		if ! wget -qO- "$ROOTFS_URL" | tar xz - -C "$APPDIR/proto" --no-same-permissions; then
+		if ! wget -qO- "$ROOTFS_URL" | tar xzf - -C "$APPDIR/proto" --no-same-permissions; then
 			echo "Failed to download or extract rootfs"
 			exit 1
 		fi
@@ -411,7 +419,15 @@ create_bundle() {
 	fi
 }
 
+require() {
+    # shellcheck disable=SC2068 # We need to split $@
+    for cmd in $@; do
+        command -v "$cmd" >/dev/null 2>&1 || echo "Error: missing a required dependency: [$cmd] ; Make sure you have the following dependencies in your \$PATH before continuing: [$*]" >&2
+    done
+}
+
 main() {
+    require "pelf-dwfs" "wget"
 	parse_arguments "$@"
 	check_required_arguments
 	setup_local_path

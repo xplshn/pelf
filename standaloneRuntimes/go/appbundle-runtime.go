@@ -14,37 +14,160 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"runtime"
 
 	"github.com/emmansun/base64"         // Drop-in replacement of "encoding/base64". (SIMD optimized)
 	"github.com/klauspost/compress/gzip" // Drop-in replacement of "compress/gzip" (SIMD optimized)
 )
 
-// Runtime constants and color codes
 const (
+	// ANSI color codes
 	warningColor = "\x1b[0;33m"
 	errorColor   = "\x1b[0;31m"
 	blueColor    = "\x1b[0;34m"
 	resetColor   = "\x1b[0m"
+	// Filesystem option's defaults
+    DWARFS_CACHESIZE = "128M"
+    DWARFS_BLOCKSIZE = "8K"
 )
 
 // RuntimeConfig holds the configuration for the AppBundle runtime
 type RuntimeConfig struct {
-	exeName        string
-	rExeName       string
 	poolDir        string
 	workDir        string
+	// Depends on exeName in order to be populated correctly:
+	rExeName       string // holds a version of exeName that can be used as a filepath or name for an variable
 	mountDir       string
 	execFile       string
 	selfPath       string
 	staticToolsDir string
+	// Embedded within the .AppBundle itself:
+	exeName        string
 	pelfHost       string
 	pelfVersion    string
+	appBundleFS    string
 }
 
 var (
 	globalArgs  []string
 	elfFileSize int64
 )
+
+/* Supported filesystems */
+
+// mountSquashfs mounts the embedded SquashFS archive
+func (cfg *RuntimeConfig) mountSquashfs() error {
+    if err := cfg.checkFuse(); err != nil {
+        return err
+    }
+
+	uid := syscall.Getuid()
+    gid := syscall.Getgid()
+
+	_, archiveOffset, err := findMarkers(cfg.selfPath)
+    if err != nil {
+        return fmt.Errorf("failed to find markers: %v", err)
+    }
+
+    logFile := filepath.Join(cfg.workDir, ".squashfuse.log")
+    if _, err := os.Stat(logFile); os.IsNotExist(err) {
+        if err := os.MkdirAll(cfg.mountDir, 0755); err != nil {
+            return err
+        }
+
+        cmd := exec.Command("squashfuse",
+            "-f",
+            "-o", "ro,nodev,noatime",
+            "-o", fmt.Sprintf("uid=%d,gid=%d", uid, gid),
+            "-o", fmt.Sprintf("offset=%d", archiveOffset),
+            cfg.selfPath,
+            cfg.mountDir,
+        )
+        output, err := cmd.CombinedOutput()
+        if err != nil {
+            logWarning(fmt.Sprintf("Failed to mount Squashfs archive: %v", err))
+            logWarning(string(output))
+            return err
+        }
+
+        if err := os.WriteFile(logFile, output, 0644); err != nil {
+            return err
+        }
+    }
+
+    return nil
+}
+
+// mountDwarfs mounts the embedded DwarFS archive
+func (cfg *RuntimeConfig) mountDwarfs() error {
+    if err := cfg.checkFuse(); err != nil {
+        return err
+    }
+
+    logFile := filepath.Join(cfg.workDir, ".dwarfs.log")
+    if _, err := os.Stat(logFile); os.IsNotExist(err) {
+        if err := os.MkdirAll(cfg.mountDir, 0755); err != nil {
+            return err
+        }
+
+        cmd := exec.Command("dwarfs", "-o", "offset=auto,ro,auto_unmount", cfg.selfPath, cfg.mountDir)
+        output, err := cmd.CombinedOutput()
+        if err != nil {
+            logWarning(fmt.Sprintf("Failed to mount DwarFS archive: %v", err))
+            logWarning(string(output))
+            return err
+        }
+
+        if err := os.WriteFile(logFile, output, 0644); err != nil {
+            return err
+        }
+    }
+
+    return nil
+}
+
+// Dwarfs helper functions
+
+// getDwarfsCacheSize gets the cache size from env or default
+func getDwarfsCacheSize() string {
+    cacheSize := os.Getenv("DWARFS_CACHESIZE")
+    if cacheSize == "" {
+        return DWARFS_CACHESIZE
+    }
+    opts := strings.Split(cacheSize, ",")
+    if len(opts) > 0 {
+        return opts[0]
+    }
+    return DWARFS_CACHESIZE
+}
+
+// getDwarfsBlockSize gets the block size from env or default
+func getDwarfsBlockSize() string {
+    blockSize := os.Getenv("DWARFS_BLOCKSIZE")
+    if blockSize == "" {
+        return DWARFS_BLOCKSIZE
+    }
+    opts := strings.Split(blockSize, ",")
+    if len(opts) > 0 {
+        return opts[0]
+    }
+    return DWARFS_BLOCKSIZE
+}
+
+// getDwarfsWorkers gets the number of workers from env or CPU count
+func getDwarfsWorkers() string {
+    workers := os.Getenv("DWARFS_WORKERS")
+    if workers == "" {
+        return fmt.Sprintf("%d", runtime.NumCPU())
+    }
+    opts := strings.Split(workers, ",")
+    if len(opts) > 0 {
+        return opts[0]
+    }
+    return fmt.Sprintf("%d", runtime.NumCPU())
+}
+
+/* --------------------- */
 
 // initConfig initializes the runtime configuration
 func initConfig() *RuntimeConfig {
@@ -104,22 +227,23 @@ func readPlaceholders(cfg *RuntimeConfig) error {
 	lines := strings.Split(string(remainingData), "\n")
 
 	for _, line := range lines {
-		if cfg.exeName == "" && strings.HasPrefix(line, "__ENTRY_POINT__: ") {
-			cfg.exeName = strings.TrimSpace(strings.TrimPrefix(line, "__ENTRY_POINT__: "))
+		if cfg.exeName == "" && strings.HasPrefix(line, "__APPBUNDLE_ID__: ") {
+			cfg.exeName = strings.TrimSpace(strings.TrimPrefix(line, "__APPBUNDLE_ID__: "))
 		} else if strings.HasPrefix(line, "__PELF_VERSION__: ") {
 			cfg.pelfVersion = strings.TrimSpace(strings.TrimPrefix(line, "__PELF_VERSION__: "))
 		} else if strings.HasPrefix(line, "__PELF_HOST__: ") {
 			cfg.pelfHost = strings.TrimSpace(strings.TrimPrefix(line, "__PELF_HOST__: "))
+		} else if strings.HasPrefix(line, "__APPBUNDLE_FS__: ") {
+			cfg.appBundleFS = strings.TrimSpace(strings.TrimPrefix(line, "__APPBUNDLE_FS__: "))
 		}
-
-		if cfg.exeName != "" && cfg.rExeName != "" && cfg.mountDir != "" {
+		if cfg.exeName != "" && cfg.rExeName != "" && cfg.mountDir != "" && cfg.appBundleFS != "" {
 			break
 		}
 	}
 
-	if cfg.exeName == "" || cfg.pelfHost == "" || cfg.pelfVersion == "" {
-		return fmt.Errorf("missing placeholders in file: exeName=%q, pelfHost=%q, pelfVersion=%q",
-			cfg.exeName, cfg.pelfHost, cfg.pelfVersion)
+	if cfg.exeName == "" || cfg.pelfHost == "" || cfg.pelfVersion == "" || cfg.appBundleFS == "" {
+		return fmt.Errorf("missing placeholders in file: exeName=%q, pelfHost=%q, pelfVersion=%q, appBundleFS=%q",
+			cfg.exeName, cfg.pelfHost, cfg.pelfVersion, cfg.appBundleFS)
 	}
 
 	return nil
@@ -132,6 +256,49 @@ func getSelfPath() string {
 		logError("Failed to resolve executable path", err)
 	}
 	return path
+}
+
+// findMarkers finds both __STATIC_TOOLS__ and __ARCHIVE_MARKER__ line numbers
+func findMarkers(path string) (int64, int64, error) {
+    file, err := os.Open(path)
+    if err != nil {
+        return 0, 0, err
+    }
+    defer file.Close()
+
+    reader := bufio.NewReader(file)
+    var staticToolsOffset, archiveOffset int64
+    currentOffset := int64(0)
+
+    for {
+        line, err := reader.ReadBytes('\n')
+        if err != nil && err != io.EOF {
+            return 0, 0, fmt.Errorf("read error: %w", err)
+        }
+
+        // For __STATIC_TOOLS__, we want the offset of the NEXT line
+        if strings.TrimSpace(string(line)) == "__STATIC_TOOLS__" {
+            staticToolsOffset = currentOffset + int64(len(line))
+        } else if strings.TrimSpace(string(line)) == "__ARCHIVE_MARKER__" {
+            archiveOffset = currentOffset + int64(len(line))
+            break
+        }
+
+        currentOffset += int64(len(line))
+        
+        if err == io.EOF {
+            break
+        }
+    }
+
+    if staticToolsOffset == 0 || archiveOffset == 0 {
+        return 0, 0, errors.New("markers not found")
+    }
+
+    //fmt.Printf("staticToolsOffset: %d\n", staticToolsOffset)
+    //fmt.Printf("archiveOffset: %d\n", archiveOffset)
+
+    return staticToolsOffset, archiveOffset, nil
 }
 
 // sanitizeFilename removes non-alphanumeric characters
@@ -301,34 +468,6 @@ func extractStaticTools(sourcePath string, marker int, destDir string) error {
 			if err := os.Chmod(path, 0755); err != nil {
 				return err
 			}
-		}
-	}
-
-	return nil
-}
-
-// mountDwarfs mounts the embedded DwarFS archive
-func (cfg *RuntimeConfig) mountDwarfs() error {
-	if err := cfg.checkFuse(); err != nil {
-		return err
-	}
-
-	logFile := filepath.Join(cfg.workDir, ".dwarfs.log")
-	if _, err := os.Stat(logFile); os.IsNotExist(err) {
-		if err := os.MkdirAll(cfg.mountDir, 0755); err != nil {
-			return err
-		}
-
-		cmd := exec.Command("dwarfs", "-o", "offset=auto,ro,auto_unmount", cfg.selfPath, cfg.mountDir)
-		output, err := cmd.CombinedOutput()
-		if err != nil {
-			logWarning(fmt.Sprintf("Failed to mount DwarFS archive: %v", err))
-			logWarning(string(output))
-			return err
-		}
-
-		if err := os.WriteFile(logFile, output, 0644); err != nil {
-			return err
 		}
 	}
 
@@ -531,18 +670,18 @@ func cleanup() {
 
 // isMounted checks if a directory is mounted
 func isMounted(dir string) bool {
-	var stat syscall.Statfs_t
-	if err := syscall.Statfs(dir, &stat); err != nil {
-		return false
-	}
+    var stat syscall.Statfs_t
+    if err := syscall.Statfs(dir, &stat); err != nil {
+        return false
+    }
 
-	parentDir := dir + "/.."
-	var parentStat syscall.Statfs_t
-	if err := syscall.Statfs(parentDir, &parentStat); err != nil {
-		return false
-	}
+    parentDir := filepath.Dir(dir)
+    var parentStat syscall.Statfs_t
+    if err := syscall.Statfs(parentDir, &parentStat); err != nil {
+        return false
+    }
 
-	return stat.Fsid != parentStat.Fsid
+    return stat.Fsid != parentStat.Fsid
 }
 
 // isDirEmpty checks if a directory is empty
@@ -611,6 +750,18 @@ func getElfFileSize(filePath string) (int64, error) {
 	return int64(maxOffset), nil
 }
 
+// mountImage mounts the image using the appropriate filesystem handler
+func mountImage(cfg *RuntimeConfig) error {
+    switch cfg.appBundleFS {
+    case "squashfs":
+        return cfg.mountSquashfs()
+    case "dwarfs":
+        return cfg.mountDwarfs()
+    default:
+        return fmt.Errorf("unsupported filesystem: %s", cfg.appBundleFS)
+    }
+}
+
 // main function to handle the logic
 func main() {
 	cfg := initConfig()
@@ -622,17 +773,19 @@ func main() {
 		cleanup()
 	}()
 
-	if err := cfg.mountDwarfs(); err != nil {
-		logError("Failed to mount DwarFS archive", err)
+	if err := mountImage(cfg); err != nil {
+		logError("Failed to mount image", err)
 	}
 
-	if len(os.Args) > 1 {
-		if err := cfg.handleRuntimeFlags(os.Args[1:]); err != nil {
+	globalArgs = os.Args
+
+	if len(globalArgs) > 1 {
+		if err := cfg.handleRuntimeFlags(globalArgs[1:]); err != nil {
 			logError("", nil)
 		}
 	}
 
-	if err := cfg.executeFile(globalArgs); err != nil {
+	if err := cfg.executeFile(globalArgs[1:]); err != nil {
 		logError("Failed to execute file", err)
 	}
 }
