@@ -200,7 +200,10 @@ if [ "$_VAR_REPRODUCIBLE" ]; then
 else
     _VAR_HOST_INFO="$(uname -mrspv)"
 fi
+
+# If you create a new edition, please don't forget to change these two values:
 CONST_VERSION="2.0_dwfs_raw" # (vanilla)
+CONST_APPBUNDLE_FS="dwarfs"
 
 if [ -n "$_VAR_CUSTOM_RUNTIME" ]; then
 	log "Using custom runtime: $_VAR_CUSTOM_RUNTIME"
@@ -504,8 +507,8 @@ fi
 	else
 	    cp "$_RUNTIME_FILE" "$_VAR_OUT_FILE"
 		log "Injecting internal variables into binary runtime"
-	    printf "\n__ENTRY_POINT__: %s\n__PELF_VERSION__: %s\n__PELF_HOST__: %s\n" \
-	        "${_VAR_APPBUNDLE_ID##*/}" "${CONST_VERSION}" "${_VAR_HOST_INFO}" >> "$_VAR_OUT_FILE"
+	    printf "\n__ENTRY_POINT__: %s\n__PELF_VERSION__: %s\n__PELF_HOST__: %s\n __APPBUNDLE_FS__: %s\n" \
+	        "${_VAR_APPBUNDLE_ID##*/}" "${CONST_VERSION}" "${_VAR_HOST_INFO}" "${CONST_APPBUNDLE_FS}" >> "$_VAR_OUT_FILE"
 	fi
 }
 

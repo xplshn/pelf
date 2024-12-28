@@ -29,22 +29,65 @@ const (
 
 // RuntimeConfig holds the configuration for the AppBundle runtime
 type RuntimeConfig struct {
-	exeName        string
-	rExeName       string
 	poolDir        string
 	workDir        string
+	// Depends on exeName in order to be populated correctly:
+	rExeName       string // holds a version of exeName that can be used as a filepath or name for an variable
 	mountDir       string
 	execFile       string
 	selfPath       string
 	staticToolsDir string
+	// Embedded within the .AppBundle itself:
+	exeName        string
 	pelfHost       string
 	pelfVersion    string
+	appBundleFS    string
 }
 
 var (
 	globalArgs  []string
 	elfFileSize int64
 )
+
+type FilesystemHandler interface {
+	MountImage(imagePath, mountDir string) error
+	ExtractImage(imagePath, extractDir string, isExtractRun bool, pattern string) error
+}
+
+/* Supported filesystems */
+type SquashfsHandler struct{}
+
+func (SquashfsHandler) MountImage(imagePath, mountDir string) error {
+	cmd := exec.Command("squashfuse", "-f", "-o", "ro,nodev,noatime", imagePath, mountDir)
+	return cmd.Run()
+}
+
+func (SquashfsHandler) ExtractImage(imagePath, extractDir string, isExtractRun bool, pattern string) error {
+	args := []string{"-f", "-d", extractDir, "-o", "offset=auto", imagePath}
+	if pattern != "" {
+		args = append(args, pattern)
+	}
+	cmd := exec.Command("unsquashfs", args...)
+	return cmd.Run()
+}
+
+type DwarfsHandler struct{}
+
+func (DwarfsHandler) MountImage(imagePath, mountDir string) error {
+	cmd := exec.Command("dwarfs", "-f", "-o", "ro,nodev,noatime,clone_fd", "-o", "cache_files,no_cache_image", "-o", "cachesize=auto", "-o", "blocksize=auto", "-o", "tidy_strategy=time,tidy_interval=500ms,tidy_max_age=1s", "-o", "workers=auto", "-o", "uid=auto,gid=auto", "-o", "offset=auto", "-o", "debuglevel=error", imagePath, mountDir)
+	return cmd.Run()
+}
+
+func (DwarfsHandler) ExtractImage(imagePath, extractDir string, isExtractRun bool, pattern string) error {
+	args := []string{"--input", imagePath, "--log-level=error", "--cache-size=auto", "--image-offset=auto", "--num-workers=auto", "--output", extractDir, "--stdout-progress"}
+	if pattern != "" {
+		args = append(args, "--pattern", pattern)
+	}
+	cmd := exec.Command("dwarfsextract", args...)
+	return cmd.Run()
+}
+
+/* --------------------- */
 
 // initConfig initializes the runtime configuration
 func initConfig() *RuntimeConfig {
@@ -110,6 +153,8 @@ func readPlaceholders(cfg *RuntimeConfig) error {
 			cfg.pelfVersion = strings.TrimSpace(strings.TrimPrefix(line, "__PELF_VERSION__: "))
 		} else if strings.HasPrefix(line, "__PELF_HOST__: ") {
 			cfg.pelfHost = strings.TrimSpace(strings.TrimPrefix(line, "__PELF_HOST__: "))
+		} else if strings.HasPrefix(line, "__APPBUNDLE_FS__: ") {
+			cfg.appBundleFS = strings.TrimSpace(strings.TrimPrefix(line, "__APPBUNDLE_FS__: "))
 		}
 
 		if cfg.exeName != "" && cfg.rExeName != "" && cfg.mountDir != "" {
@@ -117,9 +162,9 @@ func readPlaceholders(cfg *RuntimeConfig) error {
 		}
 	}
 
-	if cfg.exeName == "" || cfg.pelfHost == "" || cfg.pelfVersion == "" {
-		return fmt.Errorf("missing placeholders in file: exeName=%q, pelfHost=%q, pelfVersion=%q",
-			cfg.exeName, cfg.pelfHost, cfg.pelfVersion)
+	if cfg.exeName == "" || cfg.pelfHost == "" || cfg.pelfVersion == "" || cfg.appBundleFS == "" {
+		return fmt.Errorf("missing placeholders in file: exeName=%q, pelfHost=%q, pelfVersion=%q, appBundleFS=%q",
+			cfg.exeName, cfg.pelfHost, cfg.pelfVersion, cfg.appBundleFS)
 	}
 
 	return nil
@@ -611,6 +656,34 @@ func getElfFileSize(filePath string) (int64, error) {
 	return int64(maxOffset), nil
 }
 
+// mountImage mounts the image using the appropriate filesystem handler
+func mountImage(cfg *RuntimeConfig, imagePath, mountDir string) error {
+	var handler FilesystemHandler
+	switch cfg.appBundleFS {
+	case "squashfs":
+		handler = SquashfsHandler{}
+	case "dwarfs":
+		handler = DwarfsHandler{}
+	default:
+		return fmt.Errorf("unsupported filesystem: %s", cfg.appBundleFS)
+	}
+	return handler.MountImage(imagePath, mountDir)
+}
+
+// extractImage extracts the image using the appropriate filesystem handler
+func extractImage(cfg *RuntimeConfig, imagePath, extractDir string, isExtractRun bool, pattern string) error {
+	var handler FilesystemHandler
+	switch cfg.appBundleFS {
+	case "squashfs":
+		handler = SquashfsHandler{}
+	case "dwarfs":
+		handler = DwarfsHandler{}
+	default:
+		return fmt.Errorf("unsupported filesystem: %s", cfg.appBundleFS)
+	}
+	return handler.ExtractImage(imagePath, extractDir, isExtractRun, pattern)
+}
+
 // main function to handle the logic
 func main() {
 	cfg := initConfig()
@@ -622,8 +695,8 @@ func main() {
 		cleanup()
 	}()
 
-	if err := cfg.mountDwarfs(); err != nil {
-		logError("Failed to mount DwarFS archive", err)
+	if err := mountImage(cfg, cfg.selfPath, cfg.mountDir); err != nil {
+		logError("Failed to mount image", err)
 	}
 
 	if len(os.Args) > 1 {
