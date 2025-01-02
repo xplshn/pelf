@@ -21,10 +21,10 @@ import (
 )
 
 const (
-	warningColor     = "\x1b[0;33m"
-	errorColor       = "\x1b[0;31m"
-	blueColor        = "\x1b[0;34m"
-	resetColor       = "\x1b[0m"
+	warningColor = "\x1b[0;33m"
+	errorColor   = "\x1b[0;31m"
+	blueColor    = "\x1b[0;34m"
+	resetColor   = "\x1b[0m"
 
 	// Filesystem types
 	fsTypeSquashfs = "squashfs"
@@ -478,36 +478,37 @@ func determineHome(cfg *RuntimeConfig) string {
 }
 
 func executeFile(args []string, cfg *RuntimeConfig) error {
-	binDirs := []string{
-		cfg.mountDir + "/bin",
-		cfg.mountDir + "/usr/bin",
-		cfg.mountDir + "/shared/bin",
-	}
+	binDirs := cfg.mountDir + "/bin:" +
+		cfg.mountDir + "/usr/bin:" +
+		cfg.mountDir + "/shared/bin"
 
-	libDirs := []string{
-		cfg.mountDir + "/lib",
-		cfg.mountDir + "/usr/lib",
-		cfg.mountDir + "/shared/lib",
-		cfg.mountDir + "/lib64",
-		cfg.mountDir + "/usr/lib64",
-		cfg.mountDir + "/lib32",
-		cfg.mountDir + "/usr/lib32",
-		cfg.mountDir + "/libx32",
-		cfg.mountDir + "/usr/libx32",
-	}
+	libDirs := cfg.mountDir + "/lib:" +
+		cfg.mountDir + "/usr/lib:" +
+		cfg.mountDir + "/shared/lib:" +
+		cfg.mountDir + "/lib64:" +
+		cfg.mountDir + "/usr/lib64:" +
+		cfg.mountDir + "/lib32:" +
+		cfg.mountDir + "/usr/lib32:" +
+		cfg.mountDir + "/libx32:" +
+		cfg.mountDir + "/usr/libx32"
 
-	os.Setenv(cfg.rExeName+"_libDir", strings.Join(libDirs, ":"))
-	os.Setenv(cfg.rExeName+"_binDir", strings.Join(binDirs, ":"))
+	os.Setenv(cfg.rExeName+"_libDir", libDirs)
+	os.Setenv(cfg.rExeName+"_binDir", binDirs)
 	os.Setenv(cfg.rExeName+"_mountDir", cfg.mountDir)
 
-	updatePath(binDirs)
+	updatePath("PATH", binDirs)
+	// updatePath("LD_LIBRARY_PATH", libDirs)
 
 	os.Setenv("SELF_TEMPDIR", cfg.mountDir)
 	os.Setenv("SELF", cfg.selfPath)
 	os.Setenv("ARGV0", filepath.Base(os.Args[0]))
 
 	if _, err := os.Stat(cfg.entrypoint); err != nil {
-		return fmt.Errorf("executable %s does not exist", cfg.entrypoint)
+		if path, err := exec.LookPath(cfg.entrypoint); err == nil {
+			cfg.entrypoint = path
+		} else {
+			return fmt.Errorf("executable %s does not exist and cannot be found in PATH", cfg.entrypoint)
+		}
 	}
 
 	cmd := exec.Command(cfg.entrypoint, args...)
@@ -519,18 +520,18 @@ func executeFile(args []string, cfg *RuntimeConfig) error {
 	return nil
 }
 
-func updatePath(binDirs []string) {
-	overtakePath := os.Getenv("PBUNDLE_OVERTAKE_PATH") == "1"
-	currentPath := os.Getenv("PATH")
+func updatePath(envVar, dirs string) {
+	overtakePath := os.Getenv(fmt.Sprintf("PBUNDLE_OVERTAKE_%s", envVar)) == "1"
+	currentPath := os.Getenv(envVar)
 
 	var newPath string
 	if overtakePath {
-		newPath = strings.Join(append(binDirs, currentPath), ":")
+		newPath = dirs + ":" + currentPath
 	} else {
-		newPath = strings.Join(append([]string{currentPath}, binDirs...), ":")
+		newPath = currentPath + ":" + dirs
 	}
 
-	os.Setenv("PATH", newPath)
+	os.Setenv(envVar, newPath)
 }
 
 func handleRuntimeFlags(args *[]string, cfg *RuntimeConfig) error {
@@ -550,13 +551,17 @@ func handleRuntimeFlags(args *[]string, cfg *RuntimeConfig) error {
 		return fmt.Errorf("!no_return")
 
 	case "--pbundle_list":
-		return filepath.Walk(cfg.mountDir, func(path string, info os.FileInfo, err error) error {
+		err := filepath.Walk(cfg.mountDir, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
 				return err
 			}
 			fmt.Println(path)
-			return fmt.Errorf("!no_return")
+			return nil // Continue walking the directory
 		})
+		if err != nil {
+			return fmt.Errorf("%v", err)
+		}
+		return fmt.Errorf("!no_return")
 
 	case "--pbundle_portableHome":
 		homeDir := cfg.selfPath + ".home"
@@ -578,9 +583,12 @@ func handleRuntimeFlags(args *[]string, cfg *RuntimeConfig) error {
 		if len(*args) < 2 {
 			return fmt.Errorf("missing binary argument for --pbundle_link")
 		}
-		os.Setenv("LD_LIBRARY_PATH", strings.Join([]string{os.Getenv("LD_LIBRARY_PATH"), cfg.mountDir + "/lib"}, ":"))
-		cfg.exeName = (*args)[1]
+		cfg.entrypoint = (*args)[1]
 		*args = (*args)[1:]
+		if err := executeFile(*args, cfg); err != nil {
+			logError("Failed to execute file", err, cfg)
+		}
+		return fmt.Errorf("!no_return")
 
 	case "--pbundle_pngIcon":
 		iconPath := cfg.mountDir + "/.DirIcon"
