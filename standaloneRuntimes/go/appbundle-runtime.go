@@ -25,20 +25,14 @@ const (
 	errorColor       = "\x1b[0;31m"
 	blueColor        = "\x1b[0;34m"
 	resetColor       = "\x1b[0m"
-	defaultCacheSize = "128M"
-	defaultBlockSize = "8K"
 
 	// Filesystem types
 	fsTypeSquashfs = "squashfs"
 	fsTypeDwarfs   = "dwarfs"
 
-	// Buffer sizes
-	defaultBufSize = 4096
-	maxScanSize    = 1024 * 1024 // 1MB scan buffer
-
 	// Dwarfs default options:
-	DWARFS_CACHESIZE = "128M"
-	DWARFS_BLOCKSIZE = "128K"
+	DWARFS_CACHESIZE = "256M"
+	DWARFS_BLOCKSIZE = "256K"
 )
 
 type RuntimeConfig struct {
@@ -84,7 +78,7 @@ func mountImage(cfg *RuntimeConfig, fh *fileHandler) error {
 		return err
 	}
 
-	logFile := filepath.Join(cfg.workDir, fmt.Sprintf(".%s.log", cfg.appBundleFS))
+	logFile := cfg.workDir + "/." + cfg.appBundleFS + ".log"
 	if _, err := os.Stat(logFile); os.IsNotExist(err) {
 		if err := os.MkdirAll(cfg.mountDir, 0755); err != nil {
 			return err
@@ -125,8 +119,8 @@ func buildDwarFSCmd(cfg *RuntimeConfig) *exec.Cmd {
 	return exec.Command(binaryPaths["dwarfs"],
 		"-o", "ro,nodev,noatime,auto_unmount",
 		"-o", "cache_files,no_cache_image,clone_fd",
-		"-o", fmt.Sprintf("cachesize=%s", getEnvWithDefault("DWARFS_CACHESIZE", defaultCacheSize)),
-		"-o", fmt.Sprintf("blocksize=%s", getEnvWithDefault("DWARFS_BLOCKSIZE", defaultBlockSize)),
+		"-o", fmt.Sprintf("cachesize=%s", getEnvWithDefault("DWARFS_CACHESIZE", DWARFS_CACHESIZE)),
+		"-o", fmt.Sprintf("blocksize=%s", getEnvWithDefault("DWARFS_BLOCKSIZE", DWARFS_BLOCKSIZE)),
 		"-o", fmt.Sprintf("workers=%s", getEnvWithDefault("DWARFS_WORKERS", fmt.Sprintf("%d", runtime.NumCPU()))),
 		"-o", fmt.Sprintf("offset=%d", cfg.archiveOffset),
 		"-o", "debuglevel=error",
@@ -209,8 +203,8 @@ func (f *fileHandler) readPlaceholdersAndMarkers(cfg *RuntimeConfig) error {
 		currentOffset += lineLen
 	}
 
-	if !staticToolsFound || !archiveMarkerFound {
-		return fmt.Errorf("markers not found: staticToolsOffset=%d, staticToolsEndOffset=%d", cfg.staticToolsOffset, cfg.staticToolsEndOffset)
+	if !staticToolsFound || !archiveMarkerFound || !archiveMarkerFound {
+		return fmt.Errorf("markers not found: archiveOffset=%d, staticToolsOffset=%d, staticToolsEndOffset=%d", cfg.archiveOffset, cfg.staticToolsOffset, cfg.staticToolsEndOffset)
 	}
 
 	// Parse remaining data for placeholders
@@ -271,8 +265,8 @@ func initConfig() (*RuntimeConfig, *fileHandler, error) {
 
 	cfg.rExeName = sanitizeFilename(cfg.exeName)
 	cfg.workDir = getWorkDir(cfg)
-	cfg.mountDir = filepath.Join(cfg.workDir, "mounted")
-	cfg.entrypoint = filepath.Join(cfg.mountDir, "AppRun")
+	cfg.mountDir = cfg.workDir + "/mounted"
+	cfg.entrypoint = cfg.mountDir + "/AppRun"
 
 	if err := os.MkdirAll(cfg.workDir, 0755); err != nil {
 		logError("Failed to create work directory", err, cfg)
@@ -299,7 +293,7 @@ func sanitizeFilename(name string) string {
 }
 
 func getWorkDir(cfg *RuntimeConfig) string {
-	envKey := fmt.Sprintf("%s_workDir", cfg.rExeName)
+	envKey := cfg.rExeName + "_workDir"
 	workDir := os.Getenv(envKey)
 
 	if workDir == "" {
@@ -307,7 +301,7 @@ func getWorkDir(cfg *RuntimeConfig) string {
 		if err != nil {
 			logError("Failed to generate random string for workDir", err, cfg)
 		}
-		workDir = filepath.Join(cfg.poolDir, fmt.Sprintf("pbundle_%d%s%s", os.Getpid(), randomString, cfg.rExeName))
+		workDir = cfg.poolDir + "/pbundle_" + fmt.Sprintf("%d%s%s", os.Getpid(), randomString, cfg.rExeName)
 	}
 
 	return workDir
@@ -341,7 +335,7 @@ func checkFuse(cfg *RuntimeConfig, fh *fileHandler) error {
 		if path, err := cmdExists(cmd); err == nil {
 			binaryPaths[cmd] = path
 		} else {
-			cfg.staticToolsDir = filepath.Join(cfg.workDir, "static", getSystemArchString())
+			cfg.staticToolsDir = cfg.workDir + "/static/" + getSystemArchString()
 			if err := os.MkdirAll(cfg.staticToolsDir, 0755); err != nil {
 				return fmt.Errorf("failed to create static tools directory: %v", err)
 			}
@@ -429,7 +423,7 @@ func (f *fileHandler) extractStaticTools(cfg *RuntimeConfig) error {
 			return fmt.Errorf("tar read: %w", err)
 		}
 
-		fpath := filepath.Join(cfg.staticToolsDir, hdr.Name)
+		fpath := cfg.staticToolsDir + "/" + hdr.Name
 		switch hdr.Typeflag {
 		case tar.TypeDir:
 			if err := os.MkdirAll(fpath, 0755); err != nil {
@@ -485,26 +479,26 @@ func determineHome(cfg *RuntimeConfig) string {
 
 func executeFile(args []string, cfg *RuntimeConfig) error {
 	binDirs := []string{
-		filepath.Join(cfg.mountDir, "bin"),
-		filepath.Join(cfg.mountDir, "usr", "bin"),
-		filepath.Join(cfg.mountDir, "shared", "bin"),
+		cfg.mountDir + "/bin",
+		cfg.mountDir + "/usr/bin",
+		cfg.mountDir + "/shared/bin",
 	}
 
 	libDirs := []string{
-		filepath.Join(cfg.mountDir, "lib"),
-		filepath.Join(cfg.mountDir, "usr", "lib"),
-		filepath.Join(cfg.mountDir, "shared", "lib"),
-		filepath.Join(cfg.mountDir, "lib64"),
-		filepath.Join(cfg.mountDir, "usr", "lib64"),
-		filepath.Join(cfg.mountDir, "lib32"),
-		filepath.Join(cfg.mountDir, "usr", "lib32"),
-		filepath.Join(cfg.mountDir, "libx32"),
-		filepath.Join(cfg.mountDir, "usr", "libx32"),
+		cfg.mountDir + "/lib",
+		cfg.mountDir + "/usr/lib",
+		cfg.mountDir + "/shared/lib",
+		cfg.mountDir + "/lib64",
+		cfg.mountDir + "/usr/lib64",
+		cfg.mountDir + "/lib32",
+		cfg.mountDir + "/usr/lib32",
+		cfg.mountDir + "/libx32",
+		cfg.mountDir + "/usr/libx32",
 	}
 
-	os.Setenv(fmt.Sprintf("%s_libDir", cfg.rExeName), strings.Join(libDirs, ":"))
-	os.Setenv(fmt.Sprintf("%s_binDir", cfg.rExeName), strings.Join(binDirs, ":"))
-	os.Setenv(fmt.Sprintf("%s_mountDir", cfg.rExeName), cfg.mountDir)
+	os.Setenv(cfg.rExeName+"_libDir", strings.Join(libDirs, ":"))
+	os.Setenv(cfg.rExeName+"_binDir", strings.Join(binDirs, ":"))
+	os.Setenv(cfg.rExeName+"_mountDir", cfg.mountDir)
 
 	updatePath(binDirs)
 
@@ -565,7 +559,7 @@ func handleRuntimeFlags(args *[]string, cfg *RuntimeConfig) error {
 		})
 
 	case "--pbundle_portableHome":
-		homeDir := filepath.Join(cfg.selfPath + ".home")
+		homeDir := cfg.selfPath + ".home"
 		if err := os.MkdirAll(homeDir, 0755); err != nil {
 			return err
 		}
@@ -573,7 +567,7 @@ func handleRuntimeFlags(args *[]string, cfg *RuntimeConfig) error {
 		return fmt.Errorf("!no_return")
 
 	case "--pbundle_portableConfig":
-		configDir := filepath.Join(cfg.selfPath + ".config")
+		configDir := cfg.selfPath + ".config"
 		if err := os.MkdirAll(configDir, 0755); err != nil {
 			return err
 		}
@@ -584,19 +578,19 @@ func handleRuntimeFlags(args *[]string, cfg *RuntimeConfig) error {
 		if len(*args) < 2 {
 			return fmt.Errorf("missing binary argument for --pbundle_link")
 		}
-		os.Setenv("LD_LIBRARY_PATH", strings.Join([]string{os.Getenv("LD_LIBRARY_PATH"), filepath.Join(cfg.mountDir, "lib")}, ":"))
+		os.Setenv("LD_LIBRARY_PATH", strings.Join([]string{os.Getenv("LD_LIBRARY_PATH"), cfg.mountDir + "/lib"}, ":"))
 		cfg.exeName = (*args)[1]
 		*args = (*args)[1:]
 
 	case "--pbundle_pngIcon":
-		iconPath := filepath.Join(cfg.mountDir, ".DirIcon")
+		iconPath := cfg.mountDir + "/.DirIcon"
 		if _, err := os.Stat(iconPath); err == nil {
 			return encodeFileToBase64(iconPath)
 		}
 		logError("PNG icon not found", nil, cfg)
 
 	case "--pbundle_svgIcon":
-		iconPath := filepath.Join(cfg.mountDir, ".DirIcon.svg")
+		iconPath := cfg.mountDir + "/.DirIcon.svg"
 		if _, err := os.Stat(iconPath); err == nil {
 			return encodeFileToBase64(iconPath)
 		}
@@ -665,7 +659,7 @@ func encodeFileToBase64(filePath string) error {
 }
 
 func findAndEncodeFiles(dir, pattern string, cfg *RuntimeConfig) error {
-	matches, err := filepath.Glob(filepath.Join(dir, pattern))
+	matches, err := filepath.Glob(dir + "/" + pattern)
 	if err != nil {
 		return err
 	}
@@ -691,7 +685,7 @@ func main() {
 		workDir := os.Args[4]
 
 		// Perform cleanup tasks
-		for i := 0; i < 16; i++ {
+		for i := 0; i < 5; i++ {
 			if !isMounted(mountDir) {
 				//logWarning("No longer mounted!")
 				break
