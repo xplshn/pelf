@@ -4,17 +4,17 @@ import (
 	"archive/tar"
 	"bytes"
 	"debug/elf"
+	"encoding/hex"
 	"fmt"
 	"io"
+	"math/rand"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
-	"runtime"
-	"math/rand"
-	"encoding/hex"
 
 	"github.com/emmansun/base64"         // Drop-in replacement of "encoding/base64". (SIMD optimized)
 	"github.com/klauspost/compress/gzip" // Drop-in replacement of "compress/gzip" (SIMD optimized)
@@ -49,21 +49,23 @@ type RuntimeConfig struct {
 	entrypoint           string
 	selfPath             string
 	staticToolsDir       string
-	exeName              string    // Will initially contain "__APPBUNDLE_ID__: "
-	pelfHost             string    // Will initially contain "__PELF_HOST__: "
-	pelfVersion          string    // Will initially contain "__PELF_VERSION__: "
-	appBundleFS          string    // Will initially contain "__APPBUNDLE_FS__: "
+	exeName              string // Will initially contain "__APPBUNDLE_ID__: "
+	pelfHost             string // Will initially contain "__PELF_HOST__: "
+	pelfVersion          string // Will initially contain "__PELF_VERSION__: "
+	appBundleFS          string // Will initially contain "__APPBUNDLE_FS__: "
 	staticToolsOffset    uint32
 	archiveOffset        uint32
 	staticToolsEndOffset uint32
 	elfFileSize          uint32
 }
 
-var (
-	globalArgs  []string
-	cfg         *RuntimeConfig
-	binaryPaths = make(map[string]string) // Map to store full paths of binaries
-)
+type fileHandler struct {
+	path string
+	data []byte
+	file *os.File
+}
+
+var binaryPaths = make(map[string]string) // Map to store full paths of binaries
 
 // Filesystem-specific commands and extraction logic
 var filesystemCommands = map[string][]string{
@@ -71,14 +73,14 @@ var filesystemCommands = map[string][]string{
 	fsTypeDwarfs:   {"dwarfs", "fusermount3"},
 }
 
-var filesystemMountCmdBuilders = map[string]func() *exec.Cmd{
+var filesystemMountCmdBuilders = map[string]func(*RuntimeConfig) *exec.Cmd{
 	fsTypeSquashfs: buildSquashFSCmd,
 	fsTypeDwarfs:   buildDwarFSCmd,
 }
 
 // mountFS handles mounting both squashfs and dwarfs filesystems
-func mountImage() error {
-	if err := checkFuse(); err != nil {
+func mountImage(cfg *RuntimeConfig, fh *fileHandler) error {
+	if err := checkFuse(cfg, fh); err != nil {
 		return err
 	}
 
@@ -93,7 +95,7 @@ func mountImage() error {
 			return fmt.Errorf("unsupported filesystem: %s", cfg.appBundleFS)
 		}
 
-		cmd := cmdBuilder()
+		cmd := cmdBuilder(cfg)
 		output, err := cmd.CombinedOutput()
 		if err != nil {
 			logWarning(fmt.Sprintf("Failed to mount %s archive: %v", cfg.appBundleFS, err))
@@ -106,7 +108,7 @@ func mountImage() error {
 	return nil
 }
 
-func buildSquashFSCmd() *exec.Cmd {
+func buildSquashFSCmd(cfg *RuntimeConfig) *exec.Cmd {
 	uid := uint32(syscall.Getuid())
 	gid := uint32(syscall.Getgid())
 
@@ -119,7 +121,7 @@ func buildSquashFSCmd() *exec.Cmd {
 	)
 }
 
-func buildDwarFSCmd() *exec.Cmd {
+func buildDwarFSCmd(cfg *RuntimeConfig) *exec.Cmd {
 	return exec.Command(binaryPaths["dwarfs"],
 		"-o", "ro,nodev,noatime,auto_unmount",
 		"-o", "cache_files,no_cache_image,clone_fd",
@@ -133,42 +135,39 @@ func buildDwarFSCmd() *exec.Cmd {
 	)
 }
 
-// getEnvWithDefault returns environment variable value or default if not set
-func getEnvWithDefault(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
-		opts := strings.Split(value, ",")
-		if len(opts) > 0 {
-			return opts[0]
-		}
+func newFileHandler(path string) (*fileHandler, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("open file: %w", err)
 	}
-	return defaultValue
+	data, err := io.ReadAll(file)
+	if err != nil {
+		file.Close()
+		return nil, fmt.Errorf("read file: %w", err)
+	}
+	return &fileHandler{path: path, data: data, file: file}, nil
 }
 
-func readPlaceholdersAndMarkers(cfg *RuntimeConfig) error {
-	// Read the entire file into memory once
-	data, err := os.ReadFile(cfg.selfPath)
+func (f *fileHandler) readPlaceholdersAndMarkers(cfg *RuntimeConfig) error {
+	elfFile, err := elf.NewFile(bytes.NewReader(f.data))
 	if err != nil {
-		return fmt.Errorf("failed to read file: %w", err)
+		return fmt.Errorf("parse ELF: %w", err)
 	}
 
-	// Calculate ELF offset
-	elfFile, err := elf.NewFile(bytes.NewReader(data))
-	if err != nil {
-		return fmt.Errorf("failed to parse ELF file: %w", err)
-	}
-
+	// Calculate ELF offset once
 	var elfEndOffset uint32
 	for _, prog := range elfFile.Progs {
-		endOffset := uint32(prog.Off + prog.Filesz)
-		if endOffset > elfEndOffset {
-			elfEndOffset = endOffset
+		end := uint32(prog.Off + prog.Filesz)
+		if end > elfEndOffset {
+			elfEndOffset = end
 		}
 	}
 	cfg.elfFileSize = elfEndOffset
 
-	// Process the file starting from the ELF offset
-	data = data[elfEndOffset:]
-	lines := strings.Split(string(data), "\n")
+	// Reuse the slice to avoid allocation
+	f.data = f.data[elfEndOffset:]
+
+	lines := strings.Split(string(f.data), "\n")
 
 	var staticToolsFound, staticToolsEndFound, archiveMarkerFound bool
 	currentOffset := uint32(elfEndOffset)
@@ -191,7 +190,6 @@ func readPlaceholdersAndMarkers(cfg *RuntimeConfig) error {
 		}
 
 		if staticToolsFound && archiveMarkerFound && staticToolsEndFound {
-			// logWarning(fmt.Sprintf("cfg.archiveOffset: %d ; cfg.staticToolsOffset: %d ; cfg.staticToolsEndOffset: %d", cfg.archiveOffset, cfg.staticToolsOffset, cfg.staticToolsEndOffset))
 			break
 		}
 		currentOffset += lineLen
@@ -227,55 +225,34 @@ func readPlaceholdersAndMarkers(cfg *RuntimeConfig) error {
 	return nil
 }
 
-func getDwarfsCacheSize() string {
-	cacheSize := os.Getenv("DWARFS_CACHESIZE")
-	if cacheSize == "" {
-		return DWARFS_CACHESIZE
+func getEnvWithDefault(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		opts := strings.Split(value, ",")
+		if len(opts) > 0 {
+			return opts[0]
+		}
 	}
-	opts := strings.Split(cacheSize, ",")
-	if len(opts) > 0 {
-		return opts[0]
-	}
-	return DWARFS_CACHESIZE
+	return defaultValue
 }
 
-func getDwarfsBlockSize() string {
-	blockSize := os.Getenv("DWARFS_BLOCKSIZE")
-	if blockSize == "" {
-		return DWARFS_BLOCKSIZE
-	}
-	opts := strings.Split(blockSize, ",")
-	if len(opts) > 0 {
-		return opts[0]
-	}
-	return DWARFS_BLOCKSIZE
-}
-
-func getDwarfsWorkers() string {
-	workers := os.Getenv("DWARFS_WORKERS")
-	if workers == "" {
-		return fmt.Sprintf("%d", runtime.NumCPU())
-	}
-	opts := strings.Split(workers, ",")
-	if len(opts) > 0 {
-		return opts[0]
-	}
-	return fmt.Sprintf("%d", runtime.NumCPU())
-}
-
-func initConfig() *RuntimeConfig {
+func initConfig() (*RuntimeConfig, *fileHandler, error) {
 	cfg := &RuntimeConfig{
 		exeName:  os.Getenv("EXE_NAME"),
 		poolDir:  filepath.Join(os.TempDir(), ".pelfbundles"),
 		selfPath: getSelfPath(),
 	}
 
-	if err := readPlaceholdersAndMarkers(cfg); err != nil {
-		logError("Failed to read placeholders and markers", err)
+	fh, err := newFileHandler(cfg.selfPath)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create file handler: %w", err)
+	}
+
+	if err := fh.readPlaceholdersAndMarkers(cfg); err != nil {
+		logError("Failed to read placeholders and markers", err, cfg)
 	}
 
 	if cfg.exeName == "" {
-		logError("Unable to proceed without an AppBundleID (was it not injected correctly?)", nil)
+		logError("Unable to proceed without an AppBundleID (was it not injected correctly?)", nil, cfg)
 	}
 
 	cfg.rExeName = sanitizeFilename(cfg.exeName)
@@ -284,16 +261,16 @@ func initConfig() *RuntimeConfig {
 	cfg.entrypoint = filepath.Join(cfg.mountDir, "AppRun")
 
 	if err := os.MkdirAll(cfg.workDir, 0755); err != nil {
-		logError("Failed to create work directory", err)
+		logError("Failed to create work directory", err, cfg)
 	}
 
-	return cfg
+	return cfg, fh, nil
 }
 
 func getSelfPath() string {
 	path, err := filepath.EvalSymlinks(os.Args[0])
 	if err != nil {
-		logError("Failed to resolve executable path", err)
+		logError("Failed to resolve executable path", err, nil)
 	}
 	return path
 }
@@ -314,7 +291,7 @@ func getWorkDir(cfg *RuntimeConfig) string {
 	if workDir == "" {
 		randomString, err := generateRandomString(8)
 		if err != nil {
-			logError("Failed to generate random string for workDir", err)
+			logError("Failed to generate random string for workDir", err, cfg)
 		}
 		workDir = filepath.Join(cfg.poolDir, fmt.Sprintf("pbundle_%s%d%s", cfg.rExeName, os.Getpid(), randomString))
 	}
@@ -326,7 +303,7 @@ func logWarning(msg string) {
 	fmt.Fprintf(os.Stderr, "AppBundle Runtime %sWarning%s: %s\n", warningColor, resetColor, msg)
 }
 
-func logError(msg string, err error) {
+func logError(msg string, err error, cfg *RuntimeConfig) {
 	if msg != "" {
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "AppBundle Runtime %sError%s: %s: %v\n", errorColor, resetColor, msg, err)
@@ -334,11 +311,13 @@ func logError(msg string, err error) {
 			fmt.Fprintf(os.Stderr, "AppBundle Runtime %sError%s: %s\n", errorColor, resetColor, msg)
 		}
 	}
-	cleanup()
+	if cfg != nil {
+		cleanup(cfg)
+	}
 	os.Exit(1)
 }
 
-func checkFuse() error {
+func checkFuse(cfg *RuntimeConfig, fh *fileHandler) error {
 	requiredCmds, ok := filesystemCommands[cfg.appBundleFS]
 	if !ok {
 		return fmt.Errorf("unsupported filesystem: %s", cfg.appBundleFS)
@@ -346,16 +325,22 @@ func checkFuse() error {
 
 	for _, cmd := range requiredCmds {
 		if path, err := cmdExists(cmd); err == nil {
+			binaryPaths[cmd] = path
+		} else {
 			cfg.staticToolsDir = filepath.Join(cfg.workDir, "static", getSystemArchString())
 			if err := os.MkdirAll(cfg.staticToolsDir, 0755); err != nil {
 				return fmt.Errorf("failed to create static tools directory: %v", err)
 			}
 
-			if err := extractStaticTools(cfg); err != nil {
+			if err := fh.extractStaticTools(cfg); err != nil {
 				return fmt.Errorf("failed to extract static tools: %v", err)
 			}
 
-			binaryPaths[cmd] = path
+			if path, err := cmdExists(cmd); err == nil {
+				binaryPaths[cmd] = path
+			} else {
+				return fmt.Errorf("unable to find [%v] in the user's $PATH or extracted tools", cmd)
+			}
 		}
 	}
 
@@ -388,85 +373,79 @@ func getSystemArchString() string {
 	return strings.ReplaceAll(strings.TrimSpace(string(output)), " ", "_")
 }
 
-func extractStaticTools(cfg *RuntimeConfig) error {
-    file, err := os.Open(cfg.selfPath)
-    if err != nil {
-        return fmt.Errorf("failed to open AppBundle: %w", err)
-    }
-    defer file.Close()
+func (f *fileHandler) extractStaticTools(cfg *RuntimeConfig) error {
+	// Seek to the start of the static tools section
+	if _, err := f.file.Seek(int64(cfg.staticToolsOffset), io.SeekStart); err != nil {
+		return fmt.Errorf("failed to seek to static tools: %w", err)
+	}
 
-    // Seek to static tools offset
-    if _, err := file.Seek(int64(cfg.staticToolsOffset), io.SeekStart); err != nil {
-        return fmt.Errorf("failed to seek to static tools: %w", err)
-    }
+	// Calculate the length of the static tools section
+	staticToolsLength := int64(cfg.staticToolsEndOffset - cfg.staticToolsOffset)
 
-    // Read the base64-encoded data
-    base64Data := make([]byte, cfg.staticToolsEndOffset-cfg.staticToolsOffset)
-    if _, err := io.ReadFull(file, base64Data); err != nil {
-        return fmt.Errorf("failed to read static tools data: %w", err)
-    }
+	// Read the static tools section into a buffer
+	staticToolsData := make([]byte, staticToolsLength)
+	if _, err := io.ReadFull(f.file, staticToolsData); err != nil {
+		return fmt.Errorf("failed to read static tools section: %w", err)
+	}
 
-    // Decode base64 data
-    decodedData := make([]byte, base64.StdEncoding.DecodedLen(len(base64Data)))
-    n, err := base64.StdEncoding.Decode(decodedData, base64Data)
-    if err != nil {
-        return fmt.Errorf("failed to decode base64 data: %w", err)
-    }
-    decodedData = decodedData[:n] // Trim to actual size
+	// Decode base64 in-place to minimize allocations
+	decodedSize := base64.StdEncoding.DecodedLen(len(staticToolsData))
+	decodedData := make([]byte, decodedSize)
+	n, err := base64.StdEncoding.Decode(decodedData, staticToolsData)
+	if err != nil {
+		return fmt.Errorf("base64 decode: %w", err)
+	}
+	decodedData = decodedData[:n]
 
-    // Decompress using gzip
-    gzipReader, err := gzip.NewReader(bytes.NewReader(decodedData))
-    if err != nil {
-        return fmt.Errorf("failed to create gzip reader: %w", err)
-    }
-    defer gzipReader.Close()
+	// Single gzip reader from memory buffer
+	gz, err := gzip.NewReader(bytes.NewReader(decodedData))
+	if err != nil {
+		return fmt.Errorf("gzip init: %w", err)
+	}
+	defer gz.Close()
 
-    tarReader := tar.NewReader(gzipReader)
-    for {
-        hdr, err := tarReader.Next()
-        if err == io.EOF {
-            break
-        }
-        if err != nil {
-            return fmt.Errorf("failed to read tar entry: %w", err)
-        }
+	// Process tar entries sequentially
+	tr := tar.NewReader(gz)
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("tar read: %w", err)
+		}
 
-        // Extract the file
-        filePath := filepath.Join(cfg.staticToolsDir, hdr.Name)
-        if hdr.Typeflag == tar.TypeDir {
-            // If it's a directory, create it
-            if err := os.MkdirAll(filePath, 0755); err != nil {
-                return fmt.Errorf("failed to create directory: %w", err)
-            }
-        } else {
-            // If it's a file, create the file
-            if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
-                return fmt.Errorf("failed to create directory: %w", err)
-            }
-            outFile, err := os.Create(filePath)
-            if err != nil {
-                return fmt.Errorf("failed to create file: %w", err)
-            }
-            if _, err := io.Copy(outFile, tarReader); err != nil {
-                outFile.Close()
-                return fmt.Errorf("failed to write file: %w", err)
-            }
-            outFile.Close()
+		fpath := filepath.Join(cfg.staticToolsDir, hdr.Name)
+		switch hdr.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(fpath, 0755); err != nil {
+				return fmt.Errorf("mkdir %s: %w", fpath, err)
+			}
+		case tar.TypeReg:
+			if err := os.MkdirAll(filepath.Dir(fpath), 0755); err != nil {
+				return fmt.Errorf("mkdir parent: %w", err)
+			}
+			f, err := os.OpenFile(fpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0755)
+			if err != nil {
+				return fmt.Errorf("create: %w", err)
+			}
+			defer f.Close()
+			if _, err := io.Copy(f, tr); err != nil {
+				return fmt.Errorf("write: %w", err)
+			}
+			binaryPaths[filepath.Base(fpath)] = fpath
+		}
+	}
 
-            // Set file permissions
-            if err := os.Chmod(filePath, 0755); err != nil {
-                return fmt.Errorf("failed to set file permissions: %w", err)
-            }
+	// Discard any remaining data after the static tools section
+	//if _, err := io.CopyN(io.Discard, f.file, int64(uint32(len(f.data))-cfg.staticToolsEndOffset)); err != nil {
+	//	return fmt.Errorf("failed to discard remaining data: %w", err)
+	//}
 
-            // Update the binaryPaths map
-            binaryPaths[filepath.Base(filePath)] = filePath
-        }
-    }
-
-    return nil
+	return nil
 }
 
-func determineHome() string {
+func determineHome(cfg *RuntimeConfig) string {
 	selfHomeDir := cfg.selfPath + ".home"
 	selfConfigDir := cfg.selfPath + ".config"
 
@@ -490,7 +469,7 @@ func determineHome() string {
 	return config
 }
 
-func executeFile(args []string) error {
+func executeFile(args []string, cfg *RuntimeConfig) error {
 	binDirs := []string{
 		filepath.Join(cfg.mountDir, "bin"),
 		filepath.Join(cfg.mountDir, "usr", "bin"),
@@ -546,8 +525,8 @@ func updatePath(binDirs []string) {
 	os.Setenv("PATH", newPath)
 }
 
-func handleRuntimeFlags(args []string) error {
-	switch args[0] {
+func handleRuntimeFlags(args *[]string, cfg *RuntimeConfig) error {
+	switch (*args)[0] {
 	case "--pbundle_help":
 		fmt.Printf("This bundle was generated automatically by PELF %s, the machine on which it was created has the following \"uname -mrsp(v)\":\n %s \n", cfg.pelfVersion, cfg.pelfHost)
 		fmt.Printf("Internal variables:\n")
@@ -576,7 +555,7 @@ func handleRuntimeFlags(args []string) error {
 		if err := os.MkdirAll(homeDir, 0755); err != nil {
 			return err
 		}
-		determineHome()
+		determineHome(cfg)
 		return fmt.Errorf("!no_return")
 
 	case "--pbundle_portableConfig":
@@ -584,36 +563,57 @@ func handleRuntimeFlags(args []string) error {
 		if err := os.MkdirAll(configDir, 0755); err != nil {
 			return err
 		}
-		determineHome()
+		determineHome(cfg)
 		return fmt.Errorf("!no_return")
 
 	case "--pbundle_link":
-		if len(args) < 1 {
+		if len(*args) < 2 {
 			return fmt.Errorf("missing binary argument for --pbundle_link")
 		}
 		os.Setenv("LD_LIBRARY_PATH", strings.Join([]string{os.Getenv("LD_LIBRARY_PATH"), filepath.Join(cfg.mountDir, "lib")}, ":"))
-		cfg.exeName = args[1]
-		globalArgs = args[1:]
+		cfg.exeName = (*args)[1]
+		*args = (*args)[1:]
 
 	case "--pbundle_pngIcon":
 		iconPath := filepath.Join(cfg.mountDir, ".DirIcon")
 		if _, err := os.Stat(iconPath); err == nil {
 			return encodeFileToBase64(iconPath)
 		}
-		logError("PNG icon not found", nil)
+		logError("PNG icon not found", nil, cfg)
 
 	case "--pbundle_svgIcon":
 		iconPath := filepath.Join(cfg.mountDir, ".DirIcon.svg")
 		if _, err := os.Stat(iconPath); err == nil {
 			return encodeFileToBase64(iconPath)
 		}
-		logError("SVG icon not found", nil)
+		logError("SVG icon not found", nil, cfg)
 
 	case "--pbundle_desktop":
-		return findAndEncodeFiles(cfg.mountDir, "*.desktop")
+		return findAndEncodeFiles(cfg.mountDir, "*.desktop", cfg)
 
 	case "--pbundle_appstream":
-		return findAndEncodeFiles(cfg.mountDir, "*.xml")
+		return findAndEncodeFiles(cfg.mountDir, "*.xml", cfg)
+
+	case "--pbundle_internal_Cleanup":
+		// Perform cleanup tasks
+		for i := 0; i < 5; i++ {
+			if !isMounted(cfg.mountDir) {
+				break
+			}
+			cmd := exec.Command("fusermount3", "-u", cfg.mountDir)
+			cmd.Run()
+			time.Sleep(5 * time.Second)
+		}
+
+		if isMounted(cfg.mountDir) {
+			exec.Command("fusermount3", "-uz", cfg.mountDir).Run()
+		}
+
+		os.RemoveAll(cfg.workDir)
+		if isDirEmpty(cfg.poolDir) {
+			os.RemoveAll(cfg.poolDir)
+		}
+		os.Exit(0)
 
 	default:
 		return nil
@@ -621,26 +621,23 @@ func handleRuntimeFlags(args []string) error {
 	return nil
 }
 
-func cleanup() {
-	cmd := exec.Command("fusermount3", "-u", cfg.mountDir)
-	cmd.Run()
+func cleanup(cfg *RuntimeConfig) {
+	cmd := exec.Command(os.Args[0], "--pbundle_internal_Cleanup", cfg.mountDir, cfg.poolDir, cfg.workDir)
+	cmd.Env = os.Environ()
+	// Discard/disable std{out,err,in}
+	cmd.Stdin = nil
+	cmd.Stdout = nil
+	cmd.Stderr = nil
 
-	for i := 1; i <= 5; i++ {
-		if isMounted(cfg.mountDir) {
-			sleep(i)
-		} else {
-			break
-		}
+	// Start the command as a non-blocking background process
+	if err := cmd.Start(); err != nil {
+		logError("Failed to start cleanup process", err, cfg)
+		return
 	}
 
-	if isMounted(cfg.mountDir) {
-		cmd = exec.Command("fusermount3", "-uz", cfg.mountDir)
-		cmd.Run()
-	}
-
-	os.RemoveAll(cfg.workDir)
-	if isDirEmpty(cfg.poolDir) {
-		os.RemoveAll(cfg.poolDir)
+	// Detach the process to avoid waiting for it to finish
+	if err := cmd.Process.Release(); err != nil {
+		logError("Failed to detach cleanup process", err, cfg)
 	}
 }
 
@@ -681,13 +678,13 @@ func encodeFileToBase64(filePath string) error {
 	return nil
 }
 
-func findAndEncodeFiles(dir, pattern string) error {
+func findAndEncodeFiles(dir, pattern string, cfg *RuntimeConfig) error {
 	matches, err := filepath.Glob(filepath.Join(dir, pattern))
 	if err != nil {
 		return err
 	}
 	if len(matches) == 0 {
-		logError(fmt.Sprintf("no files found matching pattern: %s", pattern), nil)
+		logError(fmt.Sprintf("no files found matching pattern: %s", pattern), nil, cfg)
 	}
 
 	for _, file := range matches {
@@ -699,37 +696,78 @@ func findAndEncodeFiles(dir, pattern string) error {
 }
 
 func main() {
-	cfg = initConfig()
-	defer func() {
-		if r := recover(); r != nil {
-			logError("Panic recovered", fmt.Errorf("%v", r))
+	if len(os.Args) > 1 && os.Args[1] == "--pbundle_internal_Cleanup" {
+		if len(os.Args) < 5 {
+			logError("Invalid number of arguments for --pbundle_internal_Cleanup", nil, nil)
 		}
-		cleanup()
-	}()
+		mountDir := os.Args[2]
+		poolDir := os.Args[3]
+		workDir := os.Args[4]
 
-	if err := mountImage(); err != nil {
-		logError("Failed to mount image", err)
+		// Perform cleanup tasks
+		for i := 0; i < 5; i++ {
+			if !isMounted(mountDir) {
+				logWarning("No longer mounted!")
+				break
+			}
+			cmd := exec.Command("fusermount3", "-u", mountDir)
+			cmd.Run()
+			time.Sleep(5 * time.Second)
+		}
+
+		if isMounted(mountDir) {
+			exec.Command("fusermount3", "-uz", mountDir).Run()
+		}
+
+		os.RemoveAll(workDir)
+		if isDirEmpty(poolDir) {
+			os.RemoveAll(poolDir)
+		}
+
+		// Write test message to /tmp/pbundle_log
+		logFile, _ := os.OpenFile("/tmp/pbundle_log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		defer logFile.Close()
+		logFile.WriteString("Test message: Cleanup performed\n")
+
+		os.Exit(0)
 	}
 
-	globalArgs = os.Args
-	if len(globalArgs) > 1 {
-		if err := handleRuntimeFlags(globalArgs[1:]); err != nil {
+	cfg, fh, err := initConfig()
+	if err != nil {
+		logError("Failed to initialize config", err, cfg)
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			logError("Panic recovered", fmt.Errorf("%v", r), cfg)
+		}
+		if fh != nil {
+			fh.file.Close()
+		}
+		cleanup(cfg)
+		os.Exit(0)
+	}()
+
+	if err := mountImage(cfg, fh); err != nil {
+		logError("Failed to mount image", err, cfg)
+	}
+
+	args := os.Args[1:]
+	if len(args) >= 1 {
+		if err := handleRuntimeFlags(&args, cfg); err != nil {
 			if err.Error() != "!no_return" {
-				logError("Runtime flag handling failed", err)
+				logError("Runtime flag handling failed", err, cfg)
 			} else {
-				cleanup()
 				os.Exit(0)
 			}
 		}
 	}
 
-	if err := executeFile(globalArgs[1:]); err != nil {
-		logError("Failed to execute file", err)
+	if err := executeFile(args, cfg); err != nil {
+		logError("Failed to execute file", err, cfg)
 	}
 }
 
 // Helpers:
-
 func generateRandomString(length int) (string, error) {
 	bytes := make([]byte, length)
 	if _, err := rand.Read(bytes); err != nil {
