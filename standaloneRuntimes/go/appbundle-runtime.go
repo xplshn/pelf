@@ -49,10 +49,10 @@ type RuntimeConfig struct {
 	entrypoint           string
 	selfPath             string
 	staticToolsDir       string
-	exeName              string // Will initially contain "__APPBUNDLE_ID__: "
-	pelfHost             string // Will initially contain "__PELF_HOST__: "
-	pelfVersion          string // Will initially contain "__PELF_VERSION__: "
-	appBundleFS          string // Will initially contain "__APPBUNDLE_FS__: "
+	exeName              string // Will be populated with the value of "__APPBUNDLE_ID__: " as found within the file
+	pelfHost             string // Will be populated with the value of "__PELF_HOST__: " as found within the file
+	pelfVersion          string // Will be populated with the value of "__PELF_VERSION__: " as found within the file
+	appBundleFS          string // Will be populated with the value of "__APPBUNDLE_FS__: " as found within the file
 	staticToolsOffset    uint32
 	archiveOffset        uint32
 	staticToolsEndOffset uint32
@@ -140,11 +140,25 @@ func newFileHandler(path string) (*fileHandler, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open file: %w", err)
 	}
-	data, err := io.ReadAll(file)
-	if err != nil {
-		file.Close()
-		return nil, fmt.Errorf("read file: %w", err)
+
+	// Read the file in chunks
+	const chunkSize = 4096
+	data := make([]byte, 0, chunkSize)
+	buffer := make([]byte, chunkSize)
+	for {
+		n, err := file.Read(buffer)
+		if n > 0 {
+			data = append(data, buffer[:n]...)
+		}
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			file.Close()
+			return nil, fmt.Errorf("read file: %w", err)
+		}
 	}
+
 	return &fileHandler{path: path, data: data, file: file}, nil
 }
 
@@ -170,7 +184,7 @@ func (f *fileHandler) readPlaceholdersAndMarkers(cfg *RuntimeConfig) error {
 	lines := strings.Split(string(f.data), "\n")
 
 	var staticToolsFound, staticToolsEndFound, archiveMarkerFound bool
-	currentOffset := uint32(elfEndOffset)
+	currentOffset := elfEndOffset
 
 	for _, line := range lines {
 		lineLen := uint32(len(line) + 1) // Include newline
@@ -594,27 +608,6 @@ func handleRuntimeFlags(args *[]string, cfg *RuntimeConfig) error {
 	case "--pbundle_appstream":
 		return findAndEncodeFiles(cfg.mountDir, "*.xml", cfg)
 
-	case "--pbundle_internal_Cleanup":
-		// Perform cleanup tasks
-		for i := 0; i < 5; i++ {
-			if !isMounted(cfg.mountDir) {
-				break
-			}
-			cmd := exec.Command("fusermount3", "-u", cfg.mountDir)
-			cmd.Run()
-			time.Sleep(5 * time.Second)
-		}
-
-		if isMounted(cfg.mountDir) {
-			exec.Command("fusermount3", "-uz", cfg.mountDir).Run()
-		}
-
-		os.RemoveAll(cfg.workDir)
-		if isDirEmpty(cfg.poolDir) {
-			os.RemoveAll(cfg.poolDir)
-		}
-		os.Exit(0)
-
 	default:
 		return nil
 	}
@@ -705,14 +698,14 @@ func main() {
 		workDir := os.Args[4]
 
 		// Perform cleanup tasks
-		for i := 0; i < 5; i++ {
+		for i := 0; i < 32; i++ {
 			if !isMounted(mountDir) {
-				logWarning("No longer mounted!")
+				//logWarning("No longer mounted!")
 				break
 			}
 			cmd := exec.Command("fusermount3", "-u", mountDir)
 			cmd.Run()
-			time.Sleep(5 * time.Second)
+			sleep(1)
 		}
 
 		if isMounted(mountDir) {
@@ -756,8 +749,6 @@ func main() {
 		if err := handleRuntimeFlags(&args, cfg); err != nil {
 			if err.Error() != "!no_return" {
 				logError("Runtime flag handling failed", err, cfg)
-			} else {
-				os.Exit(0)
 			}
 		}
 	}
