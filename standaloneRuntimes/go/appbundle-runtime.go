@@ -109,8 +109,8 @@ func mountImage(cfg *RuntimeConfig, fh *fileHandler) error {
 }
 
 func buildSquashFSCmd(cfg *RuntimeConfig) *exec.Cmd {
-	uid := uint32(syscall.Getuid())
-	gid := uint32(syscall.Getgid())
+	uid := uint(syscall.Getuid())
+	gid := uint(syscall.Getgid())
 
 	return exec.Command(binaryPaths["squashfuse"],
 		"-o", "ro,nodev,noatime",
@@ -307,7 +307,7 @@ func getWorkDir(cfg *RuntimeConfig) string {
 		if err != nil {
 			logError("Failed to generate random string for workDir", err, cfg)
 		}
-		workDir = filepath.Join(cfg.poolDir, fmt.Sprintf("pbundle_%s%d%s", cfg.rExeName, os.Getpid(), randomString))
+		workDir = filepath.Join(cfg.poolDir, fmt.Sprintf("pbundle_%d%s%s", os.Getpid(), randomString, cfg.rExeName))
 	}
 
 	return workDir
@@ -384,7 +384,7 @@ func getSystemArchString() string {
 	if err != nil {
 		return "unknown"
 	}
-	return strings.ReplaceAll(strings.TrimSpace(string(output)), " ", "_")
+	return strings.ReplaceAll(strings.ReplaceAll(strings.TrimSpace(string(output)), " ", "_"), "/", "")
 }
 
 func (f *fileHandler) extractStaticTools(cfg *RuntimeConfig) error {
@@ -616,7 +616,6 @@ func handleRuntimeFlags(args *[]string, cfg *RuntimeConfig) error {
 
 func cleanup(cfg *RuntimeConfig) {
 	cmd := exec.Command(os.Args[0], "--pbundle_internal_Cleanup", cfg.mountDir, cfg.poolDir, cfg.workDir)
-	cmd.Env = os.Environ()
 	// Discard/disable std{out,err,in}
 	cmd.Stdin = nil
 	cmd.Stdout = nil
@@ -624,13 +623,7 @@ func cleanup(cfg *RuntimeConfig) {
 
 	// Start the command as a non-blocking background process
 	if err := cmd.Start(); err != nil {
-		logError("Failed to start cleanup process", err, cfg)
-		return
-	}
-
-	// Detach the process to avoid waiting for it to finish
-	if err := cmd.Process.Release(); err != nil {
-		logError("Failed to detach cleanup process", err, cfg)
+		panic("unable to proceed, a failure in cleanup(). Somehow.")
 	}
 }
 
@@ -698,7 +691,7 @@ func main() {
 		workDir := os.Args[4]
 
 		// Perform cleanup tasks
-		for i := 0; i < 32; i++ {
+		for i := 0; i < 16; i++ {
 			if !isMounted(mountDir) {
 				//logWarning("No longer mounted!")
 				break
@@ -717,11 +710,6 @@ func main() {
 			os.RemoveAll(poolDir)
 		}
 
-		// Write test message to /tmp/pbundle_log
-		logFile, _ := os.OpenFile("/tmp/pbundle_log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-		defer logFile.Close()
-		logFile.WriteString("Test message: Cleanup performed\n")
-
 		os.Exit(0)
 	}
 
@@ -729,7 +717,7 @@ func main() {
 	if err != nil {
 		logError("Failed to initialize config", err, cfg)
 	}
-	defer func() {
+	die := func() {
 		if r := recover(); r != nil {
 			logError("Panic recovered", fmt.Errorf("%v", r), cfg)
 		}
@@ -738,7 +726,8 @@ func main() {
 		}
 		cleanup(cfg)
 		os.Exit(0)
-	}()
+	}
+	defer die()
 
 	if err := mountImage(cfg, fh); err != nil {
 		logError("Failed to mount image", err, cfg)
@@ -749,6 +738,8 @@ func main() {
 		if err := handleRuntimeFlags(&args, cfg); err != nil {
 			if err.Error() != "!no_return" {
 				logError("Runtime flag handling failed", err, cfg)
+			} else {
+				die()
 			}
 		}
 	}
