@@ -103,12 +103,9 @@ func mountImage(cfg *RuntimeConfig, fh *fileHandler) error {
 }
 
 func buildSquashFSCmd(cfg *RuntimeConfig) *exec.Cmd {
-	uid := uint(syscall.Getuid())
-	gid := uint(syscall.Getgid())
-
 	return exec.Command(binaryPaths["squashfuse"],
 		"-o", "ro,nodev,noatime",
-		"-o", fmt.Sprintf("uid=%d,gid=%d", uid, gid),
+		"-o", fmt.Sprintf("uid=%d,gid=%d", uint8(syscall.Getuid()), uint8(syscall.Getgid())),
 		"-o", fmt.Sprintf("offset=%d", cfg.archiveOffset),
 		cfg.selfPath,
 		cfg.mountDir,
@@ -163,22 +160,20 @@ func (f *fileHandler) readPlaceholdersAndMarkers(cfg *RuntimeConfig) error {
 	}
 
 	// Calculate ELF offset once
-	var elfEndOffset uint32
 	for _, prog := range elfFile.Progs {
 		end := uint32(prog.Off + prog.Filesz)
-		if end > elfEndOffset {
-			elfEndOffset = end
+		if end > cfg.elfFileSize {
+			cfg.elfFileSize = end
 		}
 	}
-	cfg.elfFileSize = elfEndOffset
 
 	// Reuse the slice to avoid allocation
-	f.data = f.data[elfEndOffset:]
+	f.data = f.data[cfg.elfFileSize:]
 
 	lines := strings.Split(string(f.data), "\n")
 
 	var staticToolsFound, staticToolsEndFound, archiveMarkerFound bool
-	currentOffset := elfEndOffset
+	currentOffset := cfg.elfFileSize
 
 	for _, line := range lines {
 		lineLen := uint32(len(line) + 1) // Include newline
@@ -203,7 +198,7 @@ func (f *fileHandler) readPlaceholdersAndMarkers(cfg *RuntimeConfig) error {
 		currentOffset += lineLen
 	}
 
-	if !staticToolsFound || !archiveMarkerFound || !archiveMarkerFound {
+	if !archiveMarkerFound || !staticToolsFound || !staticToolsEndFound {
 		return fmt.Errorf("markers not found: archiveOffset=%d, staticToolsOffset=%d, staticToolsEndOffset=%d", cfg.archiveOffset, cfg.staticToolsOffset, cfg.staticToolsEndOffset)
 	}
 
@@ -388,7 +383,7 @@ func (f *fileHandler) extractStaticTools(cfg *RuntimeConfig) error {
 	}
 
 	// Calculate the length of the static tools section
-	staticToolsLength := int64(cfg.staticToolsEndOffset - cfg.staticToolsOffset)
+	staticToolsLength := cfg.staticToolsEndOffset - cfg.staticToolsOffset
 
 	// Read the static tools section into a buffer
 	staticToolsData := make([]byte, staticToolsLength)
@@ -446,9 +441,9 @@ func (f *fileHandler) extractStaticTools(cfg *RuntimeConfig) error {
 	}
 
 	// Discard any remaining data after the static tools section
-	//if _, err := io.CopyN(io.Discard, f.file, int64(uint32(len(f.data))-cfg.staticToolsEndOffset)); err != nil {
-	//	return fmt.Errorf("failed to discard remaining data: %w", err)
-	//}
+	if _, err := io.CopyN(io.Discard, f.file, int64(len(f.data)-int(cfg.staticToolsEndOffset))); err != nil {
+		return fmt.Errorf("failed to discard remaining data: %w", err)
+	}
 
 	return nil
 }
@@ -503,24 +498,19 @@ func executeFile(args []string, cfg *RuntimeConfig) error {
 	os.Setenv("SELF", cfg.selfPath)
 	os.Setenv("ARGV0", filepath.Base(os.Args[0]))
 
-	if _, err := os.Stat(cfg.entrypoint); err != nil {
-		if path, err := exec.LookPath(cfg.entrypoint); err == nil {
-			cfg.entrypoint = path
-		} else {
-			return fmt.Errorf("executable %s does not exist and cannot be found in PATH", cfg.entrypoint)
-		}
+	executableFile, err := lookPath(cfg.entrypoint, os.Getenv("PATH"))
+	if err != nil {
+		return fmt.Errorf("Unable to find the location of %s: %v", cfg.entrypoint, err)
 	}
 
-	cmd := exec.Command(cfg.entrypoint, args...)
+	cmd := exec.Command(executableFile, args...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	cmd.Run()
-
-	return nil
+	return cmd.Run()
 }
 
-func updatePath(envVar, dirs string) {
+func updatePath(envVar, dirs string) string {
 	overtakePath := os.Getenv(fmt.Sprintf("PBUNDLE_OVERTAKE_%s", envVar)) == "1"
 	currentPath := os.Getenv(envVar)
 
@@ -532,6 +522,7 @@ func updatePath(envVar, dirs string) {
 	}
 
 	os.Setenv(envVar, newPath)
+	return newPath
 }
 
 func handleRuntimeFlags(args *[]string, cfg *RuntimeConfig) error {
@@ -584,10 +575,10 @@ func handleRuntimeFlags(args *[]string, cfg *RuntimeConfig) error {
 			return fmt.Errorf("missing binary argument for --pbundle_link")
 		}
 		cfg.entrypoint = (*args)[1]
-		*args = (*args)[1:]
-		if err := executeFile(*args, cfg); err != nil {
-			logError("Failed to execute file", err, cfg)
-		}
+		*args = (*args)[2:]
+
+		executeFile(*args, cfg)
+
 		return fmt.Errorf("!no_return")
 
 	case "--pbundle_pngIcon":
@@ -622,10 +613,9 @@ func cleanup(cfg *RuntimeConfig) {
 	cmd.Stdin = nil
 	cmd.Stdout = nil
 	cmd.Stderr = nil
-
 	// Start the command as a non-blocking background process
 	if err := cmd.Start(); err != nil {
-		panic("unable to proceed, a failure in cleanup(). Somehow.")
+		panic(err)
 	}
 }
 
@@ -684,6 +674,7 @@ func findAndEncodeFiles(dir, pattern string, cfg *RuntimeConfig) error {
 }
 
 func main() {
+	/* Cleanup logic */
 	if len(os.Args) > 1 && os.Args[1] == "--pbundle_internal_Cleanup" {
 		if len(os.Args) < 5 {
 			logError("Invalid number of arguments for --pbundle_internal_Cleanup", nil, nil)
@@ -714,6 +705,7 @@ func main() {
 
 		os.Exit(0)
 	}
+	/* End of Cleanup logic */
 
 	cfg, fh, err := initConfig()
 	if err != nil {
@@ -746,9 +738,7 @@ func main() {
 		}
 	}
 
-	if err := executeFile(args, cfg); err != nil {
-		logError("Failed to execute file", err, cfg)
-	}
+	executeFile(args, cfg)
 }
 
 // Helpers:
@@ -758,4 +748,39 @@ func generateRandomString(length int) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(bytes), nil
+}
+// Similar to os/exec.LookPath except we pass in the PATH
+func lookPath(file string, pathenv string) (string, error) {
+	errNotFound := fmt.Errorf("executable file not found in $PATH")
+	if strings.Contains(file, "/") {
+		err := isExecutableFile(file)
+		if err == nil {
+			return file, nil
+		}
+		return "", err
+	}
+	if pathenv == "" {
+		return "", errNotFound
+	}
+	for _, dir := range strings.Split(pathenv, ":") {
+		if dir == "" {
+			// Unix shell semantics: path element "" means "."
+			dir = "."
+		}
+		path := dir + "/" + file
+		if err := isExecutableFile(path); err == nil {
+			return path, nil
+		}
+	}
+	return "", errNotFound
+}
+func isExecutableFile(file string) error {
+	d, err := os.Stat(file)
+	if err != nil {
+		return err
+	}
+	if m := d.Mode(); !m.IsDir() && m&0111 != 0 {
+		return nil
+	}
+	return os.ErrPermission
 }
