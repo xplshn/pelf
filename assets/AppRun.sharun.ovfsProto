@@ -27,7 +27,7 @@ else
 fi
 
 oPATH="$PATH"
-PATH="${SELF_TEMPDIR}/bin:${PROTO}/usr/local/bin:${PROTO}/sbin:${PROTO}/bin:${PROTO}/usr/bin:${PROTO}/usr/sbin"
+PATH="${SELF_TEMPDIR}/bin:${PROTO}/usr/local/bin:${PROTO}/sbin:${PROTO}/bin:${PROTO}/usr/bin:${PROTO}/usr/sbin:${PROTO}/usr/lib/x86_64-linux-gnu"
 
 if [ "$NOSHARUN" = 1 ]; then
     if [ -z "$LD_LIBRARY_PATH" ]; then
