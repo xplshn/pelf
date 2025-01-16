@@ -143,7 +143,7 @@ create_appdir() {
 	APPBUNDLE_ID="$NAME-$DATE-$MAINTAINER"
 	APPDIR="$NAME-$DATE.AppDir"
 	OUTPUT_TO="${OUTPUT_TO:-$NAME-$DATE.dwfs.AppBundle}"
-	COMPRESSION_OPTS="${COMPRESSION_OPTS:=-l7 -C zstd:level=22 --metadata-compression null -S 19 -B 8 --order nilsimsa -W 12 -w 4}"
+	COMPRESSION_OPTS="${COMPRESSION_OPTS:=-l7 --metadata-compression null}"
 
 	mkdir -p "$APPDIR/usr/bin" "$APPDIR/proto"
 	echo "${0##*/} $ARGS" >"$APPDIR/.genSteps" && chmod +x "$APPDIR/.genSteps"
@@ -190,7 +190,7 @@ pkg_add() {
 	fi
 	chmod +x "$APPDIR/AppRun"
 
-	_command="--Xbwrap --uid 0 --gid 0 -- apk -X \"https://dl-cdn.alpinelinux.org/alpine/edge/main\" -X \"https://dl-cdn.alpinelinux.org/alpine/edge/community\" -X \"https://dl-cdn.alpinelinux.org/alpine/edge/testing\" -U --allow-untrusted --no-cache --no-interactive --initdb add \"$PKG_ADD\""
+	_command="--Xbwrap --uid 0 --gid 0 -- apk -X \"https://dl-cdn.alpinelinux.org/alpine/edge/main\" -X \"https://dl-cdn.alpinelinux.org/alpine/edge/community\" -X \"https://dl-cdn.alpinelinux.org/alpine/edge/testing\" -U --allow-untrusted --no-cache --no-interactive add \"$PKG_ADD\""
 
 	if [ -f "$LOCAL_PATH/pkgadd.sh" ]; then
 	    _command="!disabled"

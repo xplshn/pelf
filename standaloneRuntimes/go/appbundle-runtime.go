@@ -59,8 +59,6 @@ type fileHandler struct {
 	file *os.File
 }
 
-var binaryPaths = make(map[string]string) // Map to store full paths of binaries
-
 // Filesystem-specific commands and extraction logic
 var filesystemCommands = map[string][]string{
 	fsTypeSquashfs: {"squashfuse", "fusermount3"},
@@ -103,7 +101,7 @@ func mountImage(cfg *RuntimeConfig, fh *fileHandler) error {
 }
 
 func buildSquashFSCmd(cfg *RuntimeConfig) *exec.Cmd {
-	return exec.Command(binaryPaths["squashfuse"],
+	return exec.Command("squashfuse",
 		"-o", "ro,nodev,noatime",
 		"-o", fmt.Sprintf("uid=%d,gid=%d", uint8(syscall.Getuid()), uint8(syscall.Getgid())),
 		"-o", fmt.Sprintf("offset=%d", cfg.archiveOffset),
@@ -113,7 +111,7 @@ func buildSquashFSCmd(cfg *RuntimeConfig) *exec.Cmd {
 }
 
 func buildDwarFSCmd(cfg *RuntimeConfig) *exec.Cmd {
-	return exec.Command(binaryPaths["dwarfs"],
+	return exec.Command("dwarfs",
 		"-o", "ro,nodev,noatime,auto_unmount",
 		"-o", "cache_files,no_cache_image,clone_fd",
 		"-o", fmt.Sprintf("cachesize=%s", getEnvWithDefault("DWARFS_CACHESIZE", DWARFS_CACHESIZE)),
@@ -154,6 +152,8 @@ func newFileHandler(path string) (*fileHandler, error) {
 }
 
 func (f *fileHandler) readPlaceholdersAndMarkers(cfg *RuntimeConfig) error {
+	//start := time.Now() //DBG
+
 	elfFile, err := elf.NewFile(bytes.NewReader(f.data))
 	if err != nil {
 		return fmt.Errorf("parse ELF: %w", err)
@@ -225,6 +225,7 @@ func (f *fileHandler) readPlaceholdersAndMarkers(cfg *RuntimeConfig) error {
 			cfg.exeName, cfg.pelfVersion, cfg.pelfHost, cfg.appBundleFS)
 	}
 
+	//logWarning(fmt.Sprintf("<readPlaceholdersAndMarkers> took: %s", time.Since(start))) //DBG
 	return nil
 }
 
@@ -296,7 +297,7 @@ func getWorkDir(cfg *RuntimeConfig) string {
 		if err != nil {
 			logError("Failed to generate random string for workDir", err, cfg)
 		}
-		workDir = cfg.poolDir + "/pbundle_" + fmt.Sprintf("%d%s%s", os.Getpid(), randomString, cfg.rExeName)
+		workDir = cfg.poolDir + "/pbundle_" + fmt.Sprintf("%s_%d_%s", cfg.rExeName, os.Getpid(), randomString)
 	}
 
 	return workDir
@@ -327,10 +328,7 @@ func checkFuse(cfg *RuntimeConfig, fh *fileHandler) error {
 	}
 
 	for _, cmd := range requiredCmds {
-		if path, err := cmdExists(cmd); err == nil {
-			binaryPaths[cmd] = path
-		} else {
-			cfg.staticToolsDir = cfg.workDir + "/static/" + getSystemArchString()
+			cfg.staticToolsDir = cfg.workDir + "/static/"
 			if err := os.MkdirAll(cfg.staticToolsDir, 0755); err != nil {
 				return fmt.Errorf("failed to create static tools directory: %v", err)
 			}
@@ -338,42 +336,12 @@ func checkFuse(cfg *RuntimeConfig, fh *fileHandler) error {
 			if err := fh.extractStaticTools(cfg); err != nil {
 				return fmt.Errorf("failed to extract static tools: %v", err)
 			}
-
-			if path, err := cmdExists(cmd); err == nil {
-				binaryPaths[cmd] = path
-			} else {
+			if _, err := lookPath(cmd, updatePath("PATH", cfg.staticToolsDir)); err != nil {
 				return fmt.Errorf("unable to find [%v] in the user's $PATH or extracted tools", cmd)
 			}
-		}
 	}
 
 	return nil
-}
-
-// Check if a given command exists in the users' $PATH or was extracted and made available by extractStaticTools()
-func cmdExists(cmd string) (string, error) {
-	// First, check if the command exists in the system's PATH
-	if path, err := exec.LookPath(cmd); err == nil {
-		return path, nil
-	}
-
-	// Fallback: check if the command exists in our custom map
-	if path, exists := binaryPaths[cmd]; exists {
-		if _, err := os.Stat(path); err == nil {
-			return path, nil
-		}
-	}
-
-	return "", fmt.Errorf("unable to find [%v] in the user's $PATH", cmd)
-}
-
-func getSystemArchString() string {
-	cmd := exec.Command("uname", "-om")
-	output, err := cmd.Output()
-	if err != nil {
-		return "unknown"
-	}
-	return strings.ReplaceAll(strings.ReplaceAll(strings.TrimSpace(string(output)), " ", "_"), "/", "")
 }
 
 func (f *fileHandler) extractStaticTools(cfg *RuntimeConfig) error {
@@ -436,7 +404,6 @@ func (f *fileHandler) extractStaticTools(cfg *RuntimeConfig) error {
 			if _, err := io.Copy(f, tr); err != nil {
 				return fmt.Errorf("write: %w", err)
 			}
-			binaryPaths[filepath.Base(fpath)] = fpath
 		}
 	}
 
@@ -511,14 +478,11 @@ func executeFile(args []string, cfg *RuntimeConfig) error {
 }
 
 func updatePath(envVar, dirs string) string {
-	overtakePath := os.Getenv(fmt.Sprintf("PBUNDLE_OVERTAKE_%s", envVar)) == "1"
-	currentPath := os.Getenv(envVar)
-
 	var newPath string
-	if overtakePath {
-		newPath = dirs + ":" + currentPath
+	if os.Getenv(fmt.Sprintf("PBUNDLE_OVERTAKE_%s", envVar)) == "1" {
+		newPath = dirs + ":" + os.Getenv(envVar)
 	} else {
-		newPath = currentPath + ":" + dirs
+		newPath = os.Getenv(envVar) + ":" + dirs
 	}
 
 	os.Setenv(envVar, newPath)
@@ -559,7 +523,6 @@ func handleRuntimeFlags(args *[]string, cfg *RuntimeConfig) error {
 		if err := os.MkdirAll(homeDir, 0755); err != nil {
 			return err
 		}
-		determineHome(cfg)
 		return fmt.Errorf("!no_return")
 
 	case "--pbundle_portableConfig":
@@ -567,7 +530,6 @@ func handleRuntimeFlags(args *[]string, cfg *RuntimeConfig) error {
 		if err := os.MkdirAll(configDir, 0755); err != nil {
 			return err
 		}
-		determineHome(cfg)
 		return fmt.Errorf("!no_return")
 
 	case "--pbundle_link":
@@ -577,7 +539,7 @@ func handleRuntimeFlags(args *[]string, cfg *RuntimeConfig) error {
 		cfg.entrypoint = (*args)[1]
 		*args = (*args)[2:]
 
-		executeFile(*args, cfg)
+		_ = executeFile(*args, cfg)
 
 		return fmt.Errorf("!no_return")
 
@@ -727,6 +689,8 @@ func main() {
 		logError("Failed to mount image", err, cfg)
 	}
 
+	determineHome(cfg)
+
 	args := os.Args[1:]
 	if len(args) >= 1 {
 		if err := handleRuntimeFlags(&args, cfg); err != nil {
@@ -738,7 +702,7 @@ func main() {
 		}
 	}
 
-	executeFile(args, cfg)
+	_ = executeFile(args, cfg)
 }
 
 // Helpers:

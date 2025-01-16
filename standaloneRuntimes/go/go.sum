@@ -1,5 +1,5 @@
-github.com/emmansun/base64 v0.6.1 h1:THUTqvCxCJCY5WK9WjKWn3ENQVR5dBy6pa/g2Mq+w7A=
-github.com/emmansun/base64 v0.6.1/go.mod h1:AtnMNgXa+wmecniocMquyzvkI7R0Ql27zY2IYzDOaic=
+github.com/emmansun/base64 v0.6.2 h1:Qd/W1hAs9kzcWmBozAOhlxFrjnZQR2dBN4og7WMInFs=
+github.com/emmansun/base64 v0.6.2/go.mod h1:EjgM1HylRQjG1oaIMsF6+CzHsBCrTBm36890foTOELY=
 github.com/klauspost/compress v1.17.11 h1:In6xLpyWOi1+C7tXUUWv2ot1QvBjxevKAaI6IXrJmUc=
 github.com/klauspost/compress v1.17.11/go.mod h1:pMDklpSncoRMuLFrf1W9Ss9KT+0rH90U12bZKk7uwG0=
 golang.org/x/sys v0.28.0 h1:Fksou7UEQUWlKvIdsqzJmUmCX3cZuD2+P3XyyzwMhlA=
