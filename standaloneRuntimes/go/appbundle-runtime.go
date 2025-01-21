@@ -2,6 +2,7 @@ package main
 
 import (
 	"archive/tar"
+	"bufio"
 	"bytes"
 	"debug/elf"
 	"encoding/hex"
@@ -26,11 +27,9 @@ const (
 	blueColor    = "\x1b[0;34m"
 	resetColor   = "\x1b[0m"
 
-	// Filesystem types
 	fsTypeSquashfs = "squashfs"
 	fsTypeDwarfs   = "dwarfs"
 
-	// Dwarfs default options:
 	DWARFS_CACHESIZE = "256M"
 	DWARFS_BLOCKSIZE = "256K"
 )
@@ -43,10 +42,10 @@ type RuntimeConfig struct {
 	entrypoint           string
 	selfPath             string
 	staticToolsDir       string
-	exeName              string // Will be populated with the value of "__APPBUNDLE_ID__: " as found within the file
-	pelfHost             string // Will be populated with the value of "__PELF_HOST__: " as found within the file
-	pelfVersion          string // Will be populated with the value of "__PELF_VERSION__: " as found within the file
-	appBundleFS          string // Will be populated with the value of "__APPBUNDLE_FS__: " as found within the file
+	exeName              string
+	pelfHost             string
+	pelfVersion          string
+	appBundleFS          string
 	staticToolsOffset    uint
 	archiveOffset        uint
 	staticToolsEndOffset uint
@@ -55,11 +54,9 @@ type RuntimeConfig struct {
 
 type fileHandler struct {
 	path string
-	data []byte
 	file *os.File
 }
 
-// Filesystem-specific commands and extraction logic
 var filesystemCommands = map[string][]string{
 	fsTypeSquashfs: {"squashfuse", "fusermount3"},
 	fsTypeDwarfs:   {"dwarfs", "fusermount3"},
@@ -70,7 +67,6 @@ var filesystemMountCmdBuilders = map[string]func(*RuntimeConfig) *exec.Cmd{
 	fsTypeDwarfs:   buildDwarFSCmd,
 }
 
-// mountFS handles mounting both squashfs and dwarfs filesystems
 func mountImage(cfg *RuntimeConfig, fh *fileHandler) error {
 	if err := checkFuse(cfg, fh); err != nil {
 		return err
@@ -129,37 +125,15 @@ func newFileHandler(path string) (*fileHandler, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open file: %w", err)
 	}
-
-	// Read the file in chunks
-	const chunkSize = 4096
-	data := make([]byte, 0, chunkSize)
-	buffer := make([]byte, chunkSize)
-	for {
-		n, err := file.Read(buffer)
-		if n > 0 {
-			data = append(data, buffer[:n]...)
-		}
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			file.Close()
-			return nil, fmt.Errorf("read file: %w", err)
-		}
-	}
-
-	return &fileHandler{path: path, data: data, file: file}, nil
+	return &fileHandler{path: path, file: file}, nil
 }
 
 func (f *fileHandler) readPlaceholdersAndMarkers(cfg *RuntimeConfig) error {
-	//start := time.Now() //DBG
-
-	elfFile, err := elf.NewFile(bytes.NewReader(f.data))
+	elfFile, err := elf.NewFile(f.file)
 	if err != nil {
 		return fmt.Errorf("parse ELF: %w", err)
 	}
 
-	// Calculate ELF offset once
 	for _, prog := range elfFile.Progs {
 		end := uint(prog.Off + prog.Filesz)
 		if end > cfg.elfFileSize {
@@ -167,19 +141,26 @@ func (f *fileHandler) readPlaceholdersAndMarkers(cfg *RuntimeConfig) error {
 		}
 	}
 
-	// Reuse the slice to avoid allocation
-	f.data = f.data[cfg.elfFileSize:]
+	if _, err := f.file.Seek(int64(cfg.elfFileSize), io.SeekStart); err != nil {
+		return fmt.Errorf("seek to ELF end: %w", err)
+	}
 
-	lines := strings.Split(string(f.data), "\n")
-
+	reader := bufio.NewReader(f.file)
 	var staticToolsFound, staticToolsEndFound, archiveMarkerFound bool
 	currentOffset := cfg.elfFileSize
 
-	for _, line := range lines {
-		lineLen := uint(len(line) + 1) // Include newline
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil && err != io.EOF {
+			return fmt.Errorf("read line: %w", err)
+		}
+		if err == io.EOF {
+			break
+		}
+
+		lineLen := uint(len(line))
 		trimmedLine := strings.TrimSpace(line)
 
-		// Each of these markers is followed by a newline, we want the offset of the line AFTER these markers. (except for the end marker of static tools)
 		switch trimmedLine {
 		case "__STATIC_TOOLS__":
 			cfg.staticToolsOffset = currentOffset + lineLen
@@ -202,8 +183,19 @@ func (f *fileHandler) readPlaceholdersAndMarkers(cfg *RuntimeConfig) error {
 		return fmt.Errorf("markers not found: archiveOffset=%d, staticToolsOffset=%d, staticToolsEndOffset=%d", cfg.archiveOffset, cfg.staticToolsOffset, cfg.staticToolsEndOffset)
 	}
 
-	// Parse remaining data for placeholders
-	for _, line := range lines {
+	if _, err := f.file.Seek(int64(cfg.elfFileSize), io.SeekStart); err != nil {
+		return fmt.Errorf("seek to ELF end: %w", err)
+	}
+
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil && err != io.EOF {
+			return fmt.Errorf("read line: %w", err)
+		}
+		if err == io.EOF {
+			break
+		}
+
 		if cfg.exeName == "" && strings.HasPrefix(line, "__APPBUNDLE_ID__: ") {
 			cfg.exeName = strings.TrimSpace(strings.TrimPrefix(line, "__APPBUNDLE_ID__: "))
 		} else if strings.HasPrefix(line, "__PELF_VERSION__: ") {
@@ -214,7 +206,6 @@ func (f *fileHandler) readPlaceholdersAndMarkers(cfg *RuntimeConfig) error {
 			cfg.appBundleFS = strings.TrimSpace(strings.TrimPrefix(line, "__APPBUNDLE_FS__: "))
 		}
 
-		// Exit early if all placeholders are found
 		if cfg.exeName != "" && cfg.pelfVersion != "" && cfg.pelfHost != "" && cfg.appBundleFS != "" {
 			break
 		}
@@ -225,7 +216,6 @@ func (f *fileHandler) readPlaceholdersAndMarkers(cfg *RuntimeConfig) error {
 			cfg.exeName, cfg.pelfVersion, cfg.pelfHost, cfg.appBundleFS)
 	}
 
-	//logWarning(fmt.Sprintf("<readPlaceholdersAndMarkers> took: %s", time.Since(start))) //DBG
 	return nil
 }
 
@@ -345,21 +335,16 @@ func checkFuse(cfg *RuntimeConfig, fh *fileHandler) error {
 }
 
 func (f *fileHandler) extractStaticTools(cfg *RuntimeConfig) error {
-	// Seek to the start of the static tools section
 	if _, err := f.file.Seek(int64(cfg.staticToolsOffset), io.SeekStart); err != nil {
 		return fmt.Errorf("failed to seek to static tools: %w", err)
 	}
 
-	// Calculate the length of the static tools section
 	staticToolsLength := cfg.staticToolsEndOffset - cfg.staticToolsOffset
-
-	// Read the static tools section into a buffer
 	staticToolsData := make([]byte, staticToolsLength)
 	if _, err := io.ReadFull(f.file, staticToolsData); err != nil {
 		return fmt.Errorf("failed to read static tools section: %w", err)
 	}
 
-	// Decode base64 in-place to minimize allocations
 	decodedSize := base64.StdEncoding.DecodedLen(len(staticToolsData))
 	decodedData := make([]byte, decodedSize)
 	n, err := base64.StdEncoding.Decode(decodedData, staticToolsData)
@@ -368,14 +353,12 @@ func (f *fileHandler) extractStaticTools(cfg *RuntimeConfig) error {
 	}
 	decodedData = decodedData[:n]
 
-	// Single gzip reader from memory buffer
 	gz, err := gzip.NewReader(bytes.NewReader(decodedData))
 	if err != nil {
 		return fmt.Errorf("gzip init: %w", err)
 	}
 	defer gz.Close()
 
-	// Process tar entries sequentially
 	tr := tar.NewReader(gz)
 	for {
 		hdr, err := tr.Next()
@@ -405,11 +388,6 @@ func (f *fileHandler) extractStaticTools(cfg *RuntimeConfig) error {
 				return fmt.Errorf("write: %w", err)
 			}
 		}
-	}
-
-	// Discard any remaining data after the static tools section
-	if _, err := io.CopyN(io.Discard, f.file, int64(len(f.data)-int(cfg.staticToolsEndOffset))); err != nil {
-		return fmt.Errorf("failed to discard remaining data: %w", err)
 	}
 
 	return nil
@@ -459,7 +437,6 @@ func executeFile(args []string, cfg *RuntimeConfig) error {
 	os.Setenv(cfg.rExeName+"_mountDir", cfg.mountDir)
 
 	updatePath("PATH", binDirs)
-	// updatePath("LD_LIBRARY_PATH", libDirs)
 
 	os.Setenv("SELF_TEMPDIR", cfg.mountDir)
 	os.Setenv("SELF", cfg.selfPath)
@@ -511,7 +488,7 @@ func handleRuntimeFlags(args *[]string, cfg *RuntimeConfig) error {
 				return err
 			}
 			fmt.Println(path)
-			return nil // Continue walking the directory
+			return nil
 		})
 		if err != nil {
 			return fmt.Errorf("%v", err)
@@ -571,11 +548,9 @@ func handleRuntimeFlags(args *[]string, cfg *RuntimeConfig) error {
 
 func cleanup(cfg *RuntimeConfig) {
 	cmd := exec.Command(os.Args[0], "--pbundle_internal_Cleanup", cfg.mountDir, cfg.poolDir, cfg.workDir)
-	// Discard/disable std{out,err,in}
 	cmd.Stdin = nil
 	cmd.Stdout = nil
 	cmd.Stderr = nil
-	// Start the command as a non-blocking background process
 	if err := cmd.Start(); err != nil {
 		panic(err)
 	}
@@ -636,7 +611,6 @@ func findAndEncodeFiles(dir, pattern string, cfg *RuntimeConfig) error {
 }
 
 func main() {
-	/* Cleanup logic */
 	if len(os.Args) > 1 && os.Args[1] == "--pbundle_internal_Cleanup" {
 		if len(os.Args) < 5 {
 			logError("Invalid number of arguments for --pbundle_internal_Cleanup", nil, nil)
@@ -645,10 +619,8 @@ func main() {
 		poolDir := os.Args[3]
 		workDir := os.Args[4]
 
-		// Perform cleanup tasks
 		for i := 0; i < 5; i++ {
 			if !isMounted(mountDir) {
-				//logWarning("No longer mounted!")
 				break
 			}
 			cmd := exec.Command("fusermount3", "-u", mountDir)
@@ -667,7 +639,6 @@ func main() {
 
 		os.Exit(0)
 	}
-	/* End of Cleanup logic */
 
 	cfg, fh, err := initConfig()
 	if err != nil {
@@ -705,7 +676,6 @@ func main() {
 	_ = executeFile(args, cfg)
 }
 
-// Helpers:
 func generateRandomString(length int) (string, error) {
 	bytes := make([]byte, length)
 	if _, err := rand.Read(bytes); err != nil {
@@ -713,7 +683,7 @@ func generateRandomString(length int) (string, error) {
 	}
 	return hex.EncodeToString(bytes), nil
 }
-// Similar to os/exec.LookPath except we pass in the PATH
+
 func lookPath(file string, pathenv string) (string, error) {
 	errNotFound := fmt.Errorf("executable file not found in $PATH")
 	if strings.Contains(file, "/") {
@@ -728,7 +698,6 @@ func lookPath(file string, pathenv string) (string, error) {
 	}
 	for _, dir := range strings.Split(pathenv, ":") {
 		if dir == "" {
-			// Unix shell semantics: path element "" means "."
 			dir = "."
 		}
 		path := dir + "/" + file
@@ -738,6 +707,7 @@ func lookPath(file string, pathenv string) (string, error) {
 	}
 	return "", errNotFound
 }
+
 func isExecutableFile(file string) error {
 	d, err := os.Stat(file)
 	if err != nil {
