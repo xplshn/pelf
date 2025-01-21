@@ -187,7 +187,7 @@ fi
 
 	# Create a DWFS archive of the executable, libraries and additional files
 
-	[ -n "$_VAR_COMPRESS_ARG" ] || _VAR_COMPRESS_ARG="-l7 -C zstd:level=22 --metadata-compression null" # --max-lookback-blocks=5 --block-size-bits=18 --compression zstd:level=22 # --max-lookback-blocks=5 --no-history --categorize=pcmaudio --compression pcmaudio/waveform::flac:level=8:exhaustive #_VAR_COMPRESS_ARG="--max-lookback-blocks=5 --categorize=pcmaudio --compression pcmaudio/waveform::flac:level=8"
+	[ -n "$_VAR_COMPRESS_ARG" ] || _VAR_COMPRESS_ARG="-l7 --metadata-compression null" # --max-lookback-blocks=5 --block-size-bits=18 --compression zstd:level=22 # --max-lookback-blocks=5 --no-history --categorize=pcmaudio --compression pcmaudio/waveform::flac:level=8:exhaustive #_VAR_COMPRESS_ARG="--max-lookback-blocks=5 --categorize=pcmaudio --compression pcmaudio/waveform::flac:level=8"
 	# shellcheck disable=SC2086
 	if ! mkdwarfs --set-owner 0 --set-group 0 --no-create-timestamp --no-history --input "$_VAR_APPDIR" --output "$_VAR_WORKDIR/archive.dwfs" --progress=ascii $_VAR_COMPRESS_ARG; then
 		error "Compression failed"
@@ -285,15 +285,16 @@ check_fuse() {
 # Mount the DwarFS archive from an offset in the script
 mount_dwarfs() {
 	check_fuse
-	# Mount the embedded DwarFS archive using the offset
+	# Mount the embedded DwarFS archive/image
 	if [ ! -f "${_VAR_BWORK_DIR}/.dwarfs.log" ]; then
 		mkdir -p "$_VAR_MOUNT_DIR" && {
-			dwarfs -o offset="auto",ro,auto_unmount "$SELF" "$_VAR_MOUNT_DIR" >"${_VAR_BWORK_DIR}/.dwarfs.log" 2>&1 || {
+			dwarfs -o offset="auto" -o ro -o auto_unmount -o cachesize="${DWARFS_CACHESIZE:-"256M"}" -o blocksize="${DWARFS_BLOCKSIZE:-"256K"}" -o workers="${DWARFS_WORKERS:-$(nproc)}" "$SELF" "$_VAR_MOUNT_DIR" >"${_VAR_BWORK_DIR}/.dwarfs.log" 2>&1 || {
 				log "ERROR: Failed to mount DwarFS archive."
 				log "W: DEBUG INFO:"
 				log "  \$0 is set to $0"
 				log "  The realpath to \$0 is $SELF"
-				exit 1
+				log "Hint: Is the fuse3 kernel module loaded?"
+				error "Unable to continue without a mounted AppDir"
 			}
 		}
 	fi
@@ -549,7 +550,8 @@ embed_static_tools() {
 
 	# Append the marker and the tar archive to the output file
 	printf "\n__STATIC_TOOLS__\n" >>"$_VAR_OUT_FILE" || error "Failed to write marker (TAR) to output file"
-	base64 <"$_VAR_WORKDIR/static.tgz" >>"$_VAR_OUT_FILE" || error "Failed to append TAR archive to output file"
+	base64 <"$_VAR_WORKDIR/static.tgz" >>"$_VAR_OUT_FILE" || error "Failed to append (TAR) archive to output file"
+	printf "__STATIC_TOOLS_EOF__\n">>"$_VAR_OUT_FILE" || error "Failed to write end marker (TAR) to output file"
 }
 
 [ -n "$EMBED_STATIC_TOOLS" ] && embed_static_tools
