@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"math/rand"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"pgregory.net/rand"                  // Drop-in replacement of "math/rand". (SIMD optimized)
 	"github.com/emmansun/base64"         // Drop-in replacement of "encoding/base64". (SIMD optimized)
 	"github.com/klauspost/compress/gzip" // Drop-in replacement of "compress/gzip" (SIMD optimized)
 )
@@ -47,10 +47,10 @@ type RuntimeConfig struct {
 	pelfHost             string // Will be populated with the value of "__PELF_HOST__: " as found within the file
 	pelfVersion          string // Will be populated with the value of "__PELF_VERSION__: " as found within the file
 	appBundleFS          string // Will be populated with the value of "__APPBUNDLE_FS__: " as found within the file
-	staticToolsOffset    uint32
-	archiveOffset        uint32
-	staticToolsEndOffset uint32
-	elfFileSize          uint32
+	staticToolsOffset    uint
+	archiveOffset        uint
+	staticToolsEndOffset uint
+	elfFileSize          uint
 }
 
 type fileHandler struct {
@@ -161,7 +161,7 @@ func (f *fileHandler) readPlaceholdersAndMarkers(cfg *RuntimeConfig) error {
 
 	// Calculate ELF offset once
 	for _, prog := range elfFile.Progs {
-		end := uint32(prog.Off + prog.Filesz)
+		end := uint(prog.Off + prog.Filesz)
 		if end > cfg.elfFileSize {
 			cfg.elfFileSize = end
 		}
@@ -176,7 +176,7 @@ func (f *fileHandler) readPlaceholdersAndMarkers(cfg *RuntimeConfig) error {
 	currentOffset := cfg.elfFileSize
 
 	for _, line := range lines {
-		lineLen := uint32(len(line) + 1) // Include newline
+		lineLen := uint(len(line) + 1) // Include newline
 		trimmedLine := strings.TrimSpace(line)
 
 		// Each of these markers is followed by a newline, we want the offset of the line AFTER these markers. (except for the end marker of static tools)
@@ -328,17 +328,17 @@ func checkFuse(cfg *RuntimeConfig, fh *fileHandler) error {
 	}
 
 	for _, cmd := range requiredCmds {
-			cfg.staticToolsDir = cfg.workDir + "/static/"
-			if err := os.MkdirAll(cfg.staticToolsDir, 0755); err != nil {
-				return fmt.Errorf("failed to create static tools directory: %v", err)
-			}
+		cfg.staticToolsDir = cfg.workDir + "/static/"
+		if err := os.MkdirAll(cfg.staticToolsDir, 0755); err != nil {
+			return fmt.Errorf("failed to create static tools directory: %v", err)
+		}
 
-			if err := fh.extractStaticTools(cfg); err != nil {
-				return fmt.Errorf("failed to extract static tools: %v", err)
-			}
-			if _, err := lookPath(cmd, updatePath("PATH", cfg.staticToolsDir)); err != nil {
-				return fmt.Errorf("unable to find [%v] in the user's $PATH or extracted tools", cmd)
-			}
+		if err := fh.extractStaticTools(cfg); err != nil {
+			return fmt.Errorf("failed to extract static tools: %v", err)
+		}
+		if _, err := lookPath(cmd, updatePath("PATH", cfg.staticToolsDir)); err != nil {
+			return fmt.Errorf("unable to find [%v] in the user's $PATH or extracted tools", cmd)
+		}
 	}
 
 	return nil
