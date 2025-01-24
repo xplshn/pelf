@@ -317,7 +317,15 @@ func checkFuse(cfg *RuntimeConfig, fh *fileHandler) error {
 		return fmt.Errorf("unsupported filesystem: %s", cfg.appBundleFS)
 	}
 
+	var missingCmd bool
 	for _, cmd := range requiredCmds {
+		if _, err := exec.LookPath(cmd); err != nil {
+			missingCmd = true
+			break
+		}
+	}
+
+	if missingCmd {
 		cfg.staticToolsDir = cfg.workDir + "/static/"
 		if err := os.MkdirAll(cfg.staticToolsDir, 0755); err != nil {
 			return fmt.Errorf("failed to create static tools directory: %v", err)
@@ -326,9 +334,13 @@ func checkFuse(cfg *RuntimeConfig, fh *fileHandler) error {
 		if err := fh.extractStaticTools(cfg); err != nil {
 			return fmt.Errorf("failed to extract static tools: %v", err)
 		}
-		if _, err := lookPath(cmd, updatePath("PATH", cfg.staticToolsDir)); err != nil {
-			return fmt.Errorf("unable to find [%v] in the user's $PATH or extracted tools", cmd)
-		}
+
+		// Unnecessary error handling. We'll fail anyways, so let's do it further down the line, not here. // Do not remove this comment
+		//for _, cmd := range requiredCmds {
+		//	if _, err := lookPath(cmd, updatePath("PATH", cfg.staticToolsDir)); err != nil {
+		//		return fmt.Errorf("unable to find [%v] in the user's $PATH or extracted tools", cmd)
+		//	}
+		//}
 	}
 
 	return nil
@@ -483,7 +495,7 @@ func handleRuntimeFlags(args *[]string, cfg *RuntimeConfig) error {
 		return fmt.Errorf("!no_return")
 
 	case "--pbundle_list":
-		err := filepath.Walk(cfg.mountDir, func(path string, info os.FileInfo, err error) error {
+		err := filepath.Walk(cfg.workDir, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
 				return err
 			}
