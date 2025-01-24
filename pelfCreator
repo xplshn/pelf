@@ -5,7 +5,7 @@ unset ARGV0 ARGS LD_PRELOAD LD_LIBRARY_PATH
 
 print_help() {
 	cat <<EOF
-Usage: $0 [|-m|-n|-p|-e|-r|-c|-z|-x|-o|] <|-v|-h|>
+Usage: $(basename "$0") [|-m|-n|-p|-e|-z|-x|-s|-k|-r|-o|--local|--custom-runtime|] <|-v|-h|>
 
 Options:
    -m, --maintainer   Set the maintainer (required)
@@ -15,10 +15,12 @@ Options:
    -z, --dontpack     Disables .dwfs.AppBundle packaging, thus leaving only the AppDir
    -x, --sharun       Processes the desired binaries with lib4bin and adds sharun. Then, it ditches the rootfs and only keeps the files specified with '-k'
    -s, --sandbox      Enable sandbox mode (uses AppRun.rootfs-based)
-   -k, --keep         Moves these directories to the appdir's ./proto, this is for use with -x, to conserve the files a program may need while also removing the rest of the rootfs
+   -k, --keep         Only keeps the given files from the AppDir/proto (rootfs)
+   -r, --getrid       Removes only the given from the AppDir/proto (rootfs)
+   -j, --pelf-edition It should be set to the name of the pelf-* edition you want to use, by default, it is "dwfs", it can be set to sqfs if you have pelf-sqfs installed
    -o, --output-to    Set the output file name (optional, default: <name>-<date>.dwfs.AppBundle)
-   --local            A directory from which to pick up files such as 'AppRun.sharun', 'rootfs.tgz', 'pelf-dwfs', 'bwrap', etc
-   --custom-runtime   Same as pelf-dwfs's option, it must point to a valid executable file that will be used as runtime for the generated AppBundle
+   --local            A directory from which to pick up files such as 'AppRun.sharun', 'rootfs.tgz', 'pelf-$APPBUNDLE_FS', 'bwrap', etc
+   --custom-runtime   Same as pelf-*fs' option, it must point to a valid executable file that will be used as runtime for the generated AppBundle
    -h, --help         Display this help and exit
 
 ENV:
@@ -37,7 +39,7 @@ EOF
 }
 
 parse_arguments() {
-	ARGS=$(getopt -o m:n:p:e:x:k:r:o:sz -l maintainer:,name:,pkg-add:,entrypoint:,sharun:,keep:,getrid:,output:,local:,custom-runtime:,sandbox,dontpack,help -- "$@") || {
+	ARGS=$(getopt -o m:n:p:e:x:k:r:j:o:sz -l maintainer:,name:,pkg-add:,entrypoint:,sharun:,keep:,getrid:,pelf-edition:,output:,local:,custom-runtime:,sandbox,dontpack,help -- "$@") || {
 		echo "Failed to parse arguments." >&2
 		exit 1
 	}
@@ -83,6 +85,10 @@ parse_arguments() {
 			GETRID_FILES="$2"
 			shift 2
 			;;
+		-j | --pelf-edition)
+		    APPBUNDLE_FS="$2"
+		    shift 2
+		    ;;
 		-o | --output-to)
 			OUTPUT_TO="$2"
 			shift 2
@@ -96,6 +102,7 @@ parse_arguments() {
 			shift 2
 			if [ ! -f "$_VAR_CUSTOM_RUNTIME" ]; then
 			    echo "Error: --custom-runtime: invalid runtime, not a file" >&2
+			    exit 1
 			fi
 			;;
 		-h | --help)
@@ -142,8 +149,7 @@ create_appdir() {
 	DATE="$(date +%d_%m_%Y)"
 	APPBUNDLE_ID="$NAME-$DATE-$MAINTAINER"
 	APPDIR="$NAME-$DATE.AppDir"
-	OUTPUT_TO="${OUTPUT_TO:-$NAME-$DATE.dwfs.AppBundle}"
-	COMPRESSION_OPTS="${COMPRESSION_OPTS:=-l7 --metadata-compression null}"
+	OUTPUT_TO="${OUTPUT_TO:-$NAME-$DATE.$APPBUNDLE_FS.AppBundle}"
 
 	mkdir -p "$APPDIR/usr/bin" "$APPDIR/proto"
 	echo "${0##*/} $ARGS" >"$APPDIR/.genSteps" && chmod +x "$APPDIR/.genSteps"
@@ -404,14 +410,16 @@ upx_static_tools() {
 }
 
 create_bundle() {
-	printf 'pelf-dwfs --add-appdir "%s" --appbundle-id "%s" --output-to "%s" --embed-static-tools --compression "%s"\n' "$APPDIR" "$APPBUNDLE_ID" "$OUTPUT_TO" "$COMPRESSION_OPTS" >"$APPDIR/.gen"
+	printf 'pelf-%s --add-appdir "%s" --appbundle-id "%s" --output-to "%s" --embed-static-tools\n' "$APPBUNDLE_FS" "$APPDIR" "$APPBUNDLE_ID" "$OUTPUT_TO" >"$APPDIR/.gen"
 	chmod +x "$APPDIR/.gen"
 	if [ "$DONTPACK" != "1" ]; then
-		# Either download or use the local pelf-dwfs
-		if [ -f "$LOCAL_PATH/pelf-dwfs" ]; then
-			"$LOCAL_PATH/pelf-dwfs" --add-appdir "$APPDIR" --appbundle-id "$APPBUNDLE_ID" --output-to "$OUTPUT_TO" --embed-static-tools --compression "$COMPRESSION_OPTS"
+		# Either download or use the local pelf-$APPBUNDLE_FS
+		if [ -f "$LOCAL_PATH/pelf-$APPBUNDLE_FS" ]; then
+			"$LOCAL_PATH/pelf-$APPBUNDLE_FS" --add-appdir "$APPDIR" --appbundle-id "$APPBUNDLE_ID" --output-to "$OUTPUT_TO" --embed-static-tools
+		elif command -v "pelf-$APPBUNDLE_FS" >/dev/null 2>&1; then
+		    "$APPDIR/.gen"
 		else
-			if ! wget -qO- "https://raw.githubusercontent.com/xplshn/pelf/refs/heads/pelf-ng/pelf-dwfs" | sh -s -- --add-appdir "$APPDIR" --appbundle-id "$APPBUNDLE_ID" --output-to "$OUTPUT_TO" --embed-static-tools --compression "$COMPRESSION_OPTS"; then
+			if ! wget -qO- "https://raw.githubusercontent.com/xplshn/pelf/refs/heads/pelf-ng/pelf-$APPBUNDLE_FS" | sh -s -- --add-appdir "$APPDIR" --appbundle-id "$APPBUNDLE_ID" --output-to "$OUTPUT_TO" --embed-static-tools; then
 				echo "Final packaging failed"
 				exit 1
 			fi
@@ -427,7 +435,8 @@ require() {
 }
 
 main() {
-    require "pelf-dwfs" "wget"
+    APPBUNDLE_FS="dwfs"
+    require "wget"
 	parse_arguments "$@"
 	check_required_arguments
 	setup_local_path
