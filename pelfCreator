@@ -435,8 +435,8 @@ require() {
 }
 
 main() {
-    APPBUNDLE_FS="dwfs"
-    require "wget"
+        APPBUNDLE_FS="${APPBUNDLE_FS:-dwfs}"
+        require "wget"
 	parse_arguments "$@"
 	check_required_arguments
 	setup_local_path
