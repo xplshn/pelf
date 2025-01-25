@@ -26,19 +26,19 @@ print_help() {
 Usage: $0 [options]
 
 Options:
-  --output-to=[filepath.sqfs.AppBundle]  Specify the output file name for the bundle.
-  --compression=[MKSQUASHFS_COMP_OPTS]    Specify compression flags for mksquashfs.
-  --add-appdir=[directory.AppDir]        Add an AppDir.
-  --appbundle-id=[AppBundleID]           Specify the ID of the AppBundle.
-  --embed-static-tools                   Embed static tools into the bundle.
-  --static-tools-dir=[directory]         Specify a custom directory from which to get the static tools.
+  --output-to=[filepath.sqfs.AppBundle]  Specify the output file name for the bundle
+  --compression=[MKSQUASHFS_COMP_OPTS]   Specify compression flags for mksquashfs
+  --add-appdir=[directory.AppDir]        Add an AppDir
+  --appbundle-id=[AppBundleID]           Specify the ID of the AppBundle
+  --embed-static-tools                   Embed static tools into the bundle
+  --static-tools-dir=[directory]         Specify a custom directory from which to get the static tools
   --retrieve-runtime=[filepath]          Output the runtime to a file and exit
   --custom-runtime=[filepath]            Lets you specify which runtime shall be used
-  --no-upx                               Disables usage of UPX compression in the static tools.
-  --help                                 Display this help and exit.
+  --no-upx                               Disables usage of UPX compression in the static tools
+  --help                                 Display this help and exit
 
 Examples:
-  $0 --add-appdir=/path/to/appdir --appbundle-id=myapp-date-myInternetNickName --output-to=mybundle.AppBundle --compression="--max-lookback-blocks=5 --no-history --compression zstd:level=22"
+  $0 --add-appdir=/path/to/appdir --appbundle-id=myapp-date-myInternetNickName --output-to=mybundle.AppBundle --compression="-comp zstd -Xcompression-level 15"
 Notes:
   - pelf-sqfs is a utility for creating self-contained SQFS bundles.
   - For more information, visit https://github.com/xplshn/pelf
@@ -345,8 +345,7 @@ main() {
         exit 1
         ;;
     --pbundle_link)
-        # NOTE: This would be under execute_file, except LD_LIBRARY_PATH MUSTN'T be set when using an AppRun, but we do need this var in order to run a binary manually
-        if [ "$PELF_NO_LD_VAR" != "1" ]; then
+        if [ "$PELF_LD_VAR" = "1" ]; then
             if [ -z "$LD_LIBRARY_PATH" ]; then
                 LD_LIBRARY_PATH="$_LIB_DIRs"
             else

@@ -449,6 +449,9 @@ func executeFile(args []string, cfg *RuntimeConfig) error {
 	os.Setenv(cfg.rExeName+"_mountDir", cfg.mountDir)
 
 	updatePath("PATH", binDirs)
+	if os.Getenv("PELF_LD_VAR") == "1" {
+		updatePath("LD_LIBRARY_PATH", binDirs)
+	}
 
 	os.Setenv("SELF_TEMPDIR", cfg.mountDir)
 	os.Setenv("SELF", cfg.selfPath)
@@ -468,7 +471,9 @@ func executeFile(args []string, cfg *RuntimeConfig) error {
 
 func updatePath(envVar, dirs string) string {
 	var newPath string
-	if os.Getenv(fmt.Sprintf("PBUNDLE_OVERTAKE_%s", envVar)) == "1" {
+	if os.Getenv(envVar) == "" {
+		newPath = dirs
+	} else if os.Getenv(fmt.Sprintf("PBUNDLE_OVERTAKE_%s", envVar)) == "1" {
 		newPath = dirs + ":" + os.Getenv(envVar)
 	} else {
 		newPath = os.Getenv(envVar) + ":" + dirs
@@ -527,9 +532,7 @@ func handleRuntimeFlags(args *[]string, cfg *RuntimeConfig) error {
 		}
 		cfg.entrypoint = (*args)[1]
 		*args = (*args)[2:]
-
 		_ = executeFile(*args, cfg)
-
 		return fmt.Errorf("!no_return")
 
 	case "--pbundle_pngIcon":
