@@ -345,8 +345,7 @@ main() {
         exit 1
         ;;
     --pbundle_link)
-        # NOTE: This would be under execute_file, except LD_LIBRARY_PATH MUSTN'T be set when using an AppRun, but we do need this var in order to run a binary manually
-        if [ "$PELF_NO_LD_VAR" != "1" ]; then
+        if [ "$PELF_LD_VAR" = "1" ]; then
             if [ -z "$LD_LIBRARY_PATH" ]; then
                 LD_LIBRARY_PATH="$_LIB_DIRs"
             else
