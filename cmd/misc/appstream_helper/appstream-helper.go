@@ -146,9 +146,9 @@ type Components struct {
 }
 
 // extractAppstreamId extracts the potential appstream ID from the AppBundle filename
-func extractAppstreamId(filename string) string {
-	// Remove .dwfs.AppBundle suffix
-	name := strings.TrimSuffix(filename, ".dwfs.AppBundle")
+func extractAppstreamId(filename, pelfEdition string) string {
+	// Remove .pelfEdition.AppBundle suffix
+	name := strings.TrimSuffix(filename, fmt.Sprintf(".%s.AppBundle", pelfEdition))
 
 	// Remove date pattern (expects -DD_MM_YYYY)
 	re := regexp.MustCompile(`-\d{2}_\d{2}_\d{4}$`)
@@ -205,6 +205,7 @@ func main() {
 	componentsXML := flag.String("components-xml", "", "Path to components XML file")
 	metadataPrefix := flag.String("metadata-prefix", "https://github.com/xplshn/AppBundleHUB/releases/download/latest_metadata/", "Prefix for metadata URLs")
 	downloadURLPrefix := flag.String("download-url-prefix", "https://github.com/xplshn/AppBundleHUB/releases/download/", "Prefix for download URLs")
+	pelfEdition := flag.String("pelf-edition", "dwfs", "The suffix used to detect the AppBundles")
 	flag.Parse()
 
 	if *inputDir == "" || *outputDir == "" || *outputJSON == "" || *componentsXML == "" {
@@ -243,7 +244,7 @@ func main() {
 
 		if !info.IsDir() && strings.HasSuffix(path, ".AppBundle") {
 			appBundleBasename := filepath.Base(path)
-			potentialId := extractAppstreamId(appBundleBasename)
+			potentialId := extractAppstreamId(appBundleBasename, *pelfEdition)
 
 			// Look for matching component
 			matchingComponent := findComponentById(&components, potentialId)

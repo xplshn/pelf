@@ -23,7 +23,7 @@ log() {
 # Function to display usage/help information
 print_help() {
     cat <<EOF
-Usage: $0 [options]
+Usage: $(basename "$0") [options]
 
 Options:
   --output-to=[filepath.sqfs.AppBundle]  Specify the output file name for the bundle
@@ -38,7 +38,7 @@ Options:
   --help                                 Display this help and exit
 
 Examples:
-  $0 --add-appdir=/path/to/appdir --appbundle-id=myapp-date-myInternetNickName --output-to=mybundle.AppBundle --compression="-comp zstd -Xcompression-level 15"
+  $(basename "$0") --add-appdir=/path/to/appdir --appbundle-id=myapp-date-myInternetNickName --output-to=mybundle.AppBundle --compression="-comp zstd -Xcompression-level 15"
 Notes:
   - pelf-sqfs is a utility for creating self-contained SQFS bundles.
   - For more information, visit https://github.com/xplshn/pelf
