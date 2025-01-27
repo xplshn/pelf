@@ -240,11 +240,11 @@ error() {
 # Check if squashfs is available
 check_fuse() {
     # Check if squashfuse AND fusermount is available in the system PATH
-    if command -v squashfuse >/dev/null && command -v fusermount3 >/dev/null; then
+    if command -v squashfuse >/dev/null && command -v fusermount >/dev/null; then
         return
     fi
 
-    # If either squashfuse or fusermount3 aren't available, check if they are bundled in the script
+    # If either squashfuse or fusermount aren't available, check if they are bundled in the script
     __STATIC_TOOLS_ARCHIVE_MARKER=$(awk '/^__STATIC_TOOLS__/ { print NR + 1; exit }' "$0") || error "Failed to locate static tools marker in the script."
 
     if [ -z "$__STATIC_TOOLS_ARCHIVE_MARKER" ]; then
@@ -262,8 +262,8 @@ check_fuse() {
     # Add the extracted tools to PATH
     PATH="$PATH:$_VAR_STATIC_TOOLS_DIR" || error "Failed to update PATH with the extracted tools."
 
-    # Check again if either squashfuse or fusermount3 is available
-    if command -v squashfuse >/dev/null || command -v fusermount3 >/dev/null; then
+    # Check again if either squashfuse or fusermount is available
+    if command -v squashfuse >/dev/null || command -v fusermount >/dev/null; then
         return
     fi
     error "Neither squashfuse nor fusermount are available in the system and were not found in the bundled archive."
@@ -485,12 +485,12 @@ embed_static_tools() {
         fi
 
         # Copy the tools from the custom embed directory
-        if ! cp "$_VAR_CUSTOM_EMBED_DIR/fusermount3" "$_VAR_CUSTOM_EMBED_DIR/squashfuse" "$_VAR_STATIC_TOOLS_DIR"; then
+        if ! cp "$_VAR_CUSTOM_EMBED_DIR/fusermount" "$_VAR_CUSTOM_EMBED_DIR/squashfuse" "$_VAR_STATIC_TOOLS_DIR"; then
             error "Failed to copy static tools from custom embed directory"
         fi
     else
         # Copy static tools using `which`
-        if ! cp "$(which fusermount3)" "$(which squashfuse)" "$_VAR_STATIC_TOOLS_DIR"; then
+        if ! cp "$(which fusermount)" "$(which squashfuse)" "$_VAR_STATIC_TOOLS_DIR"; then
             error "Failed to copy static tools"
         fi
     fi
