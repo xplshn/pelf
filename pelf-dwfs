@@ -269,7 +269,7 @@ check_fuse() {
 	# Ensure the directory for extracted tools exists
 	mkdir -p "$_VAR_STATIC_TOOLS_DIR" || error "Failed to create directory $_VAR_STATIC_TOOLS_DIR"
 
-	# Extract the bundled tar archive
+	# Extract the bundled tar archive # NOTICE: Beware of bsdtar sucking, because it comes from FreeBSD
 	tail -n +"$__STATIC_TOOLS_ARCHIVE_MARKER" "$0" | base64 -d 2>/dev/null | tar -xzf - -C "$_VAR_STATIC_TOOLS_DIR" || error "Failed to extract tar archive."
 
 	# Add the extracted tools to PATH
