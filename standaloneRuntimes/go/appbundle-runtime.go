@@ -481,17 +481,31 @@ func updatePath(envVar, dirs string) string {
 func handleRuntimeFlags(args *[]string, cfg *RuntimeConfig) error {
 	switch (*args)[0] {
 	case "--pbundle_help":
-		fmt.Printf("This bundle was generated automatically by PELF %s, the machine on which it was created has the following \"uname -mrsp(v)\":\n %s \n", cfg.pelfVersion, cfg.pelfHost)
-		fmt.Printf("Internal variables:\n")
+		fmt.Printf("This bundle was generated automatically by PELF %s, the machine on which it was created has the following \"uname -mrsp(v)\":\n %s\n\n", cfg.pelfVersion, cfg.pelfHost)
+		fmt.Printf("  Internal variables:\n")
 		fmt.Printf("  cfg.exeName: %s%s%s\n", blueColor, cfg.exeName, resetColor)
 		fmt.Printf("  cfg.rExeName: %s%s%s\n", blueColor, cfg.rExeName, resetColor)
 		fmt.Printf("  cfg.mountDir: %s%s%s\n", blueColor, cfg.mountDir, resetColor)
 		fmt.Printf("  cfg.workDir: %s%s%s\n", blueColor, cfg.workDir, resetColor)
-		fmt.Println("Usage: <|--pbundle_help|--pbundle_list|--pbundle_link <binary>|--pbundle_pngIcon|--pbundle_svgIcon|--pbundle_desktop|--pbundle_appstream|--pbundle_portableHome|--pbundle_portableConfig|>")
-		fmt.Println(`
-        NOTE: EXE_NAME is the AppBundleID -> rEXE_NAME is the same, but sanitized to be used as a variable name
-        NOTE: The -v option in uname may have not been saved, to allow for reproducibility (since uname -v will output the current date)
-        NOTE: This runtime was made in Go. It is not the default runtime used by pelf-dwfs`)
+		fmt.Printf("  cfg.appBundleFS: %s%s%s\n", blueColor, cfg.appBundleFS, resetColor)
+		fmt.Printf(`
+  Flags:
+  --pbundle_help: Needs no introduction
+  --pbundle_list: List the contens of the AppBundle (including the static files that aren't part of the AppDir)
+  --pbundle_link <binary>: Executes a given command, while leveraging the env variables of the AppBundle, including $PATH
+                           You can use this flag to execute commands within the AppBundle
+                           example: --pbundle_link sh -c "ls \$SELF_TEMPDIR" ; It'd output the contents of this AppBundle's AppDir
+  --pbundle_pngIcon: Sends to stdout the base64 encoded .DirIcon, exits with error number 1 if the .DirIcon does not exist
+  --pbundle_svgIcon: Sends to stdout the base64 encoded .DirIcon.svg, exits with error number 1 if the .DirIcon does not exist
+  --pbundle_appstream: Same as --pbundle_pngIcon but it uses the first .xml file it encounters on the top level of the AppDir
+  --pbundle_desktop: Same as --pbundle_pngIcon but it uses the first .desktop file it encounters on the top level of the AppDir
+  --pbundle_portableHome: Creates a directory in the same place as the AppBundle, which will be used as $HOME during subsequent runs
+  --pbundle_portableConfig: Creates a directory in the same place as the AppBundle, which will be used as $XDG_CONFIG_HOME during subsequent runs
+
+  NOTE: EXE_NAME is the AppBundleID -> rEXE_NAME is the same, but sanitized to be used as a variable name
+  NOTE: The -v option in uname may have not been saved, to allow for reproducibility (since uname -v will output the current date)
+  NOTE: This runtime is written in Go, it is not the default runtime used by pelf
+`)
 		return fmt.Errorf("!no_return")
 
 	case "--pbundle_list":
