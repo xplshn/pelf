@@ -410,9 +410,8 @@ main() {
 
     # Execute the specified file from the mounted directory
     execute_file() {
-        # Add directories to that do exists to the xPATH
-        [ -d "$_VAR_MOUNT_DIR/bin" ] && xPATH="${xPATH:+$xPATH:}$_VAR_MOUNT_DIR/bin"
-        [ -d "$_VAR_MOUNT_DIR/usr/bin" ] && xPATH="$_VAR_MOUNT_DIR/usr/bin"
+        # Add $_BIN_DIRs to the PATH
+        xPATH="$_BIN_DIRs"
         # Update PATH based on PBUNDLE_OVERTAKE_PATH
         if [ "$PBUNDLE_OVERTAKE_PATH" = 1 ]; then
             PATH="$xPATH${PATH:+:$PATH}"
