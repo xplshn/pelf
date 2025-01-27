@@ -187,7 +187,7 @@ fi
 
 	# Create a DWFS archive of the executable, libraries and additional files
 
-	[ -n "$_VAR_COMPRESS_ARG" ] || _VAR_COMPRESS_ARG="-l7 --metadata-compression null" # --max-lookback-blocks=5 --block-size-bits=18 --compression zstd:level=22 # --max-lookback-blocks=5 --no-history --categorize=pcmaudio --compression pcmaudio/waveform::flac:level=8:exhaustive #_VAR_COMPRESS_ARG="--max-lookback-blocks=5 --categorize=pcmaudio --compression pcmaudio/waveform::flac:level=8"
+	[ -n "$_VAR_COMPRESS_ARG" ] || _VAR_COMPRESS_ARG="-l7 --metadata-compression null --no-history --no-create-timestamp --set-owner 0 --set-group 0" # --max-lookback-blocks=5 --block-size-bits=18 --compression zstd:level=22 # --max-lookback-blocks=5 --no-history --categorize=pcmaudio --compression pcmaudio/waveform::flac:level=8:exhaustive #_VAR_COMPRESS_ARG="--max-lookback-blocks=5 --categorize=pcmaudio --compression pcmaudio/waveform::flac:level=8"
 	# shellcheck disable=SC2086
 	if ! mkdwarfs --set-owner 0 --set-group 0 --no-create-timestamp --no-history --input "$_VAR_APPDIR" --output "$_VAR_WORKDIR/archive.dwfs" --progress=ascii $_VAR_COMPRESS_ARG; then
 		error "Compression failed"
@@ -448,16 +448,15 @@ main() {
 
 	# Execute the specified file from the mounted directory
 	execute_file() {
-		# Add directories to that do exists to the xPATH
-		[ -d "$_VAR_MOUNT_DIR/bin" ] && xPATH="${xPATH:+$xPATH:}$_VAR_MOUNT_DIR/bin"
-		[ -d "$_VAR_MOUNT_DIR/usr/bin" ] && xPATH="$_VAR_MOUNT_DIR/usr/bin"
-		# Update PATH based on PBUNDLE_OVERTAKE_PATH
-		if [ "$PBUNDLE_OVERTAKE_PATH" = 1 ]; then
-			PATH="$xPATH${PATH:+:$PATH}"
-		else
-			PATH="${PATH:+$PATH:}$xPATH"
-		fi
-		export PATH
+        # Add $_BIN_DIRs to the PATH
+        xPATH="$_BIN_DIRs"
+        # Update PATH based on PBUNDLE_OVERTAKE_PATH
+        if [ "$PBUNDLE_OVERTAKE_PATH" = 1 ]; then
+            PATH="$xPATH${PATH:+:$PATH}"
+        else
+            PATH="${PATH:+$PATH:}$xPATH"
+        fi
+        export PATH
 
 		# Append to XDG_DATA_DIRS if it exists and we have ./share || ./usr/share directories
 		if [ -n "$XDG_DATA_DIRS" ]; then
