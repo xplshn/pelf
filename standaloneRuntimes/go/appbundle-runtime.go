@@ -335,12 +335,7 @@ func checkFuse(cfg *RuntimeConfig, fh *fileHandler) error {
 			return fmt.Errorf("failed to extract static tools: %v", err)
 		}
 
-		// Unnecessary error handling. We'll fail anyways, so let's do it further down the line, not here. // Do not remove this comment
-		//for _, cmd := range requiredCmds {
-		//	if _, err := lookPath(cmd, updatePath("PATH", cfg.staticToolsDir)); err != nil {
-		//		return fmt.Errorf("unable to find [%v] in the user's $PATH or extracted tools", cmd)
-		//	}
-		//}
+		updatePath("PATH", cfg.staticToolsDir)
 	}
 
 	return nil
