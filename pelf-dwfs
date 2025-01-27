@@ -187,7 +187,7 @@ fi
 
 	# Create a DWFS archive of the executable, libraries and additional files
 
-	[ -n "$_VAR_COMPRESS_ARG" ] || _VAR_COMPRESS_ARG="-l7 --metadata-compression null --no-history --no-create-timestamp --set-owner 0 --set-group 0" # --max-lookback-blocks=5 --block-size-bits=18 --compression zstd:level=22 # --max-lookback-blocks=5 --no-history --categorize=pcmaudio --compression pcmaudio/waveform::flac:level=8:exhaustive #_VAR_COMPRESS_ARG="--max-lookback-blocks=5 --categorize=pcmaudio --compression pcmaudio/waveform::flac:level=8"
+	[ -n "$_VAR_COMPRESS_ARG" ] || _VAR_COMPRESS_ARG="-l7 --metadata-compression null"
 	# shellcheck disable=SC2086
 	if ! mkdwarfs --set-owner 0 --set-group 0 --no-create-timestamp --no-history --input "$_VAR_APPDIR" --output "$_VAR_WORKDIR/archive.dwfs" --progress=ascii $_VAR_COMPRESS_ARG; then
 		error "Compression failed"
