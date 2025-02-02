@@ -393,7 +393,8 @@ tidyup() {
 	                 "$APPDIR/proto/etc/groups"           \
 	                 "$APPDIR/proto/etc/hosts"            \
 	                 "$APPDIR/proto/etc/nsswitch.conf"    \
-	                 "$APPDIR/proto/etc/resolv.conf"
+	                 "$APPDIR/proto/etc/resolv.conf"      \
+	                 "$APPDIR/proto/etc/asound.conf"
 
 	        mkdir -p "$APPDIR/proto/usr/share/fonts"      \
 	        		 "$APPDIR/proto/usr/share/fontconfig"
