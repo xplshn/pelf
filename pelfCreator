@@ -301,6 +301,7 @@ handle_desktop_file() {
 }
 
 select_structure_and_apprun() {
+    putDep "https://github.com/VHSgunzo/sharun/releases/latest/download/sharun-$(uname -m)-aio" "$APPDIR/sharun"
 	if [ "$SHARUN" = "1" ]; then
 		# Prepare the list of binaries to be kept
 		TOBEKEPT_BIN=""
@@ -318,8 +319,8 @@ select_structure_and_apprun() {
 		done
 
 		# shellcheck disable=SC2086 # Generate and execute lib4bin script
-		printf 'LD_LIBRARY_PATH="%s/proto/lib:%s/proto/usr/lib" lib4bin --dst-dir "%s"' "$APPDIR" "$APPDIR" "$APPDIR" >"$APPDIR/.genl4b"
-		echo " $TOBEKEPT_BIN" >>"$APPDIR/.genl4b"
+		printf 'LD_LIBRARY_PATH="%s/proto/lib:%s/proto/usr/lib" "%s/sharun" lib4bin --dst-dir "%s"' "$APPDIR" "$APPDIR" "$APPDIR" "$APPDIR" >"$APPDIR/.genl4b"
+		echo "$TOBEKEPT_BIN" >>"$APPDIR/.genl4b"
 		chmod +x "$APPDIR/.genl4b"
 
 		if "$APPDIR/.genl4b"; then
@@ -328,6 +329,8 @@ select_structure_and_apprun() {
 			"$APPDIR/sharun" -g
 			[ -z "$TOBEKEPT_FILES" ] && rm -rf "$APPDIR/proto" # SHARUN mode without Proto mode
 		fi
+        rm "$APPDIR/sharun"
+		putDep "https://github.com/VHSgunzo/sharun/releases/latest/download/sharun-$(uname -m)" "$APPDIR/sharun"
 	fi
 
 	if [ -n "$TOBEKEPT_FILES" ]; then
