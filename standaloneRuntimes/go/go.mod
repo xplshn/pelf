@@ -9,4 +9,4 @@ require (
 	pgregory.net/rand v1.0.2
 )
 
-require golang.org/x/sys v0.29.0 // indirect
+require golang.org/x/sys v0.30.0 // indirect

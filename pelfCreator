@@ -171,30 +171,48 @@ download_and_extract_rootfs() {
 	fi
 }
 
-add_bwrap() {
-	# Either download or copy bwrap
-	if [ -f "$LOCAL_PATH/bwrap" ]; then
-		cp "$LOCAL_PATH/bwrap" "$APPDIR/usr/bin/bwrap"
-	else
-		if ! wget -qO "$APPDIR/usr/bin/bwrap" "https://bin.ajam.dev/$(uname -m)/bwrap-patched"; then
-			echo "Unable to install bwrap."
+putDep() {
+	INPUT="$1"
+	MODE="$3"
+
+	BINPUT="$(basename "$INPUT")"
+	OUTPUT="${2:-$APPDIR/usr/bin/$BINPUT}"
+	oPATH="$PATH"
+	PATH="$LOCAL_PATH:$PATH"
+
+	if [ "$MODE" = "DBIN" ]; then
+		DBIN_INSTALL_DIR="$(dirname "$OUTPUT")" dbin add "$INPUT"
+	elif echo "$INPUT" | grep -q '^http'; then
+		if command -v wget >/dev/null 2>&1; then
+			wget -qO "$OUTPUT" "$INPUT"
+		elif command -v curl >/dev/null 2>&1; then
+			curl -sL -o "$OUTPUT" "$INPUT"
+		else
+			echo "ERR: Neither wget nor curl is available to download $INPUT"
 			exit 1
 		fi
+	elif BINARY="$(command -v "$INPUT" 2>/dev/null)"; then
+		if ldd "$BINARY" 2>/dev/null | grep -q "libc" || ! ldd "$BINARY" >/dev/null 2>&1; then
+			cp "$BINARY" "$OUTPUT"
+		else
+			echo "ERR: The binary $INPUT is not statically linked"
+			exit 1
+		fi
+	else
+		echo "ERR: $INPUT not found in PATH nor LOCAL_PATH"
+		exit 1
 	fi
-	chmod +x "$APPDIR/usr/bin/bwrap"
+
+	chmod +x "$OUTPUT"
+	PATH="$oPATH"
+}
+
+add_bwrap() {
+	putDep "bwrap-patched"
 }
 
 pkg_add() {
-	# Either download or copy initial AppRun
-	if [ -f "$LOCAL_PATH/AppRun.rootfs" ]; then
-		cp "$LOCAL_PATH/AppRun.rootfs" "$APPDIR/AppRun"
-	else
-		if ! wget -qO "$APPDIR/AppRun" https://raw.githubusercontent.com/xplshn/pelf/refs/heads/dev/assets/AppRun.rootfs-based; then
-			echo "Failed to download AppRun.rootfs-based"
-			exit 1
-		fi
-	fi
-	chmod +x "$APPDIR/AppRun"
+	putDep "https://raw.githubusercontent.com/xplshn/pelf/refs/heads/dev/assets/AppRun.rootfs-based" "$APPDIR/AppRun"
 
 	_command="--Xbwrap --uid 0 --gid 0 -- apk -X \"https://dl-cdn.alpinelinux.org/alpine/edge/main\" -X \"https://dl-cdn.alpinelinux.org/alpine/edge/community\" -X \"https://dl-cdn.alpinelinux.org/alpine/edge/testing\" -U --allow-untrusted --no-cache --no-interactive add \"$PKG_ADD\""
 
@@ -206,23 +224,14 @@ pkg_add() {
 	if [ -f "$LOCAL_PATH/pkgadd" ]; then
 		_command="$(cat "$LOCAL_PATH/pkgadd")"
 	fi
-	
+
 	echo "sh" >"$APPDIR/entrypoint"
 	[ "$_command" != "!disabled" ]  && eval env -i HOME="$HOME" PWD="$PWD" PATH="$PATH" "$APPDIR/AppRun" "$_command"
 
 	[ "$SANDBOX" = "1" ] && {
 		echo "/usr/local/bin/LAUNCH" >"$APPDIR/proto/usr/local/bin/default"
 		mkdir -p "$APPDIR/proto/usr/local/bin"
-		# Either download or copy LAUNCH (multicall helper for rootfs-based)
-		if [ -f "$LOCAL_PATH/LAUNCH" ]; then
-			cp "$LOCAL_PATH/LAUNCH" "$APPDIR/proto/usr/local/bin/LAUNCH"
-		else
-			if ! wget -qO "$APPDIR/proto/usr/local/bin/LAUNCH" "https://raw.githubusercontent.com/xplshn/pelf/refs/heads/pelf-ng/assets/LAUNCH-multicall.rootfs.entrypoint"; then
-				echo "Failed to download LAUNCH for multicall"
-				exit 1
-			fi
-		fi
-		chmod +x "$APPDIR/proto/usr/local/bin/LAUNCH"
+		putDep "https://raw.githubusercontent.com/xplshn/pelf/refs/heads/pelf-ng/assets/LAUNCH-multicall.rootfs.entrypoint" "$APPDIR/proto/usr/local/bin/LAUNCH"
 		chmod +x "$APPDIR/proto/usr/local/bin/default"
 	}
 }
@@ -232,7 +241,7 @@ create_entrypoint() {
         echo "Failed to create entrypoint file at \"$APPDIR/entrypoint\""
         exit 1
     }
-    
+
     chmod +x "$APPDIR/entrypoint" || {
         echo "Failed to make entrypoint executable"
         exit 1
@@ -250,12 +259,12 @@ handle_desktop_file() {
             ICON_NAME="$(awk -F"=" '/Icon/ {print $2; exit}' "$APPDIR/$ENTRYPOINT" 2>/dev/null)"
             # Modified awk command to better handle Exec= entries
             ENTRYPOINT="$(awk -F"=" '/^Exec=/ {sub("^Exec=", ""); print $1; exit}' "$APPDIR/$ENTRYPOINT" 2>/dev/null)"
-            
+
             if [ -z "$ENTRYPOINT" ]; then
                 echo "Failed to extract Exec entry from desktop file"
                 exit 1
             fi
-            
+
             create_entrypoint
 
             if [ -n "$ICON_NAME" ]; then
@@ -313,17 +322,8 @@ select_structure_and_apprun() {
 		echo " $TOBEKEPT_BIN" >>"$APPDIR/.genl4b"
 		chmod +x "$APPDIR/.genl4b"
 
-		# Either download or copy AppRun.sharun
 		if "$APPDIR/.genl4b"; then
-			if [ -f "$LOCAL_PATH/AppRun.sharun" ]; then
-				cp "$LOCAL_PATH/AppRun.sharun" "$APPDIR/AppRun"
-			else
-				if ! wget -qO "$APPDIR/AppRun" \
-					"https://raw.githubusercontent.com/xplshn/pelf/refs/heads/pelf-ng/assets/AppRun.sharun"; then
-					echo "Failed to download AppRun.sharun, unable to proceed with the NOROOTFS procedure"
-					exit 1
-				fi
-			fi
+			putDep "https://raw.githubusercontent.com/xplshn/pelf/refs/heads/pelf-ng/assets/AppRun.sharun" "$APPDIR/AppRun"
 			chmod +x "$APPDIR/AppRun"
 			"$APPDIR/sharun" -g
 			[ -z "$TOBEKEPT_FILES" ] && rm -rf "$APPDIR/proto" # SHARUN mode without Proto mode
@@ -349,27 +349,9 @@ select_structure_and_apprun() {
 	fi
     # Finalized AppDir/proto or AppDir/proto_trimmed
 
-	# Either download or copy unionfs
-	if [ -f "$LOCAL_PATH/unionfs" ]; then
-		cp "$LOCAL_PATH/unionfs" "$APPDIR/usr/bin/unionfs"
-	else
-		if ! wget -qO "$APPDIR/usr/bin/unionfs" \
-			"https://bin.pkgforge.dev/$(uname -m)/Baseutils/unionfs-fuse3/unionfs"; then
-			echo "Unable to install unionfs to $APPDIR/usr/bin/unionfs"
-			exit 1
-		fi
-	fi
-	chmod +x "$APPDIR/usr/bin/unionfs"
+	putDep "unionfs-fuse3/unionfs" "$APPDIR/usr/bin/unionfs" "DBIN"
 
-	# Either download or copy AppRun.sharun.ovfsProto
-	if [ -f "$LOCAL_PATH/AppRun.sharun.ovfsProto" ]; then
-		cp "$LOCAL_PATH/AppRun.sharun.ovfsProto" "$APPDIR/AppRun"
-	else
-		if ! wget -qO "$APPDIR/AppRun" "https://raw.githubusercontent.com/xplshn/pelf/refs/heads/pelf-ng/assets/AppRun.sharun.ovfsProto"; then
-			echo "Failed to download AppRun.sharun.ovfsProto, unable to proceed with the NOROOTFS procedure"
-			exit 1
-		fi
-	fi
+	putDep "https://raw.githubusercontent.com/xplshn/pelf/refs/heads/pelf-ng/assets/AppRun.sharun.ovfsProto" "$APPDIR/AppRun"
 	chmod +x "$APPDIR/AppRun"
 }
 
@@ -414,7 +396,6 @@ create_bundle() {
 	printf 'pelf-%s --add-appdir "%s" --appbundle-id "%s" --output-to "%s" --embed-static-tools\n' "$APPBUNDLE_FS" "$APPDIR" "$APPBUNDLE_ID" "$OUTPUT_TO" >"$APPDIR/.gen"
 	chmod +x "$APPDIR/.gen"
 	if [ "$DONTPACK" != "1" ]; then
-		# Either download or use the local pelf-$APPBUNDLE_FS
 		if [ -f "$LOCAL_PATH/pelf-$APPBUNDLE_FS" ]; then
 			"$LOCAL_PATH/pelf-$APPBUNDLE_FS" --add-appdir "$APPDIR" --appbundle-id "$APPBUNDLE_ID" --output-to "$OUTPUT_TO" --embed-static-tools
 		elif command -v "pelf-$APPBUNDLE_FS" >/dev/null 2>&1; then
