@@ -11,7 +11,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -31,7 +30,6 @@ const (
 	fsTypeDwarfs   = "dwarfs"
 
 	DWARFS_CACHESIZE = "256M"
-	DWARFS_BLOCKSIZE = "256K"
 )
 
 type RuntimeConfig struct {
@@ -58,7 +56,7 @@ type fileHandler struct {
 }
 
 var filesystemCommands = map[string][]string{
-	fsTypeSquashfs: {"squashfuse", "fusermount3"},
+	fsTypeSquashfs: {"squashfuse", "fusermount"},
 	fsTypeDwarfs:   {"dwarfs", "fusermount3"},
 }
 
@@ -99,7 +97,7 @@ func mountImage(cfg *RuntimeConfig, fh *fileHandler) error {
 func buildSquashFSCmd(cfg *RuntimeConfig) *exec.Cmd {
 	return exec.Command("squashfuse",
 		"-o", "ro,nodev,noatime",
-		"-o", fmt.Sprintf("uid=%d,gid=%d", uint8(syscall.Getuid()), uint8(syscall.Getgid())),
+		"-o", "uid=0,gid=0", // "-o", fmt.Sprintf("uid=%d,gid=%d", uint8(syscall.Getuid()), uint8(syscall.Getgid())),
 		"-o", fmt.Sprintf("offset=%d", cfg.archiveOffset),
 		cfg.selfPath,
 		cfg.mountDir,
@@ -111,8 +109,6 @@ func buildDwarFSCmd(cfg *RuntimeConfig) *exec.Cmd {
 		"-o", "ro,nodev,noatime,auto_unmount",
 		"-o", "cache_files,no_cache_image,clone_fd",
 		"-o", fmt.Sprintf("cachesize=%s", getEnvWithDefault("DWARFS_CACHESIZE", DWARFS_CACHESIZE)),
-		"-o", fmt.Sprintf("blocksize=%s", getEnvWithDefault("DWARFS_BLOCKSIZE", DWARFS_BLOCKSIZE)),
-		"-o", fmt.Sprintf("workers=%s", getEnvWithDefault("DWARFS_WORKERS", fmt.Sprintf("%d", runtime.NumCPU()))),
 		"-o", fmt.Sprintf("offset=%d", cfg.archiveOffset),
 		"-o", "debuglevel=error",
 		cfg.selfPath,
@@ -741,4 +737,12 @@ func isExecutableFile(file string) error {
 		return nil
 	}
 	return os.ErrPermission
+}
+
+// Ternary operator
+func T[T any](cond bool, vtrue, vfalse T) T {
+    if cond {
+        return vtrue
+    }
+    return vfalse
 }

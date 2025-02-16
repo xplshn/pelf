@@ -49,7 +49,7 @@ type Item struct {
 }
 
 type PackageList struct {
-	Pkg []Item `json:"pkg"`
+	Pkg []Item `json:"appbundlehub"`
 }
 
 type Provides struct {

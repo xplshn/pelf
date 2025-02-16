@@ -132,13 +132,13 @@ build_bwrap_options() {
 
     BWRAP_OPTIONS="--bind $BWROOTFS / 							\
         --share-net 											\
-        --dev-bind		/dev                /dev				\
-        --ro-bind-try		/run                /run				\
-        --ro-bind-try		/sys                /sys				\
-        --ro-bind-try		/tmp                /tmp				\
-        --ro-bind-try		/media              /media			 	\
-        --ro-bind-try		/mnt                /mnt 				\
-        --ro-bind-try		/home               /home				\
+        --dev-bind		/dev               /dev				    \
+        --ro-bind-try	/run               /run				    \
+        --ro-bind-try	/sys               /sys				    \
+        --ro-bind-try	/tmp               /tmp				    \
+        --ro-bind-try	/media             /media			 	\
+        --ro-bind-try	/mnt               /mnt 				\
+        --ro-bind-try	/home              /home				\
         --ro-bind-try	/etc/localtime     /etc/localtime 		\
         --ro-bind-try	/etc/machine-id    /etc/machine-id 		\
         --ro-bind-try	/etc/resolv.conf   /etc/resolv.conf 	\
@@ -148,7 +148,7 @@ build_bwrap_options() {
         --ro-bind-try	/etc/hosts         /etc/hosts 			\
         --ro-bind-try	/etc/nsswitch.conf /etc/nsswitch.conf	\
         --ro-bind-try	/etc/hostname      /etc/hostname 		\
-        --ro-bind-try		\"$SELF_TEMPDIR\"  /app 				\
+        --ro-bind-try	\"$SELF_TEMPDIR\"  /app 				\
         --setenv		SELF               \"$SELF\" 			\
         --setenv		SELF_TEMPDIR       \"$SELF_TEMPDIR\" 	\
         --setenv		BWROOTFS           \"$BWROOTFS\" 		\
@@ -187,7 +187,9 @@ build_bwrap_options() {
     if [ "$SHARE_AUDIO" = "1" ] && [ -n "$XDG_RUNTIME_DIR" ]; then
         for __E in "/etc/asound.conf" "$XDG_RUNTIME_DIR/pulse" "$XDG_RUNTIME_DIR/pipewire-0" "$XDG_RUNTIME_DIR/pipewire-0.lock" "$XDG_RUNTIME_DIR/pipewire-0-manager" "$XDG_RUNTIME_DIR/pipewire-0-manager.lock"; do
             if [ -f "$__E" ] || [ -d "$__E" ]; then
-                BWRAP_OPTIONS="$BWRAP_OPTIONS --ro-bind-try $__E $__E"
+                if [ -f "$BWROOTFS/$__E" ] || [ -d "$BWROOTFS/$__E" ]; then
+                    BWRAP_OPTIONS="$BWRAP_OPTIONS --ro-bind-try $__E $__E"
+                fi
             fi
         done
     fi
