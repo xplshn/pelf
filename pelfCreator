@@ -181,7 +181,11 @@ putDep() {
 	PATH="$LOCAL_PATH:$PATH"
 
 	if [ "$MODE" = "DBIN" ]; then
-		DBIN_INSTALL_DIR="$(dirname "$OUTPUT")" dbin add "$INPUT"
+	    if [ "$4" = "" ]; then
+		    DBIN_INSTALL_DIR="$(dirname "$OUTPUT")" dbin add "$INPUT"
+		else
+		    DBIN_INSTALL_DIR="$(dirname "$OUTPUT")" dbin add "$4"
+		fi
 	elif echo "$INPUT" | grep -q '^http'; then
 		if command -v wget >/dev/null 2>&1; then
 			wget -qO "$OUTPUT" "$INPUT"
@@ -208,7 +212,7 @@ putDep() {
 }
 
 add_bwrap() {
-	putDep "bwrap-patched"
+	putDep "bwrap-patched" "$APPDIR/usr/bin/bwrap" "DBIN" "bubblewrap/bwrap#github.com.containers.bubblewrap.patched"
 }
 
 pkg_add() {

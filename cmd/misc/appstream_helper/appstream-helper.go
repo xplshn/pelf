@@ -38,13 +38,13 @@ type Item struct {
 	Bsum            string   `json:"bsum,omitempty"`
 	Shasum          string   `json:"shasum,omitempty"`
 	BuildDate       string   `json:"build_date,omitempty"`
-	SrcURL          string   `json:"src_url,omitempty"`
-	Homepage        string   `json:"homepage,omitempty"`
+	SrcURLs         []string `json:"src_urls,omitempty"`
+	WebURLs         []string `json:"web_urls,omitempty"`
 	BuildScript     string   `json:"build_script,omitempty"`
 	BuildLog        string   `json:"build_log,omitempty"`
 	Category        string   `json:"category,omitempty"`
 	Keywords        string   `json:"keywords,omitempty"`
-	Note            string   `json:"note,omitempty"`
+	Notes           []string `json:"notes,omitempty"`
 	Appstream       string   `json:"appstream,omitempty"`
 }
 
@@ -334,15 +334,16 @@ func main() {
 }
 
 func ConvertComponentToItem(c Component) Item {
-	var downloadURL, srcURL, webURL string
+	var downloadURL string
+	var srcURLs, webURLs []string
 
 	// Extract URLs
 	for _, u := range c.Url {
 		switch u.Type {
 		case "source":
-			srcURL = sanitizeURL(u.Url)
+			srcURLs = append(srcURLs, sanitizeURL(u.Url))
 		case "homepage":
-			webURL = sanitizeURL(u.Url)
+			webURLs = append(webURLs, sanitizeURL(u.Url))
 		}
 	}
 
@@ -430,11 +431,11 @@ func ConvertComponentToItem(c Component) Item {
 		Screenshots:     screenshots,
 		Version:         version,
 		DownloadURL:     downloadURL,
-		SrcURL:          srcURL,
-		Homepage:        webURL,
+		SrcURLs:         srcURLs,
+		WebURLs:         webURLs,
 		Category:        categoryList,
 		Keywords:        keywordList,
-		Note:            "Courtesy of AppBundleHUB",
+		Notes:            []string{"Courtesy of AppBundleHUB"},
 	}
 }
 
