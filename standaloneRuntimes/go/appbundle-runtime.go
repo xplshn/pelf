@@ -10,14 +10,15 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
 
-	"pgregory.net/rand"                  // Drop-in replacement of "math/rand". (SIMD optimized)
-	"github.com/emmansun/base64"         // Drop-in replacement of "encoding/base64". (SIMD optimized)
-	"github.com/klauspost/compress/gzip" // Drop-in replacement of "compress/gzip" (SIMD optimized)
+	"github.com/emmansun/base64"
+	"github.com/klauspost/compress/gzip"
+	"pgregory.net/rand"
 )
 
 const (
@@ -48,6 +49,7 @@ type RuntimeConfig struct {
 	archiveOffset        uint
 	staticToolsEndOffset uint
 	elfFileSize          uint
+	doNotMount           bool
 }
 
 type fileHandler struct {
@@ -65,7 +67,15 @@ var filesystemMountCmdBuilders = map[string]func(*RuntimeConfig) *exec.Cmd{
 	fsTypeDwarfs:   buildDwarFSCmd,
 }
 
+var filesystemExtractCmdBuilders = map[string]func(*RuntimeConfig, string) *exec.Cmd{
+	fsTypeSquashfs: buildUnsquashFSCmd,
+	fsTypeDwarfs:   buildDwarfsExtractCmd,
+}
+
 func mountImage(cfg *RuntimeConfig, fh *fileHandler) error {
+	if cfg.doNotMount {
+		return nil
+	}
 	if err := checkFuse(cfg, fh); err != nil {
 		return err
 	}
@@ -94,10 +104,27 @@ func mountImage(cfg *RuntimeConfig, fh *fileHandler) error {
 	return nil
 }
 
+func extractImage(cfg *RuntimeConfig, fh *fileHandler, query string) error {
+	cmdBuilder, ok := filesystemExtractCmdBuilders[cfg.appBundleFS]
+	if !ok {
+		return fmt.Errorf("unsupported filesystem for extraction: %s", cfg.appBundleFS)
+	}
+
+	cmd := cmdBuilder(cfg, query)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		logWarning(fmt.Sprintf("Failed to extract %s archive: %v", cfg.appBundleFS, err))
+		logWarning(string(output))
+		return err
+	}
+
+	return nil
+}
+
 func buildSquashFSCmd(cfg *RuntimeConfig) *exec.Cmd {
 	return exec.Command("squashfuse",
 		"-o", "ro,nodev,noatime",
-		"-o", "uid=0,gid=0", // "-o", fmt.Sprintf("uid=%d,gid=%d", uint8(syscall.Getuid()), uint8(syscall.Getgid())),
+		"-o", "uid=0,gid=0",
 		"-o", fmt.Sprintf("offset=%d", cfg.archiveOffset),
 		cfg.selfPath,
 		cfg.mountDir,
@@ -106,13 +133,40 @@ func buildSquashFSCmd(cfg *RuntimeConfig) *exec.Cmd {
 
 func buildDwarFSCmd(cfg *RuntimeConfig) *exec.Cmd {
 	return exec.Command("dwarfs",
+		"-o", fmt.Sprintf("offset=%d", cfg.archiveOffset),
 		"-o", "ro,nodev,noatime,auto_unmount",
 		"-o", "cache_files,no_cache_image,clone_fd",
-		"-o", fmt.Sprintf("cachesize=%s", getEnvWithDefault("DWARFS_CACHESIZE", DWARFS_CACHESIZE)),
-		"-o", fmt.Sprintf("offset=%d", cfg.archiveOffset),
+		"-o", "cachesize=" + getEnvWithDefault("DWARFS_CACHESIZE", DWARFS_CACHESIZE),
 		"-o", "debuglevel=error",
 		cfg.selfPath,
 		cfg.mountDir,
+	)
+}
+
+func buildUnsquashFSCmd(cfg *RuntimeConfig, query string) *exec.Cmd {
+	args := []string{
+		"-d", cfg.mountDir,
+		"-o", fmt.Sprintf("%d", cfg.archiveOffset),
+		cfg.selfPath,
+	}
+
+	if query != "" {
+		filesToExtract := strings.Split(query, " ")
+		for _, file := range filesToExtract {
+			args = append(args, "-e", file)
+		}
+	}
+
+	return exec.Command("unsquashfs", args...)
+}
+func buildDwarfsExtractCmd(cfg *RuntimeConfig, query string) *exec.Cmd {
+	if query != "" {
+		logWarning(fmt.Sprintf("dwarfsextract cannot do a partial extraction. The following arguments will be ignored: %s", query))
+	}
+	return exec.Command("dwarfsextract",
+		"-o", cfg.mountDir,
+		"-O", fmt.Sprintf("%d", cfg.archiveOffset),
+		cfg.selfPath,
 	)
 }
 
@@ -230,6 +284,7 @@ func initConfig() (*RuntimeConfig, *fileHandler, error) {
 		exeName:  os.Getenv("EXE_NAME"),
 		poolDir:  filepath.Join(os.TempDir(), ".pelfbundles"),
 		selfPath: getSelfPath(),
+		doNotMount: T(os.Getenv("APPIMAGE_EXTRACT_AND_RUN") == "1" || os.Getenv("PBUNDLE_EXTRACT_AND_RUN") == "1", true, false),
 	}
 
 	fh, err := newFileHandler(cfg.selfPath)
@@ -474,100 +529,8 @@ func updatePath(envVar, dirs string) string {
 	return newPath
 }
 
-func handleRuntimeFlags(args *[]string, cfg *RuntimeConfig) error {
-	switch (*args)[0] {
-	case "--pbundle_help":
-		fmt.Printf("This bundle was generated automatically by PELF %s, the machine on which it was created has the following \"uname -mrsp(v)\":\n %s\n\n", cfg.pelfVersion, cfg.pelfHost)
-		fmt.Printf("  Internal variables:\n")
-		fmt.Printf("  cfg.exeName: %s%s%s\n", blueColor, cfg.exeName, resetColor)
-		fmt.Printf("  cfg.rExeName: %s%s%s\n", blueColor, cfg.rExeName, resetColor)
-		fmt.Printf("  cfg.mountDir: %s%s%s\n", blueColor, cfg.mountDir, resetColor)
-		fmt.Printf("  cfg.workDir: %s%s%s\n", blueColor, cfg.workDir, resetColor)
-		fmt.Printf("  cfg.appBundleFS: %s%s%s\n", blueColor, cfg.appBundleFS, resetColor)
-		fmt.Printf(`
-  Flags:
-  --pbundle_help: Needs no introduction
-  --pbundle_list: List the contens of the AppBundle (including the static files that aren't part of the AppDir)
-  --pbundle_link <binary>: Executes a given command, while leveraging the env variables of the AppBundle, including $PATH
-                           You can use this flag to execute commands within the AppBundle
-                           example: --pbundle_link sh -c "ls \$SELF_TEMPDIR" ; It'd output the contents of this AppBundle's AppDir
-  --pbundle_pngIcon: Sends to stdout the base64 encoded .DirIcon, exits with error number 1 if the .DirIcon does not exist
-  --pbundle_svgIcon: Sends to stdout the base64 encoded .DirIcon.svg, exits with error number 1 if the .DirIcon does not exist
-  --pbundle_appstream: Same as --pbundle_pngIcon but it uses the first .xml file it encounters on the top level of the AppDir
-  --pbundle_desktop: Same as --pbundle_pngIcon but it uses the first .desktop file it encounters on the top level of the AppDir
-  --pbundle_portableHome: Creates a directory in the same place as the AppBundle, which will be used as $HOME during subsequent runs
-  --pbundle_portableConfig: Creates a directory in the same place as the AppBundle, which will be used as $XDG_CONFIG_HOME during subsequent runs
-
-  NOTE: EXE_NAME is the AppBundleID -> rEXE_NAME is the same, but sanitized to be used as a variable name
-  NOTE: The -v option in uname may have not been saved, to allow for reproducibility (since uname -v will output the current date)
-  NOTE: This runtime is written in Go, it is not the default runtime used by pelf
-`)
-		return fmt.Errorf("!no_return")
-
-	case "--pbundle_list":
-		err := filepath.Walk(cfg.workDir, func(path string, info os.FileInfo, err error) error {
-			if err != nil {
-				return err
-			}
-			fmt.Println(path)
-			return nil
-		})
-		if err != nil {
-			return fmt.Errorf("%v", err)
-		}
-		return fmt.Errorf("!no_return")
-
-	case "--pbundle_portableHome":
-		homeDir := cfg.selfPath + ".home"
-		if err := os.MkdirAll(homeDir, 0755); err != nil {
-			return err
-		}
-		return fmt.Errorf("!no_return")
-
-	case "--pbundle_portableConfig":
-		configDir := cfg.selfPath + ".config"
-		if err := os.MkdirAll(configDir, 0755); err != nil {
-			return err
-		}
-		return fmt.Errorf("!no_return")
-
-	case "--pbundle_link":
-		if len(*args) < 2 {
-			return fmt.Errorf("missing binary argument for --pbundle_link")
-		}
-		cfg.entrypoint = (*args)[1]
-		*args = (*args)[2:]
-		_ = executeFile(*args, cfg)
-		return fmt.Errorf("!no_return")
-
-	case "--pbundle_pngIcon":
-		iconPath := cfg.mountDir + "/.DirIcon"
-		if _, err := os.Stat(iconPath); err == nil {
-			return encodeFileToBase64(iconPath)
-		}
-		logError("PNG icon not found", nil, cfg)
-
-	case "--pbundle_svgIcon":
-		iconPath := cfg.mountDir + "/.DirIcon.svg"
-		if _, err := os.Stat(iconPath); err == nil {
-			return encodeFileToBase64(iconPath)
-		}
-		logError("SVG icon not found", nil, cfg)
-
-	case "--pbundle_desktop":
-		return findAndEncodeFiles(cfg.mountDir, "*.desktop", cfg)
-
-	case "--pbundle_appstream":
-		return findAndEncodeFiles(cfg.mountDir, "*.xml", cfg)
-
-	default:
-		return nil
-	}
-	return nil
-}
-
 func cleanup(cfg *RuntimeConfig) {
-	cmd := exec.Command(os.Args[0], "--pbundle_internal_Cleanup", cfg.mountDir, cfg.poolDir, cfg.workDir)
+	cmd := exec.Command(os.Args[0], "--pbundle_internal_Cleanup", cfg.mountDir, cfg.poolDir, cfg.workDir, T(cfg.doNotMount == true, "true", ""))
 	cmd.Stdin = nil
 	cmd.Stdout = nil
 	cmd.Stderr = nil
@@ -638,18 +601,20 @@ func main() {
 		mountDir := os.Args[2]
 		poolDir := os.Args[3]
 		workDir := os.Args[4]
+		doNotMount := os.Args[5]
 
-		for i := 0; i < 5; i++ {
-			if !isMounted(mountDir) {
-				break
+		if doNotMount != "true" {
+			for i := 0; i < 5; i++ {
+				if !isMounted(mountDir) {
+					break
+				}
+				cmd := exec.Command("fusermount3", "-u", mountDir)
+				cmd.Run()
+				sleep(1)
 			}
-			cmd := exec.Command("fusermount3", "-u", mountDir)
-			cmd.Run()
-			sleep(1)
-		}
-
-		if isMounted(mountDir) {
-			exec.Command("fusermount3", "-uz", mountDir).Run()
+			if isMounted(mountDir) {
+				exec.Command("fusermount3", "-uz", mountDir).Run()
+			}
 		}
 
 		os.RemoveAll(workDir)
@@ -664,36 +629,47 @@ func main() {
 	if err != nil {
 		logError("Failed to initialize config", err, cfg)
 	}
+
+	// Set up a channel to listen for interrupt signals
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+
 	die := func() {
-		if r := recover(); r != nil {
-			logError("Panic recovered", fmt.Errorf("%v", r), cfg)
-		}
 		if fh != nil {
 			fh.file.Close()
 		}
 		cleanup(cfg)
 		os.Exit(0)
 	}
-	defer die()
 
-	if err := mountImage(cfg, fh); err != nil {
-		logError("Failed to mount image", err, cfg)
-	}
+	// Set up a deferred function to handle panics
+	defer func() {
+		if r := recover(); r != nil {
+			logError("Panic recovered", fmt.Errorf("%v", r), cfg)
+		}
+		die()
+	}()
 
-	determineHome(cfg)
+	// Handle interrupt signals
+	go func() {
+		<-sigChan
+		die()
+	}()
 
 	args := os.Args[1:]
 	if len(args) >= 1 {
-		if err := handleRuntimeFlags(&args, cfg); err != nil {
+		if err := handleRuntimeFlags(fh, &args, cfg); err != nil {
 			if err.Error() != "!no_return" {
 				logError("Runtime flag handling failed", err, cfg)
 			} else {
-				die()
+				cleanup(cfg)
 			}
 		}
+	} else {
+		mountOrExtract(cfg, fh)
+		_ = executeFile(args, cfg)
 	}
 
-	_ = executeFile(args, cfg)
 }
 
 func generateRandomString(length int) (string, error) {
@@ -741,8 +717,19 @@ func isExecutableFile(file string) error {
 
 // Ternary operator
 func T[T any](cond bool, vtrue, vfalse T) T {
-    if cond {
-        return vtrue
-    }
-    return vfalse
+	if cond {
+		return vtrue
+	}
+	return vfalse
+}
+
+func mountOrExtract(cfg *RuntimeConfig, fh *fileHandler) {
+	if cfg.doNotMount {
+		if err := extractImage(cfg, fh, ""); err != nil {
+			logError("Failed to mount image", err, cfg)
+		}
+	}
+	if err := mountImage(cfg, fh); err != nil {
+		logError("Failed to mount image", err, cfg)
+	}
 }
