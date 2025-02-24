@@ -169,6 +169,7 @@ download_and_extract_rootfs() {
 			exit 1
 		fi
 	fi
+	putDep "bwrap" "$APPDIR/usr/bin/bwrap" "DBIN" "bwrap#github.com.containers.bubblewrap.patched"
 }
 
 putDep() {
@@ -209,10 +210,6 @@ putDep() {
 
 	chmod +x "$OUTPUT"
 	PATH="$oPATH"
-}
-
-add_bwrap() {
-	putDep "bwrap-patched" "$APPDIR/usr/bin/bwrap" "DBIN" "bubblewrap/bwrap#github.com.containers.bubblewrap.patched"
 }
 
 pkg_add() {
@@ -355,9 +352,7 @@ select_structure_and_apprun() {
 		rm -rf "$APPDIR/proto"
 	fi
     # Finalized AppDir/proto or AppDir/proto_trimmed
-
 	putDep "unionfs-fuse3/unionfs" "$APPDIR/usr/bin/unionfs" "DBIN"
-
 	putDep "https://raw.githubusercontent.com/xplshn/pelf/refs/heads/pelf-ng/assets/AppRun.sharun.ovfsProto" "$APPDIR/AppRun"
 	chmod +x "$APPDIR/AppRun"
 }
@@ -431,7 +426,6 @@ main() {
 	setup_local_path
 	create_appdir
 	download_and_extract_rootfs
-	add_bwrap
 	pkg_add
 	# Actual logic 0------------------------------------->
 	create_entrypoint                                    # 1.
