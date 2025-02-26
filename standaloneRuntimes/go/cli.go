@@ -44,15 +44,14 @@ func handleRuntimeFlags(fh *fileHandler, args *[]string, cfg *RuntimeConfig) err
   --appimage-extract-and-run: Same as --pbundle_extract_and_run but for AppImage compatibility
   --appimage-mount: Same as --pbundle_mount but for AppImage compatibility
   --appimage-offset: Same as --pbundle_offset but for AppImage compatibility
-`)
-		fmt.Printf(`
+
   NOTE: EXE_NAME is the AppBundleID -> rEXE_NAME is the same, but sanitized to be used as a variable name
   NOTE: The -v option in uname may have not been saved, to allow for reproducibility (since uname -v will output the current date)
   NOTE: This runtime is written in Go, it is not the default runtime used by pelf
 `)
 		return fmt.Errorf("!no_return")
 
-	case "--pbundle_list", "--appimage-list":
+	case "--pbundle_list":
 		mountOrExtract(cfg, fh)
 		err := filepath.Walk(cfg.workDir, func(path string, info os.FileInfo, err error) error {
 			if err != nil {

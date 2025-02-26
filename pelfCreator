@@ -163,7 +163,7 @@ download_and_extract_rootfs() {
 			exit 1
 		fi
 	else
-        : "${ROOTFS_URL:="https://github.com/pkgforge-dev/pelf/releases/latest/download/alpineLinuxEdge."$(uname -m)".rootfsURL"}"
+        : "${ROOTFS_URL:="$(wget -qO- "https://github.com/pkgforge-dev/pelf/releases/latest/download/alpineLinuxEdge."$(uname -m)".rootfsURL")"}"
 		if ! wget -qO- "$ROOTFS_URL" | tar xzf - -C "$APPDIR/proto" --no-same-permissions; then
 			echo "Failed to download or extract rootfs"
 			exit 1
