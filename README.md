@@ -48,4 +48,4 @@ Additionally, we embed the tools used for mounting and unmounting the `.AppBundl
 
 #### Resources:
 - The [AppBundleHUB](https://github.com/xplshn/AppBundleHUB) a repo which builds a ton of portable AppBundles in an automated fashion, using GH actions. (we have a [webStore](https://fatbuffalo.neocities.org/AppBundleHUBStore) too, tho that is WIP)
-- [dbin])(https://github.com/xplshn/dbin) a self-contained, portable, statically linked, package manager, 3105 binaries (portable, self-contained/static) are available in its repos at the time of writting. Among these, are the AppBundles from the AppBundleHUB and from pkgforge
+- [dbin](https://github.com/xplshn/dbin) a self-contained, portable, statically linked, package manager, +3185 binaries (portable, self-contained/static) are available in its repos at the time of writting. Among these, are the AppBundles from the AppBundleHUB and from pkgforge
