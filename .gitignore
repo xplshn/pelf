@@ -4,6 +4,8 @@
 work/
 exp/
 appbundle-runtime
+runtime
+pelf
 fusermount
 fusermount3
 TODO

@@ -1,11 +1,9 @@
 package main
 
 import (
-	"encoding/base64"
 	"flag"
 	"fmt"
 	"os"
-	"os/exec"
 	"os/user"
 	"path/filepath"
 	"strings"
@@ -22,6 +20,7 @@ type Options struct {
 	IconDir             string   `json:"icon_dir"`              // Directory to store extracted icons.
 	AppDir              string   `json:"app_dir"`               // Directory to store .desktop files.
 	CorrectDesktopFiles bool     `json:"correct_desktop_files"` // Flag to enable automatic correction of .desktop files.
+	IntegrateFormats    []string `json:"integrate_formats"`    // Formats to integrate
 }
 
 // Config represents the overall configuration structure for PELFD, including scanning options and a tracker for installed bundles.
@@ -110,26 +109,6 @@ func main() {
 	}
 }
 
-func extractMetadata(filePath, iconDir, appDir string) {
-	baseName := strings.TrimSuffix(filepath.Base(filePath), filepath.Ext(filePath))
-
-	// Extract .DirIcon
-	iconPath := filepath.Join(iconDir, baseName+".png")
-	if extractedIcon := extractAppImageMetadata("icon", filePath, iconPath); extractedIcon != "" {
-		logMessage("INF", fmt.Sprintf("Icon extracted to: %s", extractedIcon))
-	} else {
-		logMessage("WRN", "Failed to extract icon")
-	}
-
-	// Extract .desktop
-	desktopPath := filepath.Join(appDir, baseName+".desktop")
-	if extractedDesktop := extractAppImageMetadata("desktop", filePath, desktopPath); extractedDesktop != "" {
-		logMessage("INF", fmt.Sprintf("Desktop file extracted to: %s", extractedDesktop))
-	} else {
-		logMessage("WRN", "Failed to extract desktop file")
-	}
-}
-
 func integrateBundle(config Config, paths []string, homeDir string, configFilePath string) {
 	options := config.Options
 	entries := config.Tracker
@@ -150,14 +129,12 @@ func integrateBundle(config Config, paths []string, homeDir string, configFilePa
 
 	for _, filePath := range paths {
 		// Expand the tilde (~) to the user's home directory
-		if strings.HasPrefix(filePath, "~") {
-			filePath = filepath.Join(homeDir, filePath[1:]) // Replace ~ with the home directory
-		}
+		filePath = expand(filePath, homeDir)
 
 		// Check if the path is a file or directory
 		info, err := os.Stat(filePath)
 		if err != nil {
-			logMessage("ERR", fmt.Sprintf("Failed to access <yellow>%s</yellow>: <red>%v</red>", filePath, err))
+			logMessage("WRN", fmt.Sprintf("Directory does not exist: %s", filePath))
 			continue // Skip this file or handle it as needed
 		}
 
@@ -165,18 +142,18 @@ func integrateBundle(config Config, paths []string, homeDir string, configFilePa
 			// If it's a directory, process all files within it
 			files, err := os.ReadDir(filePath)
 			if err != nil {
-				logMessage("ERR", fmt.Sprintf("Failed to read directory <yellow>%s</yellow>: <red>%v</red>", filePath, err))
+				logMessage("ERR", fmt.Sprintf("Failed to read directory %s: %v", filePath, err))
 				continue // Handle directory read errors
 			}
 
 			for _, entry := range files {
 				if !entry.Type().IsRegular() {
-					logMessage("INF", fmt.Sprintf("Skipping non-regular file in directory: <yellow>%s</yellow>", entry.Name()))
+					logMessage("INF", fmt.Sprintf("Skipping non-regular file in directory: %s", entry.Name()))
 					continue // Skip non-regular files (like directories, symlinks, etc.)
 				}
 				// Process each file within the directory
 				filePathToIntegrate := filepath.Join(filePath, entry.Name())
-				if !isSupportedFile(filePathToIntegrate) {
+				if !isSupportedFile(filePathToIntegrate, options.IntegrateFormats) {
 					continue // Skip files that are not supported
 				}
 				b3sum := computeB3SUM(filePathToIntegrate)
@@ -184,7 +161,7 @@ func integrateBundle(config Config, paths []string, homeDir string, configFilePa
 					changed = refreshBundle(filePathToIntegrate, b3sum, entry, options) || changed
 					checkAndRecreateFiles(entry, filePathToIntegrate, options, &changed)
 				} else {
-					logMessage("INF", fmt.Sprintf("New bundle detected: <green>%s</green>", filepath.Base(filePathToIntegrate)))
+					logMessage("INF", fmt.Sprintf("New bundle detected: %s", filepath.Base(filePathToIntegrate)))
 					changed = refreshBundle(filePathToIntegrate, b3sum, nil, options) || changed
 				}
 			}
@@ -193,7 +170,7 @@ func integrateBundle(config Config, paths []string, homeDir string, configFilePa
 
 		// If it's a regular file, proceed as before
 		bundle := filePath
-		if !isSupportedFile(bundle) {
+		if !isSupportedFile(bundle, options.IntegrateFormats) {
 			continue // Skip files that are not supported
 		}
 		b3sum := computeB3SUM(bundle)
@@ -203,7 +180,7 @@ func integrateBundle(config Config, paths []string, homeDir string, configFilePa
 			changed = refreshBundle(bundle, b3sum, entry, options) || changed
 			checkAndRecreateFiles(entry, bundle, options, &changed)
 		} else {
-			logMessage("INF", fmt.Sprintf("New bundle detected: <green>%s</green>", filepath.Base(bundle)))
+			logMessage("INF", fmt.Sprintf("New bundle detected: %s", filepath.Base(bundle)))
 			changed = refreshBundle(bundle, b3sum, nil, options) || changed
 		}
 	}
@@ -211,7 +188,7 @@ func integrateBundle(config Config, paths []string, homeDir string, configFilePa
 	// Check for deintegration of non-existing bundles
 	for bundlePath := range entries {
 		if !fileExists(bundlePath) {
-			logMessage("WRN", fmt.Sprintf("Bundle <blue>%s</blue> does not exist. Deintegrating...", bundlePath))
+			logMessage("WRN", fmt.Sprintf("Bundle %s does not exist. Deintegrating...", bundlePath))
 			deintegrateBundle(config, bundlePath, configFilePath)
 			changed = true
 		}
@@ -229,9 +206,9 @@ func checkAndRecreateFiles(entry *BundleEntry, bundle string, options Options, c
 
 	checkAndRecreateFile := func(filePath *string, param, outputDir, extension string) {
 		if *filePath != "" && !fileExists(*filePath) {
-			logMessage("WRN", fmt.Sprintf("The file for <blue>%s</blue> doesn't exist anymore. Re-creating...", filepath.Base(bundle)))
+			logMessage("WRN", fmt.Sprintf("The file for %s doesn't exist anymore. Re-creating...", filepath.Base(bundle)))
 			newFilePath := filepath.Join(outputDir, filepath.Base(remExtension(bundle))+extension)
-			*filePath = executeBundle(bundle, param, newFilePath)
+			*filePath = executeAppBundle(bundle, param, newFilePath)
 			if *filePath != "" {
 				*changed = true
 			}
@@ -240,13 +217,13 @@ func checkAndRecreateFiles(entry *BundleEntry, bundle string, options Options, c
 
 	// Check and recreate thumbnail if missing
 	if entry.Thumbnail != "" && !fileExists(entry.Thumbnail) {
-		logMessage("WRN", fmt.Sprintf("The thumbnail file for <blue>%s</blue> doesn't exist anymore. Generating new thumbnail...", filepath.Base(bundle)))
+		logMessage("WRN", fmt.Sprintf("The thumbnail file for %s doesn't exist anymore. Generating new thumbnail...", filepath.Base(bundle)))
 		thumbnailPath, err := generateThumbnail(bundle, entry.Png)
 		if err != nil {
-			logMessage("ERR", fmt.Sprintf("Failed to create thumbnail file: <yellow>%v</yellow>", err))
+			logMessage("ERR", fmt.Sprintf("Failed to create thumbnail file: %v", err))
 		} else {
 			entry.Thumbnail = thumbnailPath
-			logMessage("INF", fmt.Sprintf("A new thumbnail for <green>%s</green> was created", filepath.Base(bundle)))
+			logMessage("INF", fmt.Sprintf("A new thumbnail for %s was created", filepath.Base(bundle)))
 			*changed = true
 		}
 	}
@@ -261,32 +238,6 @@ func checkAndRecreateFiles(entry *BundleEntry, bundle string, options Options, c
 	checkAndRecreateFile(&entry.Desktop, "--pbundle_desktop", options.AppDir, ".desktop")
 }
 
-func integrateBundleMetadata(path, b3sum string, entries map[string]*BundleEntry, iconPath, appPath string, cfg Config) {
-	entry := &BundleEntry{B3SUM: b3sum, HasMetadata: false}
-	baseName := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
-
-	if strings.HasSuffix(path, ".AppImage") || strings.HasSuffix(path, ".NixAppImage") {
-		entry.Png = extractAppImageMetadata("icon", path, filepath.Join(iconPath, baseName+".png"))
-		entry.Desktop = extractAppImageMetadata("desktop", path, filepath.Join(appPath, baseName+".desktop"))
-	} else if strings.HasSuffix(path, ".AppBundle") {
-		entry.Png = executeBundle(path, "--pbundle_pngIcon", filepath.Join(iconPath, baseName+".png"))
-		entry.Svg = executeBundle(path, "--pbundle_svgIcon", filepath.Join(iconPath, baseName+".svg"))
-		entry.Desktop = executeBundle(path, "--pbundle_desktop", filepath.Join(appPath, baseName+".desktop"))
-	}
-
-	if entry.Png != "" || entry.Svg != "" || entry.Desktop != "" {
-		entry.HasMetadata = true
-		logMessage("INF", fmt.Sprintf("Adding bundle to entries: <green>%s</green>", path))
-		entries[path] = entry
-	} else {
-		logMessage("WRN", fmt.Sprintf("Bundle does not contain any metadata files. Skipping: <blue>%s</blue>", path))
-		entries[path] = entry
-	}
-
-	createThumbnailForBundle(entry, path)
-	updateDesktopFileIfRequired(path, baseName, appPath, entry, cfg)
-}
-
 func deintegrateBundle(config Config, filePath string, configFilePath string) {
 	entries := config.Tracker
 	changed := false
@@ -295,12 +246,12 @@ func deintegrateBundle(config Config, filePath string, configFilePath string) {
 		cleanupBundle(filePath, entries)
 		changed = true
 	} else {
-		logMessage("WRN", fmt.Sprintf("Bundle <blue>%s</blue> is not integrated.", filePath))
+		logMessage("WRN", fmt.Sprintf("Bundle %s is not integrated.", filePath))
 	}
 
 	// Save config if any changes were made
 	if changed {
-		logMessage("INF", fmt.Sprintf("Updating <green>%s</green>", configFilePath))
+		logMessage("INF", fmt.Sprintf("Updating %s", configFilePath))
 		saveConfig(config, configFilePath)
 	}
 }
@@ -316,108 +267,75 @@ func cleanupBundle(path string, entries map[string]*BundleEntry) {
 			continue
 		}
 		if err := os.Remove(file); err != nil && !os.IsNotExist(err) {
-			logMessage("ERR", fmt.Sprintf("Failed to remove file: <yellow>%s</yellow> <red>%v</red>", file, err))
+			logMessage("ERR", fmt.Sprintf("Failed to remove file: %s %v", file, err))
 		} else {
-			logMessage("INF", fmt.Sprintf("Removed file: <green>%s</green>", file))
+			logMessage("INF", fmt.Sprintf("Removed file: %s", file))
 		}
 	}
 	delete(entries, path)
 }
 
-func executeBundle(bundle, param, outputFile string) string {
-	logMessage("INF", fmt.Sprintf("Retrieving metadata from <green>%s</green> with parameter: <cyan>%s</cyan>", bundle, param))
-	// Prepend `sh -c` to the bundle execution
-	cmd := exec.Command("sh", "-c", bundle+" "+param)
-	output, err := cmd.Output()
-	if err != nil {
-		logMessage("WRN", fmt.Sprintf("Bundle <blue>%s</blue> with parameter <cyan>%s</cyan> didn't return a metadata file", bundle, param))
-		return ""
+func extractMetadata(filePath, iconDir, appDir string) {
+	baseName := strings.TrimSuffix(filepath.Base(filePath), filepath.Ext(filePath))
+
+	// Extract .DirIcon
+	iconPath := filepath.Join(iconDir, baseName+".png")
+	if extractedIcon := extractAppImageMetadata("icon", filePath, iconPath); extractedIcon != "" {
+		logMessage("INF", fmt.Sprintf("Icon extracted to: %s", extractedIcon))
+	} else {
+		logMessage("WRN", "Failed to extract icon")
 	}
 
-	outputStr := string(output)
-
-	// Remove the escape sequence "^[[1F^[[2K"
-	// Remove the escape sequence from the output
-	outputStr = strings.ReplaceAll(outputStr, "\x1b[1F\x1b[2K", "")
-
-	data, err := base64.StdEncoding.DecodeString(outputStr)
-	if err != nil {
-		logMessage("ERR", fmt.Sprintf("Failed to decode base64 output for <yellow>%s</yellow> <yellow>%s</yellow>: <red>%v</red>", bundle, param, err))
-		return ""
+	// Extract .desktop
+	desktopPath := filepath.Join(appDir, baseName+".desktop")
+	if extractedDesktop := extractAppImageMetadata("desktop", filePath, desktopPath); extractedDesktop != "" {
+		logMessage("INF", fmt.Sprintf("Desktop file extracted to: %s", extractedDesktop))
+	} else {
+		logMessage("WRN", "Failed to extract desktop file")
 	}
-
-	if err := os.WriteFile(outputFile, data, 0644); err != nil {
-		logMessage("ERR", fmt.Sprintf("Failed to write file <yellow>%s</yellow>: <red>%v</red>", outputFile, err))
-		return ""
-	}
-
-	logMessage("INF", fmt.Sprintf("Successfully wrote file: <green>%s</green>", outputFile))
-	return outputFile
 }
 
-func extractAppImageMetadata(metadataType, appImagePath, outputFile string) string {
-	logMessage("INF", fmt.Sprintf("Extracting %s from AppImage: <green>%s</green>", metadataType, appImagePath))
-
-	// Create a temporary directory for extraction
-	tempDir, err := os.MkdirTemp("", "appimage-extract-")
-	if err != nil {
-		logMessage("ERR", fmt.Sprintf("Failed to create temporary directory: <red>%v</red>", err))
-		return ""
+func isSupportedFile(filePath string, integrateFormats []string) bool {
+	if len(integrateFormats) == 0 {
+		return strings.HasSuffix(filePath, ".AppBundle") || strings.HasSuffix(filePath, ".AppImage") || strings.HasSuffix(filePath, ".NixAppImage") || strings.HasSuffix(filePath, ".AppDir")
 	}
-	// Defer the removal of the tempDir to ensure it is deleted at the end of the function
-	defer func() {
-		if err := os.RemoveAll(tempDir); err != nil {
-			logMessage("ERR", fmt.Sprintf("Failed to remove temporary directory: <red>%v</red>", err))
+	for _, format := range integrateFormats {
+		if strings.HasSuffix(filePath, format) {
+			return true
 		}
-	}()
-
-	if err := os.Chdir(tempDir); err != nil {
-		logMessage("ERR", fmt.Sprintf("Failed to change directory to <yellow>%s</yellow>: <red>%v</red>", tempDir, err))
-		return ""
 	}
-
-	var metadataPath string
-
-	switch metadataType {
-	case "icon":
-		cmd := exec.Command("sh", "-c", fmt.Sprintf("%s --appimage-extract .DirIcon", appImagePath))
-		if err := cmd.Run(); err != nil {
-			logMessage("WRN", fmt.Sprintf("Failed to extract .DirIcon from AppImage: <blue>%s</blue>", appImagePath))
-			return ""
-		}
-		metadataPath = filepath.Join(tempDir, "squashfs-root", ".DirIcon")
-	case "desktop":
-		cmd := exec.Command("sh", "-c", fmt.Sprintf("%s --appimage-extract *.desktop", appImagePath))
-		if err := cmd.Run(); err != nil {
-			logMessage("WRN", fmt.Sprintf("Failed to extract .desktop from AppImage: <blue>%s</blue>", appImagePath))
-			return ""
-		}
-		// Find the first .desktop file in the directory
-		files, err := filepath.Glob(filepath.Join(tempDir, "squashfs-root", "*.desktop"))
-		if err != nil || len(files) == 0 {
-			logMessage("WRN", fmt.Sprintf(".desktop file not found in AppImage: <blue>%s</blue>", appImagePath))
-			return ""
-		}
-		metadataPath = files[0]
-	default:
-		logMessage("ERR", fmt.Sprintf("Unknown metadata type: <yellow>%s</yellow>", metadataType))
-		return ""
-	}
-
-	if !fileExists(metadataPath) {
-		logMessage("WRN", fmt.Sprintf("%s not found in AppImage: <blue>%s</blue>", strings.Title(metadataType), appImagePath))
-		return ""
-	}
-
-	if err := copyFile(metadataPath, outputFile); err != nil {
-		logMessage("ERR", fmt.Sprintf("Failed to copy %s file: <red>%v</red>", metadataType, err))
-		return ""
-	}
-
-	logMessage("INF", fmt.Sprintf("Successfully extracted %s to: <green>%s</green>", metadataType, outputFile))
-	return outputFile
+	return false
 }
 
-func isSupportedFile(filePath string) bool {
-	return strings.HasSuffix(filePath, ".AppBundle") || strings.HasSuffix(filePath, ".AppImage") || strings.HasSuffix(filePath, ".NixAppImage")
+// Function map for handling different formats
+var formatHandlers = map[string]func(string, string, *BundleEntry){
+	".AppImage": integrateAppImage,
+	".NixAppImage": integrateAppImage,
+	".AppBundle": integrateAppBundle,
+	".AppDir": integrateAppDir,
+}
+
+func integrateMetadata(path, b3sum string, entries map[string]*BundleEntry, iconPath, appPath string, cfg Config) {
+	entry := &BundleEntry{B3SUM: b3sum, HasMetadata: false}
+	baseName := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+
+	ext := filepath.Ext(path)
+	if handler, ok := formatHandlers[ext]; ok {
+		handler(path, appPath, entry)
+	} else {
+		logMessage("WRN", fmt.Sprintf("Unsupported format: %s", ext))
+		return
+	}
+
+	if entry.Png != "" || entry.Svg != "" || entry.Desktop != "" {
+		entry.HasMetadata = true
+		logMessage("INF", fmt.Sprintf("Adding bundle to entries: %s", path))
+		entries[path] = entry
+	} else {
+		logMessage("WRN", fmt.Sprintf("Bundle does not contain any metadata files. Skipping: %s", path))
+		entries[path] = entry
+	}
+
+	createThumbnailForBundle(entry, path)
+	updateDesktopFileIfRequired(path, baseName, appPath, entry, cfg)
 }

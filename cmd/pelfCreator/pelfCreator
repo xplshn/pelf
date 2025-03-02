@@ -1,7 +1,7 @@
 #!/bin/sh
 
 unset ARGV0 ARGS LD_PRELOAD LD_LIBRARY_PATH
-[ "$DEBUGX" = "1" ] && set -x
+[ "$DEBUG" = "1" ] && set -x
 
 print_help() {
 	cat <<EOF
@@ -169,47 +169,47 @@ download_and_extract_rootfs() {
 			exit 1
 		fi
 	fi
-	putDep "bwrap" "$APPDIR/usr/bin/bwrap" "DBIN" "bwrap#github.com.containers.bubblewrap.patched"
+	putDep "bwrap" "$APPDIR/usr/bin/bwrap" "DBIN" "bwrap#github.com.containers.bubblewrap"
 }
 
 putDep() {
-	INPUT="$1"
-	MODE="$3"
+    INPUT="$1"
+    MODE="$3"
 
-	BINPUT="$(basename "$INPUT")"
-	OUTPUT="${2:-$APPDIR/usr/bin/$BINPUT}"
-	oPATH="$PATH"
-	PATH="$LOCAL_PATH:$PATH"
+    BINPUT="$(basename "$INPUT")"
+    OUTPUT="${2:-$APPDIR/usr/bin/$BINPUT}"
+    oPATH="$PATH"
+    PATH="$LOCAL_PATH:$PATH"
 
-	if [ "$MODE" = "DBIN" ]; then
-	    if [ "$4" = "" ]; then
-		    DBIN_INSTALL_DIR="$(dirname "$OUTPUT")" dbin add "$INPUT"
-		else
-		    DBIN_INSTALL_DIR="$(dirname "$OUTPUT")" dbin add "$4"
-		fi
-	elif echo "$INPUT" | grep -q '^http'; then
-		if command -v wget >/dev/null 2>&1; then
-			wget -qO "$OUTPUT" "$INPUT"
-		elif command -v curl >/dev/null 2>&1; then
-			curl -sL -o "$OUTPUT" "$INPUT"
-		else
-			echo "ERR: Neither wget nor curl is available to download $INPUT"
-			exit 1
-		fi
-	elif BINARY="$(command -v "$INPUT" 2>/dev/null)"; then
-		if ldd "$BINARY" 2>/dev/null | grep -q "libc" || ! ldd "$BINARY" >/dev/null 2>&1; then
-			cp "$BINARY" "$OUTPUT"
-		else
-			echo "ERR: The binary $INPUT is not statically linked"
-			exit 1
-		fi
-	else
-		echo "ERR: $INPUT not found in PATH nor LOCAL_PATH"
-		exit 1
-	fi
+    if echo "$INPUT" | grep -q '^http'; then
+        if command -v wget >/dev/null 2>&1; then
+            wget -qO "$OUTPUT" "$INPUT"
+        elif command -v curl >/dev/null 2>&1; then
+            curl -sL -o "$OUTPUT" "$INPUT"
+        else
+            echo "ERR: Neither wget nor curl is available to download $INPUT"
+            exit 1
+        fi
+    elif BINARY="$(command -v "$INPUT" 2>/dev/null)"; then
+        if ldd "$BINARY" | grep -qv "libc"; then
+            cp "$BINARY" "$OUTPUT"
+        else
+            if [ "$MODE" = "DBIN" ]; then
+                if [ "$4" = "" ]; then
+                    DBIN_INSTALL_DIR="$(dirname "$OUTPUT")" dbin add "$INPUT"
+                fi
+            else
+                echo "ERR: The binary $INPUT is not statically linked and DBIN mode is not specified"
+                exit 1
+            fi
+        fi
+    else
+        echo "ERR: $INPUT not found in PATH nor LOCAL_PATH"
+        exit 1
+    fi
 
-	chmod +x "$OUTPUT"
-	PATH="$oPATH"
+    chmod +x "$OUTPUT"
+    PATH="$oPATH"
 }
 
 pkg_add() {
@@ -352,7 +352,7 @@ select_structure_and_apprun() {
 		rm -rf "$APPDIR/proto"
 	fi
     # Finalized AppDir/proto or AppDir/proto_trimmed
-	putDep "unionfs-fuse3/unionfs" "$APPDIR/usr/bin/unionfs" "DBIN"
+	putDep "unionfs" "$APPDIR/usr/bin/unionfs" "DBIN" "unionfs-fuse3/unionfs"
 	putDep "https://raw.githubusercontent.com/xplshn/pelf/refs/heads/pelf-ng/assets/AppRun.sharun.ovfsProto" "$APPDIR/AppRun"
 	chmod +x "$APPDIR/AppRun"
 }
