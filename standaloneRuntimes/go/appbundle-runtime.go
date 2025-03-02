@@ -12,12 +12,14 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/emmansun/base64"
-	"github.com/klauspost/compress/gzip"
+	"github.com/klauspost/compress/zstd"
+	"github.com/pkg/xattr"
 	"pgregory.net/rand"
 )
 
@@ -26,9 +28,6 @@ const (
 	errorColor   = "\x1b[0;31m"
 	blueColor    = "\x1b[0;34m"
 	resetColor   = "\x1b[0m"
-
-	fsTypeSquashfs = "squashfs"
-	fsTypeDwarfs   = "dwarfs"
 
 	DWARFS_CACHESIZE = "256M"
 )
@@ -45,11 +44,14 @@ type RuntimeConfig struct {
 	pelfHost             string
 	pelfVersion          string
 	appBundleFS          string
+	updateInfo           string
+	signature            string
 	staticToolsOffset    uint
 	archiveOffset        uint
 	staticToolsEndOffset uint
 	elfFileSize          uint
 	doNotMount           bool
+	noCleanup            bool
 }
 
 type fileHandler struct {
@@ -57,19 +59,61 @@ type fileHandler struct {
 	file *os.File
 }
 
-var filesystemCommands = map[string][]string{
-	fsTypeSquashfs: {"squashfuse", "fusermount"},
-	fsTypeDwarfs:   {"dwarfs", "fusermount3"},
+type Filesystem struct {
+	Type       string
+	Commands   []string
+	MountCmd   func(*RuntimeConfig) *exec.Cmd
+	ExtractCmd func(*RuntimeConfig, string) *exec.Cmd
 }
 
-var filesystemMountCmdBuilders = map[string]func(*RuntimeConfig) *exec.Cmd{
-	fsTypeSquashfs: buildSquashFSCmd,
-	fsTypeDwarfs:   buildDwarFSCmd,
-}
-
-var filesystemExtractCmdBuilders = map[string]func(*RuntimeConfig, string) *exec.Cmd{
-	fsTypeSquashfs: buildUnsquashFSCmd,
-	fsTypeDwarfs:   buildDwarfsExtractCmd,
+var Filesystems = []Filesystem{
+	{
+		Type: "squashfs",
+		Commands: []string{"squashfuse", "fusermount"},
+		MountCmd: func(cfg *RuntimeConfig) *exec.Cmd {
+			return exec.Command("squashfuse",
+				"-o", "ro,nodev,noatime",
+				"-o", "uid=0,gid=0",
+				"-o", fmt.Sprintf("offset=%d", cfg.archiveOffset),
+				cfg.selfPath,
+				cfg.mountDir,
+			)
+		},
+		ExtractCmd: func(cfg *RuntimeConfig, query string) *exec.Cmd {
+			args := []string{"-d", cfg.mountDir, "-o", fmt.Sprintf("%d", cfg.archiveOffset), cfg.selfPath}
+			if query != "" {
+				for _, file := range strings.Split(query, " ") {
+					args = append(args, "-e", file)
+				}
+			}
+			return exec.Command("unsquashfs", args...)
+		},
+	},
+	{
+		Type: "dwarfs",
+		Commands: []string{"dwarfs", "fusermount3"},
+		MountCmd: func(cfg *RuntimeConfig) *exec.Cmd {
+			return exec.Command("dwarfs",
+				"-o", fmt.Sprintf("offset=%d", cfg.archiveOffset),
+				"-o", "ro,nodev,noatime,auto_unmount",
+				"-o", "cache_files,no_cache_image,clone_fd",
+				"-o", "cachesize="+getEnvWithDefault("DWARFS_CACHESIZE", DWARFS_CACHESIZE),
+				"-o", "debuglevel=error",
+				cfg.selfPath,
+				cfg.mountDir,
+			)
+		},
+		ExtractCmd: func(cfg *RuntimeConfig, query string) *exec.Cmd {
+			if query != "" {
+				logWarning(fmt.Sprintf("dwarfsextract cannot do a partial extraction. The following arguments will be ignored: %s", query))
+			}
+			return exec.Command("dwarfsextract",
+				"-o", cfg.mountDir,
+				"-O", fmt.Sprintf("%d", cfg.archiveOffset),
+				cfg.selfPath,
+			)
+		},
+	},
 }
 
 func mountImage(cfg *RuntimeConfig, fh *fileHandler) error {
@@ -86,12 +130,12 @@ func mountImage(cfg *RuntimeConfig, fh *fileHandler) error {
 			return err
 		}
 
-		cmdBuilder, ok := filesystemMountCmdBuilders[cfg.appBundleFS]
+		fs, ok := getFilesystem(cfg.appBundleFS)
 		if !ok {
 			return fmt.Errorf("unsupported filesystem: %s", cfg.appBundleFS)
 		}
 
-		cmd := cmdBuilder(cfg)
+		cmd := fs.MountCmd(cfg)
 		output, err := cmd.CombinedOutput()
 		if err != nil {
 			logWarning(fmt.Sprintf("Failed to mount %s archive: %v", cfg.appBundleFS, err))
@@ -105,12 +149,16 @@ func mountImage(cfg *RuntimeConfig, fh *fileHandler) error {
 }
 
 func extractImage(cfg *RuntimeConfig, fh *fileHandler, query string) error {
-	cmdBuilder, ok := filesystemExtractCmdBuilders[cfg.appBundleFS]
+	fs, ok := getFilesystem(cfg.appBundleFS)
 	if !ok {
 		return fmt.Errorf("unsupported filesystem for extraction: %s", cfg.appBundleFS)
 	}
 
-	cmd := cmdBuilder(cfg, query)
+	if cfg.appBundleFS == "squashfs" {
+		xattr.Remove(cfg.selfPath, "user.RuntimeConfig")
+	}
+
+	cmd := fs.ExtractCmd(cfg, query)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		logWarning(fmt.Sprintf("Failed to extract %s archive: %v", cfg.appBundleFS, err))
@@ -121,53 +169,13 @@ func extractImage(cfg *RuntimeConfig, fh *fileHandler, query string) error {
 	return nil
 }
 
-func buildSquashFSCmd(cfg *RuntimeConfig) *exec.Cmd {
-	return exec.Command("squashfuse",
-		"-o", "ro,nodev,noatime",
-		"-o", "uid=0,gid=0",
-		"-o", fmt.Sprintf("offset=%d", cfg.archiveOffset),
-		cfg.selfPath,
-		cfg.mountDir,
-	)
-}
-
-func buildDwarFSCmd(cfg *RuntimeConfig) *exec.Cmd {
-	return exec.Command("dwarfs",
-		"-o", fmt.Sprintf("offset=%d", cfg.archiveOffset),
-		"-o", "ro,nodev,noatime,auto_unmount",
-		"-o", "cache_files,no_cache_image,clone_fd",
-		"-o", "cachesize=" + getEnvWithDefault("DWARFS_CACHESIZE", DWARFS_CACHESIZE),
-		"-o", "debuglevel=error",
-		cfg.selfPath,
-		cfg.mountDir,
-	)
-}
-
-func buildUnsquashFSCmd(cfg *RuntimeConfig, query string) *exec.Cmd {
-	args := []string{
-		"-d", cfg.mountDir,
-		"-o", fmt.Sprintf("%d", cfg.archiveOffset),
-		cfg.selfPath,
-	}
-
-	if query != "" {
-		filesToExtract := strings.Split(query, " ")
-		for _, file := range filesToExtract {
-			args = append(args, "-e", file)
+func getFilesystem(fsType string) (Filesystem, bool) {
+	for _, fs := range Filesystems {
+		if fs.Type == fsType {
+			return fs, true
 		}
 	}
-
-	return exec.Command("unsquashfs", args...)
-}
-func buildDwarfsExtractCmd(cfg *RuntimeConfig, query string) *exec.Cmd {
-	if query != "" {
-		logWarning(fmt.Sprintf("dwarfsextract cannot do a partial extraction. The following arguments will be ignored: %s", query))
-	}
-	return exec.Command("dwarfsextract",
-		"-o", cfg.mountDir,
-		"-O", fmt.Sprintf("%d", cfg.archiveOffset),
-		cfg.selfPath,
-	)
+	return Filesystem{}, false
 }
 
 func newFileHandler(path string) (*fileHandler, error) {
@@ -189,6 +197,30 @@ func (f *fileHandler) readPlaceholdersAndMarkers(cfg *RuntimeConfig) error {
 		if end > cfg.elfFileSize {
 			cfg.elfFileSize = end
 		}
+	}
+
+	// Check for xattr
+	data, err := xattr.FGet(f.file, "user.RuntimeConfig")
+	if err == nil {
+		// Parse the data from the xattr
+		lines := strings.Split(string(data), "\n")
+
+		cfg.appBundleFS = lines[0]
+		staticToolsOffset, _ := strconv.ParseUint(lines[1], 10, 64)
+		cfg.staticToolsOffset = uint(staticToolsOffset)
+		staticToolsEndOffset, _ := strconv.ParseUint(lines[2], 10, 64)
+		cfg.staticToolsEndOffset = uint(staticToolsEndOffset)
+		archiveOffset, _ := strconv.ParseUint(lines[3], 10, 64)
+		cfg.archiveOffset = uint(archiveOffset)
+		cfg.exeName = lines[4]
+		cfg.pelfVersion = lines[5]
+		cfg.pelfHost = lines[6]
+
+		if cfg.exeName == "" || cfg.pelfVersion == "" || cfg.pelfHost == "" || cfg.appBundleFS == "" {
+			return fmt.Errorf("xattr cache is corrupt: missing runtime info: exeName=%q, pelfVersion=%q, pelfHost=%q, appBundleFS=%q",
+				cfg.exeName, cfg.pelfVersion, cfg.pelfHost, cfg.appBundleFS)
+		}
+		return nil
 	}
 
 	if _, err := f.file.Seek(int64(cfg.elfFileSize), io.SeekStart); err != nil {
@@ -247,23 +279,36 @@ func (f *fileHandler) readPlaceholdersAndMarkers(cfg *RuntimeConfig) error {
 		}
 
 		if cfg.exeName == "" && strings.HasPrefix(line, "__APPBUNDLE_ID__: ") {
-			cfg.exeName = strings.TrimSpace(strings.TrimPrefix(line, "__APPBUNDLE_ID__: "))
+			cfg.exeName = strings.TrimSpace(line[18:])
 		} else if strings.HasPrefix(line, "__PELF_VERSION__: ") {
-			cfg.pelfVersion = strings.TrimSpace(strings.TrimPrefix(line, "__PELF_VERSION__: "))
+			cfg.pelfVersion = strings.TrimSpace(line[17:])
 		} else if strings.HasPrefix(line, "__PELF_HOST__: ") {
-			cfg.pelfHost = strings.TrimSpace(strings.TrimPrefix(line, "__PELF_HOST__: "))
+			cfg.pelfHost = strings.TrimSpace(line[14:])
 		} else if strings.HasPrefix(line, "__APPBUNDLE_FS__: ") {
-			cfg.appBundleFS = strings.TrimSpace(strings.TrimPrefix(line, "__APPBUNDLE_FS__: "))
+			cfg.appBundleFS = strings.TrimSpace(line[17:])
+		} else if strings.HasPrefix(line, "__UPD_INFO__: ") {
+			cfg.updateInfo = strings.TrimSpace(line[13:])
+		} else if strings.HasPrefix(line, "__SHA256_SIG__: ") {
+			cfg.signature = strings.TrimSpace(line[14:])
 		}
 
-		if cfg.exeName != "" && cfg.pelfVersion != "" && cfg.pelfHost != "" && cfg.appBundleFS != "" {
+		if cfg.exeName != "" && cfg.pelfVersion != "" && cfg.pelfHost != "" && cfg.appBundleFS != "" && cfg.updateInfo != "" && cfg.signature != "" {
 			break
 		}
 	}
 
-	if cfg.exeName == "" || cfg.pelfVersion == "" || cfg.pelfHost == "" || cfg.appBundleFS == "" {
-		return fmt.Errorf("missing placeholders: exeName=%q, pelfVersion=%q, pelfHost=%q, appBundleFS=%q",
-			cfg.exeName, cfg.pelfVersion, cfg.pelfHost, cfg.appBundleFS)
+	if cfg.exeName == "" || cfg.pelfVersion == "" || cfg.pelfHost == "" || cfg.appBundleFS == "" || cfg.updateInfo == "" || cfg.signature == "" {
+		return fmt.Errorf("missing placeholders: exeName=%q, pelfVersion=%q, pelfHost=%q, appBundleFS=%q, updateInfo=%q, signature=%q",
+			cfg.exeName, cfg.pelfVersion, cfg.pelfHost, cfg.appBundleFS, cfg.updateInfo, cfg.signature)
+	}
+
+	// Set xattr if not present
+	if err != nil {
+		xattrData := fmt.Sprintf("%s\n%d\n%d\n%d\n%s\n%s\n%s\n",
+			cfg.appBundleFS, cfg.staticToolsOffset, cfg.staticToolsEndOffset, cfg.archiveOffset, cfg.exeName, cfg.pelfVersion, cfg.pelfHost)
+		if err := xattr.FSet(f.file, "user.RuntimeConfig", []byte(xattrData)); err != nil {
+			return fmt.Errorf("failed to set xattr: %w", err)
+		}
 	}
 
 	return nil
@@ -281,10 +326,11 @@ func getEnvWithDefault(key, defaultValue string) string {
 
 func initConfig() (*RuntimeConfig, *fileHandler, error) {
 	cfg := &RuntimeConfig{
-		exeName:  os.Getenv("EXE_NAME"),
-		poolDir:  filepath.Join(os.TempDir(), ".pelfbundles"),
-		selfPath: getSelfPath(),
+		exeName:    os.Getenv("EXE_NAME"),
+		poolDir:    filepath.Join(os.TempDir(), ".pelfbundles"),
+		selfPath:   getSelfPath(),
 		doNotMount: T(os.Getenv("APPIMAGE_EXTRACT_AND_RUN") == "1" || os.Getenv("PBUNDLE_EXTRACT_AND_RUN") == "1", true, false),
+		noCleanup:  T(os.Getenv("PBUNDLE_NO_CLEANUP") == "1", true, false),
 	}
 
 	fh, err := newFileHandler(cfg.selfPath)
@@ -363,13 +409,13 @@ func logError(msg string, err error, cfg *RuntimeConfig) {
 }
 
 func checkFuse(cfg *RuntimeConfig, fh *fileHandler) error {
-	requiredCmds, ok := filesystemCommands[cfg.appBundleFS]
+	fs, ok := getFilesystem(cfg.appBundleFS)
 	if !ok {
 		return fmt.Errorf("unsupported filesystem: %s", cfg.appBundleFS)
 	}
 
 	var missingCmd bool
-	for _, cmd := range requiredCmds {
+	for _, cmd := range fs.Commands {
 		if _, err := exec.LookPath(cmd); err != nil {
 			missingCmd = true
 			break
@@ -403,21 +449,14 @@ func (f *fileHandler) extractStaticTools(cfg *RuntimeConfig) error {
 		return fmt.Errorf("failed to read static tools section: %w", err)
 	}
 
-	decodedSize := base64.StdEncoding.DecodedLen(len(staticToolsData))
-	decodedData := make([]byte, decodedSize)
-	n, err := base64.StdEncoding.Decode(decodedData, staticToolsData)
+	// Initialize ZSTD decoder
+	decoder, err := zstd.NewReader(bytes.NewReader(staticToolsData))
 	if err != nil {
-		return fmt.Errorf("base64 decode: %w", err)
+		return fmt.Errorf("zstd init: %w", err)
 	}
-	decodedData = decodedData[:n]
+	defer decoder.Close()
 
-	gz, err := gzip.NewReader(bytes.NewReader(decodedData))
-	if err != nil {
-		return fmt.Errorf("gzip init: %w", err)
-	}
-	defer gz.Close()
-
-	tr := tar.NewReader(gz)
+	tr := tar.NewReader(decoder)
 	for {
 		hdr, err := tr.Next()
 		if err == io.EOF {
@@ -530,6 +569,9 @@ func updatePath(envVar, dirs string) string {
 }
 
 func cleanup(cfg *RuntimeConfig) {
+	if cfg.noCleanup {
+		return
+	}
 	cmd := exec.Command(os.Args[0], "--pbundle_internal_Cleanup", cfg.mountDir, cfg.poolDir, cfg.workDir, T(cfg.doNotMount == true, "true", ""))
 	cmd.Stdin = nil
 	cmd.Stdout = nil
@@ -657,7 +699,7 @@ func main() {
 	}()
 
 	args := os.Args[1:]
-	if len(args) >= 1 {
+	if len(args) > 0 {
 		if err := handleRuntimeFlags(fh, &args, cfg); err != nil {
 			if err.Error() != "!no_return" {
 				logError("Runtime flag handling failed", err, cfg)
@@ -668,6 +710,7 @@ func main() {
 	} else {
 		mountOrExtract(cfg, fh)
 		_ = executeFile(args, cfg)
+		cleanup(cfg)
 	}
 
 }
