@@ -1,5 +1,10 @@
-### PELF
-> .AppBundles are an executable packaging format designed to pack applications, toolchains, window managers, and multiple programs into a single portable file.
+### PELF - The AppBundle format and the AppBundle Creation Tool
+###### PELF used to stand for Pack an Elf, but we slowly evolved into a much simpler yet more featureful alternative to .AppImages
+###### PELF now refers to the tool used to create .AppBundles
+
+---
+
+> .AppBundles are an executable *packaging format* designed to pack applications, toolchains, window managers, and multiple programs into a *single portable file*.
 
 AppBundles can serve as a drop-in replacement for AppImages. Both AppBundles and AppImages utilize the AppDir specification, making it easy to unpack an AppImage and re-package it as an AppBundle, gaining many features, such as faster start-up times, better compression and file de-duplication, and faster build-time. A completely customizable and flexible format.
 
@@ -10,6 +15,10 @@ AppBundles can serve as a drop-in replacement for AppImages. Both AppBundles and
 - **Flexibility of AppBundles**: AppBundles do not force compliance with the AppDir standard. For example, you can bundle window managers and basic GUI utilities into a single file (as done with `Sway.AppBundle`). You can even package toolchains as single-file executables.
 - **Endless Possibilities**: With a custom AppRun script, you can create versatile `.AppBundles`. For instance, packaging a Rick Roll video with a video player that works on both glibc and musl systems is straightforward. You can even generate AppBundles that overlay on top of each other.
 - **Complete tooling**: The `pelfd` daemon (and its GUI version) are available for use as system integrators, they're in charge of adding the AppBundles that you put under ~/Applications in your "start menu". This is one of the many programs that are part of the tooling, another great tool is pelfCreator, which lets you create programs via simple one-liners (by default it uses an Alpine rootfs + bwrap, but you can get smaller binaries via using -x to only keep the binaries you want), a one-liner to pack Chromium into a single-file executable looks like this: `pelfCreator --maintainer "xplshn" --name "org.chromium.Chromium" --pkg-add "chromium" --entrypoint "chromium.desktop"`
+- **Predictable mount directories**: Our mount directories contain the AppBundle's ID, making it clear to which AppBundle the mount directory belongs
+- **Reliable unmount**: The AppBundle starts a background task to unmount the filesystem, and it retries 5 times, then it forces the unmount if all 5 tries failed
+- **Leverages many handy env variables**: Thus making .AppBundles very flexible and scriptable 
+- **AppImage compatibility**: The --appimage-* flags are supported by our runtime, making us an actual drop-in replacement
 
 ### Usage
 ```
