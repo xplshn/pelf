@@ -4,6 +4,8 @@
 work/
 exp/
 appbundle-runtime
+binaryDependencies
+binaryDependencies.tar.zst
 runtime
 pelf
 fusermount
