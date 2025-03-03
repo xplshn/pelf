@@ -66,6 +66,9 @@ build_project() {
             fi
         fi
 
+		log "Creating binaryDependencies.tar.zst"
+		tar -C binaryDependencies -c . | zstd -T0 -19 -fo binaryDependencies.tar.zst
+
         rm -f ./pelf
         export CGO_ENABLED=0
         export GOFLAGS="-ldflags=-static-pie -ldflags=-s -ldflags=-w"
@@ -111,9 +114,6 @@ handle_dependencies() {
         ln -sfT squashfuse_ll squashfuse
     }
     cd "$BASE"
-
-    log "Creating binaryDependencies.tar.zst"
-    tar -C binaryDependencies -c . | zstd -T0 -19 -fo binaryDependencies.tar.zst
 }
 
 update_dependencies() {
