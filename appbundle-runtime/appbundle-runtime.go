@@ -297,7 +297,7 @@ func (f *fileHandler) readPlaceholdersAndMarkers(cfg *RuntimeConfig) error {
 		}
 	}
 
-	if cfg.exeName == "" || cfg.pelfVersion == "" || cfg.pelfHost == "" || cfg.appBundleFS == "" || cfg.updateInfo == "" || cfg.signature == "" {
+	if cfg.exeName == "" || cfg.pelfVersion == "" || cfg.pelfHost == "" || cfg.appBundleFS == "" {
 		return fmt.Errorf("missing placeholders: exeName=%q, pelfVersion=%q, pelfHost=%q, appBundleFS=%q, updateInfo=%q, signature=%q",
 			cfg.exeName, cfg.pelfVersion, cfg.pelfHost, cfg.appBundleFS, cfg.updateInfo, cfg.signature)
 	}
