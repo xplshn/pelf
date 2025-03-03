@@ -1,0 +1,73 @@
+name: Build and Release PELF tooling as a single-file executable
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  schedule:
+    - cron: "0 14 * * 0"
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build tooling
+    runs-on: ubuntu-latest
+    container:
+      image: "docker.io/azathothas/appbundler-alpine:latest"
+      options: --privileged
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up GOBIN and install lib4bin
+        run: |
+          apk add git bash file binutils patchelf findutils grep sed coreutils strace go fuse3 fuse curl yq-go b3sum
+          export GOBIN="$GITHUB_WORKSPACE/.local/bin" CGO_ENABLED=0 GO_LDFLAGS='-buildmode=static-pie' GOFLAGS='-ldflags=-static-pie -ldflags=-s -ldflags=-w'
+          export DBIN_INSTALL_DIR="$GOBIN" DBIN_NOCONFIG=1 PATH="$GOBIN:$PATH"
+          wget -qO- "https://raw.githubusercontent.com/xplshn/dbin/master/stubdl" | sh -s -- --install "$DBIN_INSTALL_DIR/dbin" -v
+          DBIN_INSTALL_DIR="$GOBIN" "$DBIN_INSTALL_DIR/dbin" --silent add yq
+          echo "WITH_SHARUN=1" >> $GITHUB_ENV
+          echo "GEN_LIB_PATH=1" >> $GITHUB_ENV
+          echo "ANY_EXECUTABLE=1" >> $GITHUB_ENV
+          mkdir "$GITHUB_WORKSPACE/dist"
+          ROOTFS_URL="$(curl -qsL https://dl-cdn.alpinelinux.org/alpine/edge/releases/x86_64/latest-releases.yaml | yq '.[0].file')"
+          echo "https://dl-cdn.alpinelinux.org/alpine/edge/releases/x86_64/${ROOTFS_URL}" >"$GITHUB_WORKSPACE/dist/alpineLinuxEdge.x86_64.rootfsURL"
+          echo "https://dl-cdn.alpinelinux.org/alpine/edge/releases/x86_64/${ROOTFS_URL}" >"$GITHUB_WORKSPACE/dist/alpineLinuxEdge.x86_64.rootfsURL"
+          ROOTFS_URL="$(curl -qsL https://dl-cdn.alpinelinux.org/alpine/edge/releases/aarch64/latest-releases.yaml | yq '.[0].file')"
+          echo "https://dl-cdn.alpinelinux.org/alpine/edge/releases/aarch64/${ROOTFS_URL}" >"$GITHUB_WORKSPACE/dist/alpineLinuxEdge.aarch64.rootfsURL"
+          echo "https://dl-cdn.alpinelinux.org/alpine/edge/releases/aarch64/${ROOTFS_URL}" >"$GITHUB_WORKSPACE/dist/alpineLinuxEdge.aarch64.rootfsURL"
+          ROOTFS_URL="$(curl -qsL https://dl-cdn.alpinelinux.org/alpine/edge/releases/$(uname -m)/latest-releases.yaml | yq '.[0].file')"
+          ROOTFS_URL="https://dl-cdn.alpinelinux.org/alpine/edge/releases/$(uname -m)/${ROOTFS_URL}"
+          export ROOTFS_URL
+          echo "ROOTFS_URL=$ROOTFS_URL" >> "$GITHUB_ENV"
+
+      - name: Create AppBundle
+        run: |
+          cd "$GITHUB_WORKSPACE"
+          ls
+
+          # Calculate b3sum checksum
+          B3SUM_CHECKSUM=$(b3sum ./pelf-toolchain*.AppBundle | awk '{print $1}')
+          echo "B3SUM_CHECKSUM=$B3SUM_CHECKSUM" >> $GITHUB_ENV
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4.6.1
+        with:
+          name: AppBundle & 
+          path: ${{ github.workspace }}/dist/*
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2.2.1
+        with:
+          name: "Latest Build"
+          tag_name: "${{ env.B3SUM_CHECKSUM }}"
+          prerelease: false
+          draft: false
+          generate_release_notes: true
+          make_latest: true
+          files: |
+            ${{ github.workspace }}/dist/*
+        continue-on-error: true
