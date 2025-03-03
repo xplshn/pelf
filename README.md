@@ -1,40 +1,51 @@
-### PELF
-> PELF is an executable packaging format designed to pack applications, toolchains, window managers, and multiple programs into a single portable file.
+### PELF - The AppBundle format and the AppBundle Creation Tool
+###### PELF used to stand for Pack an Elf, but we slowly evolved into a much simpler yet more featureful alternative to .AppImages
+###### PELF now refers to the tool used to create .AppBundles
 
-PELF can serve as a drop-in replacement for AppImages. Both PELF and AppImages utilize the AppDir specification, making it easy to unpack an AppImage and re-package it as an AppBundle.
+---
+
+> .AppBundles are an executable *packaging format* designed to pack applications, toolchains, window managers, and multiple programs into a *single portable file*.
+
+AppBundles can serve as a drop-in replacement for AppImages. Both AppBundles and AppImages utilize the AppDir specification, making it easy to unpack an AppImage and re-package it as an AppBundle, gaining many features, such as faster start-up times, better compression and file de-duplication, and faster build-time. A completely customizable and flexible format.
 
 #### Advantages
 - **Dwarfs Compression**: PELF uses Dwarfs by default, which generally performs better than SquashFS. Performance can be further optimized with advanced compression options such as PCMAUDIO ordering and FLAC compression.
-- **Simplicity**: PELF is a minimalistic SH script that efficiently accomplishes the task. The resulting `.AppBundle` is a self-mounting archive created in POSIX SH, making it hackable, flexible, and easy to debug.
-- **Custom Compression**: PELF can be configured to use `tar.gz` or `SquashFS` (see other branches/files under editions/).
+- **Squashfs Compression**: PELF also suuports Squashfs, which works best to pack AppDirs where there isn't much to de-duplicate and thus Squashfs isn't outperformed by `dwarfs`. Squashfs handles smaller AppDirs perfectly fine and in fact, better than `dwarfs`, but `dwarfs` shines when packing big AppDirs, such as a web browser, etc.
+- **Simplicity**: PELF is a minimalistic Go program that makes creating portable POSIX executables a trivial task.
 - **Flexibility of AppBundles**: AppBundles do not force compliance with the AppDir standard. For example, you can bundle window managers and basic GUI utilities into a single file (as done with `Sway.AppBundle`). You can even package toolchains as single-file executables.
 - **Endless Possibilities**: With a custom AppRun script, you can create versatile `.AppBundles`. For instance, packaging a Rick Roll video with a video player that works on both glibc and musl systems is straightforward. You can even generate AppBundles that overlay on top of each other.
-- **Multi-Arch Compatibility**: The `.AppBundle` file is identified as a `sh` script, which can be executed on any architecture and operating system, making it easy to create multi-architecture AppBundles.
 - **Complete tooling**: The `pelfd` daemon (and its GUI version) are available for use as system integrators, they're in charge of adding the AppBundles that you put under ~/Applications in your "start menu". This is one of the many programs that are part of the tooling, another great tool is pelfCreator, which lets you create programs via simple one-liners (by default it uses an Alpine rootfs + bwrap, but you can get smaller binaries via using -x to only keep the binaries you want), a one-liner to pack Chromium into a single-file executable looks like this: `pelfCreator --maintainer "xplshn" --name "org.chromium.Chromium" --pkg-add "chromium" --entrypoint "chromium.desktop"`
+- **Predictable mount directories**: Our mount directories contain the AppBundle's ID, making it clear to which AppBundle the mount directory belongs
+- **Reliable unmount**: The AppBundle starts a background task to unmount the filesystem, and it retries 5 times, then it forces the unmount if all 5 tries failed
+- **Leverages many handy env variables**: Thus making .AppBundles very flexible and scriptable 
+- **AppImage compatibility**: The --appimage-* flags are supported by our runtime, making us an actual drop-in replacement
 
 ### Usage
 ```
-pelf --add-appdir ./myApp.AppDir --appbundle-id myApp-16-10-2024-xplshn --output-to ./myApp.AppBundle --embed-static-tools
+./pelf --add-appdir "nano-14_02_2025.AppDir" --appbundle-id "nano-14_02_2025-xplshn" --output-to "nano-14_02_2025.dwfs.AppBundle" -j "dwarfs" # you can skip the -j flag, "dwarfs" is the default filesystem used by "./pelf"
 ```
+OR
+```
+./pelf --add-appdir "nano-14_02_2025.AppDir" --appbundle-id "nano-14_02_2025-xplshn" --output-to "nano-14_02_2025.sqfs.AppBundle" -j "squashfs"
+```
+
+### Build ./pelf
+1. Procure "go*", "strip" and "upx"
+2. execute `./cbuild.sh`
+3. Put the resulting `./pelf` binary in your `$PATH`
+4. Spread the joy of AppBundles! :)
+
 ### Usage of the Resulting `.AppBundle`
 > By using the `--pbundle_link` option, you can access files contained within the `./bin` or `./usr/bin` directories of an `.AppBundle`, inheriting environment variables like `PATH`. This allows multiple AppBundles to stack on top of each other, sharing libraries and binaries across "parent" bundles.
 
 #### Explanation
 You specify an `AppDir` to be packed and an ID for the app. This ID will be used when mounting the `.AppBundle` and should include the packing date, the project or program name, and the maintainer's information. While you can choose an arbitrary name, it’s not recommended.
 
-Additionally, we embed the tools used for mounting and unmounting the `.AppBundle`, such as `dwarfs` and `fusermount`, when using `pelf-dwfs`.
+Additionally, we embed the tools used for mounting and unmounting the `.AppBundle`, such as `dwarfs` and `fusermount`, when using `pelf`.
 
 ![image](https://github.com/user-attachments/assets/f4459934-a5b6-4717-8299-86b56dc0cf48)
 
-###### MISC:
-- There's a runtime in shell, this one is used by default.
-- There's a runtime made in Go, for those of you that want speed (121~ms improvement)
-
-###### Planned
-- Runtime in ODIN (mostly complete, but I'm too embarrased to share the code, it looks ugly)
-- Runtime in Zig (not yet started)
-- AppImage type II flags, for compat with existing daemons (I'm salty about adding this. Very much so. Perhaps we could do this in a modular way that can be turned on/off?.. would it be okay to do this in the default AppRuns that pelfCreator uses, instead of this being part of the Go runtime?
 
 #### Resources:
 - The [AppBundleHUB](https://github.com/xplshn/AppBundleHUB) a repo which builds a ton of portable AppBundles in an automated fashion, using GH actions. (we have a [webStore](https://fatbuffalo.neocities.org/AppBundleHUBStore) too, tho that is WIP)
-- [dbin])(https://github.com/xplshn/dbin) a self-contained, portable, statically linked, package manager, 3105 binaries (portable, self-contained/static) are available in its repos at the time of writting. Among these, are the AppBundles from the AppBundleHUB and from pkgforge
+- [dbin](https://github.com/xplshn/dbin) a self-contained, portable, statically linked, package manager, +3185 binaries (portable, self-contained/static) are available in its repos at the time of writting. Among these, are the AppBundles from the AppBundleHUB and from pkgforge
