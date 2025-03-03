@@ -20,6 +20,7 @@ import (
 	"github.com/emmansun/base64"
 	"github.com/klauspost/compress/zstd"
 	"github.com/pkg/xattr"
+	"lukechampine.com/blake3"
 	"pgregory.net/rand"
 )
 
@@ -31,6 +32,8 @@ const (
 
 	DWARFS_CACHESIZE = "256M"
 )
+
+var src = rand.New(1)
 
 type RuntimeConfig struct {
 	poolDir              string
@@ -52,6 +55,7 @@ type RuntimeConfig struct {
 	elfFileSize          uint
 	doNotMount           bool
 	noCleanup            bool
+	disableRandomWorkDir bool
 }
 
 type fileHandler struct {
@@ -66,9 +70,9 @@ type Filesystem struct {
 	ExtractCmd func(*RuntimeConfig, string) *exec.Cmd
 }
 
-var Filesystems = []Filesystem{
+var Filesystems = []*Filesystem{
 	{
-		Type: "squashfs",
+		Type:     "squashfs",
 		Commands: []string{"squashfuse", "fusermount"},
 		MountCmd: func(cfg *RuntimeConfig) *exec.Cmd {
 			return exec.Command("squashfuse",
@@ -90,7 +94,7 @@ var Filesystems = []Filesystem{
 		},
 	},
 	{
-		Type: "dwarfs",
+		Type:     "dwarfs",
 		Commands: []string{"dwarfs", "fusermount3"},
 		MountCmd: func(cfg *RuntimeConfig) *exec.Cmd {
 			return exec.Command("dwarfs",
@@ -124,10 +128,15 @@ func mountImage(cfg *RuntimeConfig, fh *fileHandler) error {
 		return err
 	}
 
-	logFile := cfg.workDir + "/." + cfg.appBundleFS + ".log"
+	logFile := filepath.Join(cfg.workDir, "."+cfg.appBundleFS+".log")
+
+	if err := os.MkdirAll(cfg.mountDir, 0755); err != nil {
+		return fmt.Errorf("failed to create mount directory %s: %v", cfg.mountDir, err)
+	}
+
 	if _, err := os.Stat(logFile); os.IsNotExist(err) {
-		if err := os.MkdirAll(cfg.mountDir, 0755); err != nil {
-			return err
+		if err := os.WriteFile(filepath.Join(cfg.workDir, ".pid"), []byte(fmt.Sprintf("%d", os.Getpid())), 0644); err != nil {
+			logError("Failed to write PID file", err, cfg)
 		}
 
 		fs, ok := getFilesystem(cfg.appBundleFS)
@@ -169,13 +178,13 @@ func extractImage(cfg *RuntimeConfig, fh *fileHandler, query string) error {
 	return nil
 }
 
-func getFilesystem(fsType string) (Filesystem, bool) {
+func getFilesystem(fsType string) (*Filesystem, bool) {
 	for _, fs := range Filesystems {
 		if fs.Type == fsType {
 			return fs, true
 		}
 	}
-	return Filesystem{}, false
+	return nil, false
 }
 
 func newFileHandler(path string) (*fileHandler, error) {
@@ -199,22 +208,34 @@ func (f *fileHandler) readPlaceholdersAndMarkers(cfg *RuntimeConfig) error {
 		}
 	}
 
-	// Check for xattr
 	data, err := xattr.FGet(f.file, "user.RuntimeConfig")
 	if err == nil {
-		// Parse the data from the xattr
 		lines := strings.Split(string(data), "\n")
 
 		cfg.appBundleFS = lines[0]
-		staticToolsOffset, _ := strconv.ParseUint(lines[1], 10, 64)
+
+		staticToolsOffset, err := strconv.ParseUint(lines[1], 10, 64)
+		if err != nil {
+			return fmt.Errorf("failed to parse staticToolsOffset: %w", err)
+		}
 		cfg.staticToolsOffset = uint(staticToolsOffset)
-		staticToolsEndOffset, _ := strconv.ParseUint(lines[2], 10, 64)
+
+		staticToolsEndOffset, err := strconv.ParseUint(lines[2], 10, 64)
+		if err != nil {
+			return fmt.Errorf("failed to parse staticToolsEndOffset: %w", err)
+		}
 		cfg.staticToolsEndOffset = uint(staticToolsEndOffset)
-		archiveOffset, _ := strconv.ParseUint(lines[3], 10, 64)
+
+		archiveOffset, err := strconv.ParseUint(lines[3], 10, 64)
+		if err != nil {
+			return fmt.Errorf("failed to parse archiveOffset: %w", err)
+		}
+
 		cfg.archiveOffset = uint(archiveOffset)
 		cfg.exeName = lines[4]
 		cfg.pelfVersion = lines[5]
 		cfg.pelfHost = lines[6]
+		cfg.disableRandomWorkDir = T(lines[7] == "__APPBUNDLE_OPTS__: disableRandomWorkDir", true, false)
 
 		if cfg.exeName == "" || cfg.pelfVersion == "" || cfg.pelfHost == "" || cfg.appBundleFS == "" {
 			return fmt.Errorf("xattr cache is corrupt: missing runtime info: exeName=%q, pelfVersion=%q, pelfHost=%q, appBundleFS=%q",
@@ -228,7 +249,10 @@ func (f *fileHandler) readPlaceholdersAndMarkers(cfg *RuntimeConfig) error {
 	}
 
 	reader := bufio.NewReader(f.file)
-	var staticToolsFound, staticToolsEndFound, archiveMarkerFound bool
+	var (
+		staticToolsFound, staticToolsEndFound, archiveMarkerFound          bool
+		exeName, pelfVersion, pelfHost, appBundleFS, updateInfo, signature string
+	)
 	currentOffset := cfg.elfFileSize
 
 	for {
@@ -255,60 +279,40 @@ func (f *fileHandler) readPlaceholdersAndMarkers(cfg *RuntimeConfig) error {
 			archiveMarkerFound = true
 		}
 
-		if staticToolsFound && archiveMarkerFound && staticToolsEndFound {
-			break
+		if strings.HasPrefix(trimmedLine, "__APPBUNDLE_ID__: ") {
+			exeName = strings.TrimSpace(trimmedLine[len("__APPBUNDLE_ID__: "):])
+		} else if strings.HasPrefix(trimmedLine, "__PELF_VERSION__: ") {
+			pelfVersion = strings.TrimSpace(trimmedLine[len("__PELF_VERSION__: "):])
+		} else if strings.HasPrefix(trimmedLine, "__PELF_HOST__: ") {
+			pelfHost = strings.TrimSpace(trimmedLine[len("__PELF_HOST__: "):])
+		} else if strings.HasPrefix(trimmedLine, "__APPBUNDLE_FS__: ") {
+			appBundleFS = strings.TrimSpace(trimmedLine[len("__APPBUNDLE_FS__: "):])
+		} else if strings.HasPrefix(trimmedLine, "__UPD_INFO__: ") {
+			updateInfo = strings.TrimSpace(trimmedLine[len("__UPD_INFO__: "):])
+		} else if strings.HasPrefix(trimmedLine, "__SHA256_SIG__: ") {
+			signature = strings.TrimSpace(trimmedLine[len("__SHA256_SIG__: "):])
+		} else if strings.HasPrefix(trimmedLine, "__APPBUNDLE_OPTS__: disableRandomWorkDir") {
+			cfg.disableRandomWorkDir = true
 		}
+
 		currentOffset += lineLen
 	}
+
+	cfg.exeName = exeName
+	cfg.pelfVersion = pelfVersion
+	cfg.pelfHost = pelfHost
+	cfg.appBundleFS = appBundleFS
+	cfg.updateInfo = updateInfo
+	cfg.signature = signature
 
 	if !archiveMarkerFound || !staticToolsFound || !staticToolsEndFound {
 		return fmt.Errorf("markers not found: archiveOffset=%d, staticToolsOffset=%d, staticToolsEndOffset=%d", cfg.archiveOffset, cfg.staticToolsOffset, cfg.staticToolsEndOffset)
 	}
 
-	if _, err := f.file.Seek(int64(cfg.elfFileSize), io.SeekStart); err != nil {
-		return fmt.Errorf("seek to ELF end: %w", err)
-	}
-
-	for {
-		line, err := reader.ReadString('\n')
-		if err != nil && err != io.EOF {
-			return fmt.Errorf("read line: %w", err)
-		}
-		if err == io.EOF {
-			break
-		}
-
-		if cfg.exeName == "" && strings.HasPrefix(line, "__APPBUNDLE_ID__: ") {
-			cfg.exeName = strings.TrimSpace(line[18:])
-		} else if strings.HasPrefix(line, "__PELF_VERSION__: ") {
-			cfg.pelfVersion = strings.TrimSpace(line[17:])
-		} else if strings.HasPrefix(line, "__PELF_HOST__: ") {
-			cfg.pelfHost = strings.TrimSpace(line[14:])
-		} else if strings.HasPrefix(line, "__APPBUNDLE_FS__: ") {
-			cfg.appBundleFS = strings.TrimSpace(line[17:])
-		} else if strings.HasPrefix(line, "__UPD_INFO__: ") {
-			cfg.updateInfo = strings.TrimSpace(line[13:])
-		} else if strings.HasPrefix(line, "__SHA256_SIG__: ") {
-			cfg.signature = strings.TrimSpace(line[14:])
-		}
-
-		if cfg.exeName != "" && cfg.pelfVersion != "" && cfg.pelfHost != "" && cfg.appBundleFS != "" && cfg.updateInfo != "" && cfg.signature != "" {
-			break
-		}
-	}
-
-	if cfg.exeName == "" || cfg.pelfVersion == "" || cfg.pelfHost == "" || cfg.appBundleFS == "" {
-		return fmt.Errorf("missing placeholders: exeName=%q, pelfVersion=%q, pelfHost=%q, appBundleFS=%q, updateInfo=%q, signature=%q",
-			cfg.exeName, cfg.pelfVersion, cfg.pelfHost, cfg.appBundleFS, cfg.updateInfo, cfg.signature)
-	}
-
-	// Set xattr if not present
-	if err != nil {
-		xattrData := fmt.Sprintf("%s\n%d\n%d\n%d\n%s\n%s\n%s\n",
-			cfg.appBundleFS, cfg.staticToolsOffset, cfg.staticToolsEndOffset, cfg.archiveOffset, cfg.exeName, cfg.pelfVersion, cfg.pelfHost)
-		if err := xattr.FSet(f.file, "user.RuntimeConfig", []byte(xattrData)); err != nil {
-			return fmt.Errorf("failed to set xattr: %w", err)
-		}
+	xattrData := fmt.Sprintf("%s\n%d\n%d\n%d\n%s\n%s\n%s\n",
+		cfg.appBundleFS, cfg.staticToolsOffset, cfg.staticToolsEndOffset, cfg.archiveOffset, cfg.exeName, cfg.pelfVersion, cfg.pelfHost)
+	if err := xattr.FSet(f.file, "user.RuntimeConfig", []byte(xattrData)); err != nil {
+		return fmt.Errorf("failed to set xattr: %w", err)
 	}
 
 	return nil
@@ -326,11 +330,12 @@ func getEnvWithDefault(key, defaultValue string) string {
 
 func initConfig() (*RuntimeConfig, *fileHandler, error) {
 	cfg := &RuntimeConfig{
-		exeName:    os.Getenv("EXE_NAME"),
-		poolDir:    filepath.Join(os.TempDir(), ".pelfbundles"),
-		selfPath:   getSelfPath(),
-		doNotMount: T(os.Getenv("APPIMAGE_EXTRACT_AND_RUN") == "1" || os.Getenv("PBUNDLE_EXTRACT_AND_RUN") == "1", true, false),
-		noCleanup:  T(os.Getenv("PBUNDLE_NO_CLEANUP") == "1", true, false),
+		exeName:              os.Getenv("EXE_NAME"),
+		poolDir:              filepath.Join(os.TempDir(), ".pelfbundles"),
+		selfPath:             getSelfPath(),
+		doNotMount:           T(os.Getenv("APPIMAGE_EXTRACT_AND_RUN") == "1" || os.Getenv("PBUNDLE_EXTRACT_AND_RUN") == "1", true, false),
+		noCleanup:            T(os.Getenv("PBUNDLE_NO_CLEANUP") == "1", true, false),
+		disableRandomWorkDir: T(os.Getenv("PBUNDLE_DISABLE_RANDOM_WORKDIR") == "__APPBUNDLE_OPTS__: disableRandomWorkDir", true, false),
 	}
 
 	fh, err := newFileHandler(cfg.selfPath)
@@ -347,9 +352,13 @@ func initConfig() (*RuntimeConfig, *fileHandler, error) {
 	}
 
 	cfg.rExeName = sanitizeFilename(cfg.exeName)
-	cfg.workDir = getWorkDir(cfg)
-	cfg.mountDir = cfg.workDir + "/mounted"
-	cfg.entrypoint = cfg.mountDir + "/AppRun"
+
+	if cfg.workDir == "" {
+		cfg.workDir = getWorkDir(cfg, fh)
+	}
+
+	cfg.mountDir = filepath.Join(cfg.workDir, "mounted")
+	cfg.entrypoint = filepath.Join(cfg.mountDir, "AppRun")
 
 	if err := os.MkdirAll(cfg.workDir, 0755); err != nil {
 		logError("Failed to create work directory", err, cfg)
@@ -375,16 +384,28 @@ func sanitizeFilename(name string) string {
 	}, name)
 }
 
-func getWorkDir(cfg *RuntimeConfig) string {
+func getWorkDir(cfg *RuntimeConfig, fh *fileHandler) string {
 	envKey := cfg.rExeName + "_workDir"
 	workDir := os.Getenv(envKey)
 
-	if workDir == "" {
-		randomString, err := generateRandomString(8)
+	if cfg.disableRandomWorkDir {
+		fileInfo, err := os.Stat(cfg.selfPath)
 		if err != nil {
-			logError("Failed to generate random string for workDir", err, cfg)
+			logError("Failed to get file info", err, cfg)
 		}
-		workDir = cfg.poolDir + "/pbundle_" + fmt.Sprintf("%s_%d_%s", cfg.rExeName, os.Getpid(), randomString)
+		offset := fileInfo.Size() - 256
+		buffer := make([]byte, 256)
+		if _, err := fh.file.ReadAt(buffer, offset); err != nil {
+			logError("Failed to read last 256 bytes of file", err, cfg)
+		}
+		hash := blake3.New(8, nil)
+		hash.Write(buffer)
+		hashSum := hash.Sum(nil)
+		hashStr := fmt.Sprintf("%x", hashSum)
+		workDir = filepath.Join(cfg.poolDir, "pbundle_"+cfg.rExeName+"_"+hashStr)
+		cfg.noCleanup = true
+	} else {
+		workDir = filepath.Join(cfg.poolDir, "pbundle_"+cfg.rExeName+"_"+generateRandomString(8))
 	}
 
 	return workDir
@@ -423,7 +444,7 @@ func checkFuse(cfg *RuntimeConfig, fh *fileHandler) error {
 	}
 
 	if missingCmd {
-		cfg.staticToolsDir = cfg.workDir + "/static/"
+		cfg.staticToolsDir = filepath.Join(cfg.workDir, "static")
 		if err := os.MkdirAll(cfg.staticToolsDir, 0755); err != nil {
 			return fmt.Errorf("failed to create static tools directory: %v", err)
 		}
@@ -449,7 +470,6 @@ func (f *fileHandler) extractStaticTools(cfg *RuntimeConfig) error {
 		return fmt.Errorf("failed to read static tools section: %w", err)
 	}
 
-	// Initialize ZSTD decoder
 	decoder, err := zstd.NewReader(bytes.NewReader(staticToolsData))
 	if err != nil {
 		return fmt.Errorf("zstd init: %w", err)
@@ -466,7 +486,7 @@ func (f *fileHandler) extractStaticTools(cfg *RuntimeConfig) error {
 			return fmt.Errorf("tar read: %w", err)
 		}
 
-		fpath := cfg.staticToolsDir + "/" + hdr.Name
+		fpath := filepath.Join(cfg.staticToolsDir, hdr.Name)
 		switch hdr.Typeflag {
 		case tar.TypeDir:
 			if err := os.MkdirAll(fpath, 0755); err != nil {
@@ -476,12 +496,13 @@ func (f *fileHandler) extractStaticTools(cfg *RuntimeConfig) error {
 			if err := os.MkdirAll(filepath.Dir(fpath), 0755); err != nil {
 				return fmt.Errorf("mkdir parent: %w", err)
 			}
-			f, err := os.OpenFile(fpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0755)
+			f, err := os.OpenFile(fpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.FileMode(hdr.Mode))
 			if err != nil {
 				return fmt.Errorf("create: %w", err)
 			}
-			defer f.Close()
-			if _, err := io.Copy(f, tr); err != nil {
+			_, err = io.Copy(f, tr)
+			f.Close()
+			if err != nil {
 				return fmt.Errorf("write: %w", err)
 			}
 		}
@@ -672,7 +693,6 @@ func main() {
 		logError("Failed to initialize config", err, cfg)
 	}
 
-	// Set up a channel to listen for interrupt signals
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
@@ -684,7 +704,6 @@ func main() {
 		os.Exit(0)
 	}
 
-	// Set up a deferred function to handle panics
 	defer func() {
 		if r := recover(); r != nil {
 			logError("Panic recovered", fmt.Errorf("%v", r), cfg)
@@ -692,7 +711,6 @@ func main() {
 		die()
 	}()
 
-	// Handle interrupt signals
 	go func() {
 		<-sigChan
 		die()
@@ -715,12 +733,12 @@ func main() {
 
 }
 
-func generateRandomString(length int) (string, error) {
+func generateRandomString(length int) string {
 	bytes := make([]byte, length)
 	if _, err := rand.Read(bytes); err != nil {
-		return "", err
+		panic(err)
 	}
-	return hex.EncodeToString(bytes), nil
+	return hex.EncodeToString(bytes)
 }
 
 func lookPath(file string, pathenv string) (string, error) {
@@ -758,7 +776,6 @@ func isExecutableFile(file string) error {
 	return os.ErrPermission
 }
 
-// Ternary operator
 func T[T any](cond bool, vtrue, vfalse T) T {
 	if cond {
 		return vtrue

@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	_ "embed"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
@@ -12,11 +13,10 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"crypto/sha256"
-	"encoding/hex"
 
 	"golang.org/x/sys/unix"
 
+	"github.com/zeebo/blake3"
 	"github.com/klauspost/compress/zstd"
 	"github.com/pkg/xattr"
 	"github.com/urfave/cli/v3"
@@ -77,27 +77,28 @@ type RuntimeInfo struct {
 }
 
 type RuntimeConfig struct {
-	AppBundleID    string            `json:"appBundleID"`
-	PelfVersion    string            `json:"pelfVersion"`
-	HostInfo       string            `json:"hostInfo"`
-	Offsets        map[string]int64  `json:"offsets"`
-	FilesystemType string            `json:"filesystemType"`
+	AppBundleID    string           `json:"appBundleID"`
+	PelfVersion    string           `json:"pelfVersion"`
+	HostInfo       string           `json:"hostInfo"`
+	Offsets        map[string]int64 `json:"offsets"`
+	FilesystemType string           `json:"filesystemType"`
 }
 
 type Config struct {
-	AppDir             string
-	AppBundleID        string
-	OutputFile         string
-	CompressionArgs    string
-	CustomEmbedDir     string
-	FilesystemType     string
-	ArchivePath        string
-	Runtime            string
-	EmbedStaticTools   bool
-	UseUPX             bool
-	RuntimeInfo        RuntimeConfig
-	PreferToolsInPath  bool
-	BinDepDir          string
+	AppDir            string
+	AppBundleID       string
+	OutputFile        string
+	CompressionArgs   string
+	CustomEmbedDir    string
+	FilesystemType    string
+	ArchivePath       string
+	Runtime           string
+	EmbedStaticTools  bool
+	UseUPX            bool
+	RuntimeInfo       RuntimeConfig
+	PreferToolsInPath bool
+	BinDepDir         string
+	DisableRandomWorkDir bool
 }
 
 // Modified lookPath function to handle custom PATH ordering
@@ -135,10 +136,8 @@ func isExecutableFile(path string) error {
 		return fmt.Errorf("%s is a directory", path)
 	}
 	// Check if file is executable
-	if runtime.GOOS != "windows" {
-		if fi.Mode()&0111 == 0 {
-			return fmt.Errorf("%s is not executable", path)
-		}
+	if fi.Mode()&0111 == 0 {
+		return fmt.Errorf("%s is not executable", path)
 	}
 	return nil
 }
@@ -218,14 +217,14 @@ func setupBinaryDependencies(config *Config) (string, error) {
 	return newPath, nil
 }
 
-// Function to calculate sha256 hash of a file
+// Function to calculate b3sum hash of a file
 func calculateB3Sum(filePath string) (string, error) {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return "", err
 	}
 
-	hash := sha256.Sum256(data)
+	hash := blake3.Sum256(data)
 	return hex.EncodeToString(hash[:]), nil
 }
 
@@ -259,9 +258,9 @@ func main() {
 		Usage: "Create self-contained AppDir executables",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
-				Name:     "output-to",
-				Aliases:  []string{"o"},
-				Usage:    "Specify the output file name for the bundle",
+				Name:    "output-to",
+				Aliases: []string{"o"},
+				Usage:   "Specify the output file name for the bundle",
 			},
 			&cli.StringFlag{
 				Name:    "compression",
@@ -269,14 +268,14 @@ func main() {
 				Usage:   "Specify compression flags for mkdwarfs/mksquashfs",
 			},
 			&cli.StringFlag{
-				Name:     "add-appdir",
-				Aliases:  []string{"a"},
-				Usage:    "Add an AppDir",
+				Name:    "add-appdir",
+				Aliases: []string{"a"},
+				Usage:   "Add an AppDir",
 			},
 			&cli.StringFlag{
-				Name:     "appbundle-id",
-				Aliases:  []string{"i"},
-				Usage:    "Specify the ID of the AppBundle",
+				Name:    "appbundle-id",
+				Aliases: []string{"i"},
+				Usage:   "Specify the ID of the AppBundle",
 			},
 			&cli.BoolFlag{
 				Name:    "do-not-embed-static-tools",
@@ -310,6 +309,11 @@ func main() {
 				Name:  "list-static-tools",
 				Usage: "List all binary dependencies with their B3SUMs",
 			},
+			&cli.BoolFlag{
+				Name:    "disable-use-random-workdir",
+				Aliases: []string{"d"},
+				Usage:   "Disable the use of a random working directory",
+			},
 		},
 		Action: func(ctx context.Context, c *cli.Command) error {
 			config := &Config{
@@ -323,6 +327,7 @@ func main() {
 				UseUPX:            c.Bool("upx"),
 				FilesystemType:    c.String("filesystem"),
 				PreferToolsInPath: c.Bool("prefer-tools-in-path"),
+				DisableRandomWorkDir: c.Bool("disable-use-random-workdir"),
 			}
 
 			// Extract binary dependencies and set up PATH
@@ -335,6 +340,15 @@ func main() {
 			// Handle list-static-tools flag
 			if c.Bool("list-static-tools") {
 				return listStaticTools(config.BinDepDir)
+			}
+
+			// Handle list-static-tools flag
+			if c.Bool("list-static-tools") {
+				return listStaticTools(config.BinDepDir)
+			} else {
+				if c.String("add-appdir") == "" || c.String("appbundle-id") == "" || c.String("output-to") == "" {
+					return fmt.Errorf("--add-appdir, --appbundle-id and --output-to are obligatory parameters")
+				}
 			}
 
 			// Set the new PATH for the current process
@@ -613,6 +627,12 @@ func createSelfExtractingArchive(config *Config, workDir string, buildInfo Build
 		return err
 	}
 
+	if config.DisableRandomWorkDir {
+		if _, err := fmt.Fprintf(out, "__APPBUNDLE_OPTS__: disableRandomWorkDir"); err != nil {
+			return err
+		}
+	}
+
 	var staticToolsOffset, staticToolsEndOffset, archiveOffset int64
 
 	if config.EmbedStaticTools {
@@ -656,14 +676,16 @@ func createSelfExtractingArchive(config *Config, workDir string, buildInfo Build
 	config.RuntimeInfo.Offsets["staticToolsEndOffset"] = staticToolsEndOffset
 	config.RuntimeInfo.Offsets["archiveOffset"] = archiveOffset
 
-	xattrData := fmt.Sprintf("%s\n%d\n%d\n%d\n%s\n%s\n%s\n",
+	xattrData := fmt.Sprintf("%s\n%d\n%d\n%d\n%s\n%s\n%s\n%s\n",
 		config.RuntimeInfo.FilesystemType,
 		staticToolsOffset,
 		staticToolsEndOffset,
 		archiveOffset,
 		config.RuntimeInfo.AppBundleID,
 		config.RuntimeInfo.PelfVersion,
-		config.RuntimeInfo.HostInfo)
+		config.RuntimeInfo.HostInfo,
+		ternary(config.DisableRandomWorkDir, "__APPBUNDLE_OPTS__: disableRandomWorkDir", ""),
+		)
 	if err := xattr.FSet(out, "user.RuntimeConfig", []byte(xattrData)); err != nil {
 		return fmt.Errorf("failed to set xattr: %w", err)
 	}
@@ -678,4 +700,11 @@ func createSelfExtractingArchive(config *Config, workDir string, buildInfo Build
 func getFileSize(filePath string) int64 {
 	fi, _ := os.Stat(filePath)
 	return fi.Size()
+}
+
+func ternary[T any](cond bool, vtrue, vfalse T) T {
+	if cond {
+		return vtrue
+	}
+	return vfalse
 }

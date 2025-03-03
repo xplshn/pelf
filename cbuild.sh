@@ -47,8 +47,8 @@ build_project() {
         mkdir -p "$DBIN_INSTALL_DIR"
         handle_dependencies
 
-        if [ ! -f "$DBIN_INSTALL_DIR/appbundle-runtime" ]; then
-            log "appbundle-runtime executable not found in $DBIN_INSTALL_DIR"
+        #if [ ! -f "$DBIN_INSTALL_DIR/appbundle-runtime" ]; then
+        #    log "appbundle-runtime executable not found in $DBIN_INSTALL_DIR"
             if [ -d "./appbundle-runtime" ]; then
                 cd ./appbundle-runtime && {
                 	log "Building appbundle-runtime"
@@ -64,10 +64,11 @@ build_project() {
                 }
                 cd "$BASE"
             fi
-        fi
+        #fi
 
 		log "Creating binaryDependencies.tar.zst"
 		tar -C binaryDependencies -c . | zstd -T0 -19 -fo binaryDependencies.tar.zst
+		#tar -C binaryDependencies -c . | zstd -T0 -fo binaryDependencies.tar.zst
 
         rm -f ./pelf
         export CGO_ENABLED=0
@@ -86,7 +87,7 @@ build_project() {
 
 clean_project() {
     log "Starting clean process"
-    rm -f ./pelf ./pelf.upx
+    rm -rf ./pelf ./pelf.upx ./binaryDependencies ./binaryDependencies.tar.zst
     log "Clean process completed"
 }
 
@@ -95,7 +96,6 @@ retrieve_executable() {
 }
 
 handle_dependencies() {
-    log "Handling dependencies..."
     mkdir -p "$DBIN_INSTALL_DIR"
 
     if [ -n "$(ls -A "$DBIN_INSTALL_DIR" 2>/dev/null)" ]; then
@@ -107,11 +107,12 @@ handle_dependencies() {
     fi
 
     cd "$DBIN_INSTALL_DIR" && {
+        upx --force-overwrite -9 ./dwarfs-tools
         log "Linking dependencies"
+        ln -sfT squashfuse_ll squashfuse
         ln -sfT dwarfs-tools mkdwarfs
         ln -sfT dwarfs-tools dwarfsextract
         ln -sfT dwarfs-tools dwarfs
-        ln -sfT squashfuse_ll squashfuse
     }
     cd "$BASE"
 }

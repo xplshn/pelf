@@ -18,6 +18,7 @@ require (
 	github.com/pkg/xattr v0.4.10
 	github.com/u-root/u-root v0.14.0
 	github.com/zeebo/blake3 v0.2.4
+	lukechampine.com/blake3 v1.4.0
 	pgregory.net/rand v1.0.2
 )
 
@@ -38,7 +39,7 @@ require (
 	github.com/gopherjs/gopherjs v1.17.2 // indirect
 	github.com/jeandeaual/go-locale v0.0.0-20240223122105-ce5225dcaa49 // indirect
 	github.com/jsummers/gobmp v0.0.0-20151104160322-e2ba15ffa76e // indirect
-	github.com/klauspost/cpuid/v2 v2.2.8 // indirect
+	github.com/klauspost/cpuid/v2 v2.2.10 // indirect
 	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646 // indirect
 	github.com/nicksnyder/go-i18n/v2 v2.4.0 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
