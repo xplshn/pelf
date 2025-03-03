@@ -3,7 +3,7 @@
 .*
 work/
 exp/
-appbundle-runtime
+appbundle-runtime/appbundle-runtime
 binaryDependencies
 binaryDependencies.tar.zst
 runtime
