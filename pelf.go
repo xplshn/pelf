@@ -16,13 +16,15 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"github.com/zeebo/blake3"
 	"github.com/klauspost/compress/zstd"
 	"github.com/pkg/xattr"
 	"github.com/urfave/cli/v3"
+	"github.com/zeebo/blake3"
 )
 
 const pelFVersion = "3.0"
+
+//TODO use os.Getenv("PATH") only once, and make the result of that call global, so that we never do os.Getenv("PATH") again.
 
 //go:embed binaryDependencies.tar.zst
 var binaryDependencies []byte
@@ -85,20 +87,20 @@ type RuntimeConfig struct {
 }
 
 type Config struct {
-	AppDir            string
-	AppBundleID       string
-	OutputFile        string
-	CompressionArgs   string
-	CustomEmbedDir    string
-	FilesystemType    string
-	ArchivePath       string
-	Runtime           string
-	EmbedStaticTools  bool
-	UseUPX            bool
-	RuntimeInfo       RuntimeConfig
-	PreferToolsInPath bool
-	BinDepDir         string
-	DisableRandomWorkDir bool
+	AppDir                string
+	AppBundleID           string
+	OutputFile            string
+	CompressionArgs       string
+	CustomEmbedDir        string
+	FilesystemType        string
+	ArchivePath           string
+	Runtime               string
+	DoNotEmbedStaticTools bool
+	UseUPX                bool
+	RuntimeInfo           RuntimeConfig
+	PreferToolsInPath     bool
+	BinDepDir             string
+	DisableRandomWorkDir  bool
 }
 
 // Modified lookPath function to handle custom PATH ordering
@@ -178,6 +180,26 @@ func setupBinaryDependencies(config *Config) (string, error) {
 			dirPath := filepath.Join(binDepDir, header.Name)
 			if err := os.MkdirAll(dirPath, 0755); err != nil {
 				return "", err
+			}
+			continue
+		}
+
+		// Handle symlink
+		if header.Typeflag == tar.TypeSymlink {
+			target := header.Linkname
+			symlinkPath := filepath.Join(binDepDir, header.Name)
+			dir := filepath.Dir(symlinkPath)
+			if err := os.MkdirAll(dir, 0755); err != nil {
+				return "", err
+			}
+
+			// Remove existing file/symlink if necessary
+			if _, err := os.Lstat(symlinkPath); err == nil {
+				os.Remove(symlinkPath)
+			}
+
+			if err := os.Symlink(target, symlinkPath); err != nil {
+				return "", fmt.Errorf("failed to create symlink %s -> %s: %w", symlinkPath, target, err)
 			}
 			continue
 		}
@@ -317,17 +339,17 @@ func main() {
 		},
 		Action: func(ctx context.Context, c *cli.Command) error {
 			config := &Config{
-				AppDir:            c.String("add-appdir"),
-				AppBundleID:       c.String("appbundle-id"),
-				OutputFile:        c.String("output-to"),
-				CompressionArgs:   c.String("compression"),
-				EmbedStaticTools:  !c.Bool("do-not-embed-static-tools"),
-				CustomEmbedDir:    c.String("static-tools-dir"),
-				Runtime:           c.String("runtime"),
-				UseUPX:            c.Bool("upx"),
-				FilesystemType:    c.String("filesystem"),
-				PreferToolsInPath: c.Bool("prefer-tools-in-path"),
-				DisableRandomWorkDir: c.Bool("disable-use-random-workdir"),
+				AppDir:                c.String("add-appdir"),
+				AppBundleID:           c.String("appbundle-id"),
+				OutputFile:            c.String("output-to"),
+				CompressionArgs:       c.String("compression"),
+				DoNotEmbedStaticTools: c.Bool("do-not-embed-static-tools"),
+				CustomEmbedDir:        c.String("static-tools-dir"),
+				Runtime:               c.String("runtime"),
+				UseUPX:                c.Bool("upx"),
+				FilesystemType:        c.String("filesystem"),
+				PreferToolsInPath:     c.Bool("prefer-tools-in-path"),
+				DisableRandomWorkDir:  c.Bool("disable-use-random-workdir"),
 			}
 
 			// Extract binary dependencies and set up PATH
@@ -442,7 +464,7 @@ func run(config *Config) error {
 	}
 
 	var staticToolsSize, archiveSize int64
-	if config.EmbedStaticTools {
+	if !config.DoNotEmbedStaticTools {
 		if err := embedStaticTools(config, workDir, fs); err != nil {
 			return err
 		}
@@ -508,7 +530,6 @@ func copyTools(customDir, destDir string, tools []string) error {
 		if customDir != "" {
 			src = filepath.Join(customDir, tool)
 		} else {
-			// Use our custom lookPath instead of exec.LookPath
 			path, err := lookPath(tool, os.Getenv("PATH"))
 			if err != nil {
 				return fmt.Errorf("command not found: %s", tool)
@@ -516,8 +537,28 @@ func copyTools(customDir, destDir string, tools []string) error {
 			src = path
 		}
 		dest := filepath.Join(destDir, filepath.Base(src))
-		if err := copyFile(src, dest); err != nil {
+
+		// Check if the source is a symlink
+		fi, err := os.Lstat(src)
+		if err != nil {
 			return err
+		}
+
+		if fi.Mode()&os.ModeSymlink != 0 {
+			// Read the symlink target
+			target, err := os.Readlink(src)
+			if err != nil {
+				return err
+			}
+			// Create the symlink at the destination
+			if err := os.Symlink(target, dest); err != nil {
+				return fmt.Errorf("failed to create symlink %s -> %s: %w", dest, target, err)
+			}
+		} else {
+			// Copy regular file or directory
+			if err := copyFile(src, dest); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -635,7 +676,7 @@ func createSelfExtractingArchive(config *Config, workDir string, buildInfo Build
 
 	var staticToolsOffset, staticToolsEndOffset, archiveOffset int64
 
-	if config.EmbedStaticTools {
+	if !config.DoNotEmbedStaticTools {
 		tarFile, err := os.Open(filepath.Join(workDir, "static.tar.zst"))
 		if err != nil {
 			return err
@@ -685,7 +726,7 @@ func createSelfExtractingArchive(config *Config, workDir string, buildInfo Build
 		config.RuntimeInfo.PelfVersion,
 		config.RuntimeInfo.HostInfo,
 		ternary(config.DisableRandomWorkDir, "__APPBUNDLE_OPTS__: disableRandomWorkDir", ""),
-		)
+	)
 	if err := xattr.FSet(out, "user.RuntimeConfig", []byte(xattrData)); err != nil {
 		return fmt.Errorf("failed to set xattr: %w", err)
 	}

@@ -3,7 +3,7 @@
 # Constants
 OPWD="$PWD"
 BASE="$(dirname "$(realpath "$0")")"
-DEPS="dwarfs/dwarfs-tools unionfs-fuse3/unionfs squashfs-tools/unsquashfs squashfs-tools/mksquashfs squashfuse/squashfuse_ll"
+DEPS="dwarfs/dwarfs-tools unionfs-fuse3/unionfs squashfs-tools/unsquashfs squashfs-tools/mksquashfs squashfuse/squashfuse"
 export DBIN_INSTALL_DIR="$BASE/binaryDependencies"
 export DBIN_NOCONFIG="1"
 
@@ -107,9 +107,9 @@ handle_dependencies() {
     fi
 
     cd "$DBIN_INSTALL_DIR" && {
-        upx --force-overwrite -9 ./dwarfs-tools
+        #upx --force-overwrite -9 ./dwarfs-tools
         log "Linking dependencies"
-        ln -sfT squashfuse_ll squashfuse
+        #ln -sfT squashfuse_ll squashfuse
         ln -sfT dwarfs-tools mkdwarfs
         ln -sfT dwarfs-tools dwarfsextract
         ln -sfT dwarfs-tools dwarfs
