@@ -33,8 +33,6 @@ const (
 	DWARFS_CACHESIZE = "256M"
 )
 
-var src = rand.New(1)
-
 type RuntimeConfig struct {
 	poolDir              string
 	workDir              string
