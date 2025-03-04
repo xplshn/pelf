@@ -24,20 +24,21 @@ import (
 
 const pelFVersion = "3.0"
 
-//TODO use os.Getenv("PATH") only once, and make the result of that call global, so that we never do os.Getenv("PATH") again.
+// Global variable to store the PATH environment variable
+var globalPath = os.Getenv("PATH")
 
 //go:embed binaryDependencies.tar.zst
 var binaryDependencies []byte
 
 type Filesystem struct {
-	Type       string
+	Type       map[string]string
 	Commands   []string
 	CmdBuilder func(*Config) *exec.Cmd
 }
 
 var Filesystems = []Filesystem{
 	{
-		Type:     "squashfs",
+		Type:     map[string]string{"squashfs": "sqfs"},
 		Commands: []string{"mksquashfs", "squashfuse", "fusermount"},
 		CmdBuilder: func(config *Config) *exec.Cmd {
 			args := []string{"mksquashfs", config.AppDir, config.ArchivePath}
@@ -50,7 +51,7 @@ var Filesystems = []Filesystem{
 		},
 	},
 	{
-		Type:     "dwarfs",
+		Type:     map[string]string{"dwarfs": "dwfs"},
 		Commands: []string{"mkdwarfs", "dwarfs", "fusermount3"},
 		CmdBuilder: func(config *Config) *exec.Cmd {
 			compressionArgs := strings.Split(config.CompressionArgs, " ")
@@ -104,7 +105,7 @@ type Config struct {
 }
 
 // Modified lookPath function to handle custom PATH ordering
-func lookPath(file string, pathenv string) (string, error) {
+func lookPath(file string) (string, error) {
 	errNotFound := fmt.Errorf("executable file not found in $PATH")
 	if strings.Contains(file, "/") {
 		err := isExecutableFile(file)
@@ -113,10 +114,10 @@ func lookPath(file string, pathenv string) (string, error) {
 		}
 		return "", err
 	}
-	if pathenv == "" {
+	if globalPath == "" {
 		return "", errNotFound
 	}
-	for _, dir := range strings.Split(pathenv, ":") {
+	for _, dir := range strings.Split(globalPath, ":") {
 		if dir == "" {
 			dir = "."
 		}
@@ -225,15 +226,12 @@ func setupBinaryDependencies(config *Config) (string, error) {
 		outFile.Close()
 	}
 
-	// Get the current PATH
-	currentPath := os.Getenv("PATH")
-
 	// Update PATH according to preference
 	var newPath string
 	if config.PreferToolsInPath {
-		newPath = currentPath + ":" + binDepDir
+		newPath = globalPath + ":" + binDepDir
 	} else {
-		newPath = binDepDir + ":" + currentPath
+		newPath = binDepDir + ":" + globalPath
 	}
 
 	return newPath, nil
@@ -274,6 +272,24 @@ func listStaticTools(binDepDir string) error {
 	return nil
 }
 
+// Function to determine filesystem type from output file extension
+func getFilesystemTypeFromOutputFile(outputFile string) string {
+	ext := filepath.Ext(outputFile)
+	secondExt := filepath.Ext(strings.TrimSuffix(outputFile, ext))
+	
+	// Check if it's .dwfs.AppBundle or .sqfs.AppBundle
+	if ext == ".AppBundle" {
+		if secondExt == ".dwfs" {
+			return "dwarfs"
+		} else if secondExt == ".sqfs" {
+			return "squashfs"
+		}
+	}
+	
+	// Default to squashfs if no matching extension found
+	return "squashfs"
+}
+
 func main() {
 	app := &cli.Command{
 		Name:  "pelf",
@@ -287,7 +303,7 @@ func main() {
 			&cli.StringFlag{
 				Name:    "compression",
 				Aliases: []string{"c"},
-				Usage:   "Specify compression flags for mkdwarfs/mksquashfs",
+				Usage:   "Specify compression flags for the selected filesystem",
 			},
 			&cli.StringFlag{
 				Name:    "add-appdir",
@@ -321,7 +337,7 @@ func main() {
 				Name:    "filesystem",
 				Aliases: []string{"j"},
 				Usage:   "Specify the filesystem type: 'dwarfs' for DWARFS, 'squashfs' for SQUASHFS",
-				Value:   "dwarfs", // Default to DWARFS
+				Value:   "squashfs",
 			},
 			&cli.BoolFlag{
 				Name:  "prefer-tools-in-path",
@@ -347,22 +363,17 @@ func main() {
 				CustomEmbedDir:        c.String("static-tools-dir"),
 				Runtime:               c.String("runtime"),
 				UseUPX:                c.Bool("upx"),
-				FilesystemType:        c.String("filesystem"),
 				PreferToolsInPath:     c.Bool("prefer-tools-in-path"),
 				DisableRandomWorkDir:  c.Bool("disable-use-random-workdir"),
 			}
 
 			// Extract binary dependencies and set up PATH
-			newPath, err := setupBinaryDependencies(config)
+			var err error
+			globalPath, err = setupBinaryDependencies(config)
 			if err != nil {
 				return fmt.Errorf("failed to set up binary dependencies: %w", err)
 			}
 			defer os.RemoveAll(config.BinDepDir)
-
-			// Handle list-static-tools flag
-			if c.Bool("list-static-tools") {
-				return listStaticTools(config.BinDepDir)
-			}
 
 			// Handle list-static-tools flag
 			if c.Bool("list-static-tools") {
@@ -372,9 +383,13 @@ func main() {
 					return fmt.Errorf("--add-appdir, --appbundle-id and --output-to are obligatory parameters")
 				}
 			}
-
-			// Set the new PATH for the current process
-			os.Setenv("PATH", newPath)
+			
+			// Determine filesystem type based on output file extension if not explicitly set
+			if !c.IsSet("filesystem") && config.OutputFile != "" {
+				config.FilesystemType = getFilesystemTypeFromOutputFile(config.OutputFile)
+			} else {
+				config.FilesystemType = c.String("filesystem")
+			}
 
 			if err := initRuntimeInfo(&config.RuntimeInfo, config.FilesystemType, config.AppBundleID); err != nil {
 				return err
@@ -434,8 +449,13 @@ func run(config *Config) error {
 	fsType := config.FilesystemType
 	var fs *Filesystem
 	for i := range Filesystems {
-		if Filesystems[i].Type == fsType {
-			fs = &Filesystems[i]
+		for fsName := range Filesystems[i].Type {
+			if fsName == fsType {
+				fs = &Filesystems[i]
+				break
+			}
+		}
+		if fs != nil {
 			break
 		}
 	}
@@ -445,7 +465,7 @@ func run(config *Config) error {
 
 	// Use our custom lookPath instead of exec.LookPath
 	for _, cmd := range fs.Commands {
-		path, err := lookPath(cmd, os.Getenv("PATH"))
+		path, err := lookPath(cmd)
 		if err != nil {
 			return fmt.Errorf("command not found: %s", cmd)
 		}
@@ -530,7 +550,7 @@ func copyTools(customDir, destDir string, tools []string) error {
 		if customDir != "" {
 			src = filepath.Join(customDir, tool)
 		} else {
-			path, err := lookPath(tool, os.Getenv("PATH"))
+			path, err := lookPath(tool)
 			if err != nil {
 				return fmt.Errorf("command not found: %s", tool)
 			}
@@ -566,7 +586,7 @@ func copyTools(customDir, destDir string, tools []string) error {
 
 func compressWithUPX(dir string) error {
 	// Use our custom lookPath instead of exec.LookPath
-	if _, err := lookPath("upx", os.Getenv("PATH")); err != nil {
+	if _, err := lookPath("upx"); err != nil {
 		return fmt.Errorf("UPX not found")
 	}
 	files, err := os.ReadDir(dir)
@@ -589,7 +609,7 @@ func createTar(srcDir, tarPath string) error {
 	}
 	defer file.Close()
 
-	zw, err := zstd.NewWriter(file)
+	zw, err := zstd.NewWriter(file, zstd.WithEncoderLevel(4))
 	if err != nil {
 		return err
 	}
@@ -602,26 +622,49 @@ func createTar(srcDir, tarPath string) error {
 		if err != nil {
 			return err
 		}
-		header, err := tar.FileInfoHeader(fi, file)
+		
+		// Get the relative path for the header name
+		relPath, err := filepath.Rel(filepath.Clean(srcDir), file)
 		if err != nil {
 			return err
 		}
-		header.Name, err = filepath.Rel(filepath.Clean(srcDir), file)
+		
+		// Create the header using the file info
+		header, err := tar.FileInfoHeader(fi, "")
 		if err != nil {
 			return err
 		}
+		
+		// Set the Name field correctly with the relative path
+		header.Name = relPath
+		
+		// Format the header correctly for symlinks
+		if fi.Mode()&os.ModeSymlink != 0 {
+			linkTarget, err := os.Readlink(file)
+			if err != nil {
+				return err
+			}
+			header.Linkname = linkTarget
+		}
+		
+		// Write the header
 		if err := tw.WriteHeader(header); err != nil {
 			return err
 		}
-		if !fi.IsDir() {
+		
+		// If it's not a directory or symlink, copy the file content
+		if !fi.IsDir() && fi.Mode()&os.ModeSymlink == 0 {
 			f, err := os.Open(file)
 			if err != nil {
 				return err
 			}
 			defer f.Close()
-			_, err = io.Copy(tw, f)
-			return err
+			
+			if _, err = io.Copy(tw, f); err != nil {
+				return err
+			}
 		}
+		
 		return nil
 	})
 }
@@ -646,7 +689,6 @@ func copyFile(src, dest string) error {
 func createSelfExtractingArchive(config *Config, workDir string, buildInfo BuildInfo) error {
 	runtimePath := config.Runtime
 	if runtimePath == "" {
-		// Use appbundle-runtime from extracted binary dependencies if available
 		runtimePath = filepath.Join(config.BinDepDir, "appbundle-runtime")
 		if _, err := os.Stat(runtimePath); os.IsNotExist(err) {
 			return fmt.Errorf("User did not provide --runtime flag and we apparently lack a default embedded runtime")
