@@ -17,10 +17,10 @@ import (
 	"syscall"
 	"time"
 
+	blake3 "github.com/cespare/xxhash"
 	"github.com/emmansun/base64"
 	"github.com/klauspost/compress/zstd"
 	"github.com/pkg/xattr"
-	"lukechampine.com/blake3"
 	"pgregory.net/rand"
 )
 
@@ -54,6 +54,7 @@ type RuntimeConfig struct {
 	doNotMount           bool
 	noCleanup            bool
 	disableRandomWorkDir bool
+	hash                 string
 }
 
 type fileHandler struct {
@@ -209,37 +210,36 @@ func (f *fileHandler) readPlaceholdersAndMarkers(cfg *RuntimeConfig) error {
 	data, err := xattr.FGet(f.file, "user.RuntimeConfig")
 	if err == nil {
 		lines := strings.Split(string(data), "\n")
+		if len(lines) >= 8 {
 
-		cfg.appBundleFS = lines[0]
+			cfg.appBundleFS = lines[0]
 
-		staticToolsOffset, err := strconv.ParseUint(lines[1], 10, 64)
-		if err != nil {
-			return fmt.Errorf("failed to parse staticToolsOffset: %w", err)
+			staticToolsOffset, err := strconv.ParseUint(lines[1], 10, 64)
+			if err != nil {
+				return fmt.Errorf("failed to parse staticToolsOffset: %w", err)
+			}
+			cfg.staticToolsOffset = uint(staticToolsOffset)
+
+			staticToolsEndOffset, err := strconv.ParseUint(lines[2], 10, 64)
+			if err != nil {
+				return fmt.Errorf("failed to parse staticToolsEndOffset: %w", err)
+			}
+			cfg.staticToolsEndOffset = uint(staticToolsEndOffset)
+
+			archiveOffset, err := strconv.ParseUint(lines[3], 10, 64)
+			if err != nil {
+				return fmt.Errorf("failed to parse archiveOffset: %w", err)
+			}
+
+			cfg.archiveOffset = uint(archiveOffset)
+			cfg.exeName = lines[4]
+			cfg.pelfVersion = lines[5]
+			cfg.pelfHost = lines[6]
+			cfg.hash = lines[7]
+			cfg.disableRandomWorkDir = T(lines[8] == "__APPBUNDLE_OPTS__: disableRandomWorkDir", true, false)
+
+			return nil
 		}
-		cfg.staticToolsOffset = uint(staticToolsOffset)
-
-		staticToolsEndOffset, err := strconv.ParseUint(lines[2], 10, 64)
-		if err != nil {
-			return fmt.Errorf("failed to parse staticToolsEndOffset: %w", err)
-		}
-		cfg.staticToolsEndOffset = uint(staticToolsEndOffset)
-
-		archiveOffset, err := strconv.ParseUint(lines[3], 10, 64)
-		if err != nil {
-			return fmt.Errorf("failed to parse archiveOffset: %w", err)
-		}
-
-		cfg.archiveOffset = uint(archiveOffset)
-		cfg.exeName = lines[4]
-		cfg.pelfVersion = lines[5]
-		cfg.pelfHost = lines[6]
-		cfg.disableRandomWorkDir = T(lines[7] == "__APPBUNDLE_OPTS__: disableRandomWorkDir", true, false)
-
-		if cfg.exeName == "" || cfg.pelfVersion == "" || cfg.pelfHost == "" || cfg.appBundleFS == "" {
-			return fmt.Errorf("xattr cache is corrupt: missing runtime info: exeName=%q, pelfVersion=%q, pelfHost=%q, appBundleFS=%q",
-				cfg.exeName, cfg.pelfVersion, cfg.pelfHost, cfg.appBundleFS)
-		}
-		return nil
 	}
 
 	if _, err := f.file.Seek(int64(cfg.elfFileSize), io.SeekStart); err != nil {
@@ -307,8 +307,23 @@ func (f *fileHandler) readPlaceholdersAndMarkers(cfg *RuntimeConfig) error {
 		return fmt.Errorf("markers not found: archiveOffset=%d, staticToolsOffset=%d, staticToolsEndOffset=%d", cfg.archiveOffset, cfg.staticToolsOffset, cfg.staticToolsEndOffset)
 	}
 
-	xattrData := fmt.Sprintf("%s\n%d\n%d\n%d\n%s\n%s\n%s\n",
-		cfg.appBundleFS, cfg.staticToolsOffset, cfg.staticToolsEndOffset, cfg.archiveOffset, cfg.exeName, cfg.pelfVersion, cfg.pelfHost)
+	// Compute the hash
+	fileInfo, err := os.Stat(cfg.selfPath)
+	if err != nil {
+		return fmt.Errorf("failed to get file info: %w", err)
+	}
+	offset := fileInfo.Size() - 256
+	buffer := make([]byte, 256)
+	if _, err := f.file.ReadAt(buffer, offset); err != nil {
+		return fmt.Errorf("failed to read last 256 bytes of file: %w", err)
+	}
+	hash := blake3.New()
+	hash.Write(buffer)
+	hashSum := hash.Sum(nil)
+	cfg.hash = fmt.Sprintf("%x", hashSum)
+
+	xattrData := fmt.Sprintf("%s\n%d\n%d\n%d\n%s\n%s\n%s\n%s\n%s\n",
+		cfg.appBundleFS, cfg.staticToolsOffset, cfg.staticToolsEndOffset, cfg.archiveOffset, cfg.exeName, cfg.pelfVersion, cfg.pelfHost, cfg.hash, T(cfg.disableRandomWorkDir, "__APPBUNDLE_OPTS__: disableRandomWorkDir", ""))
 	if err := xattr.FSet(f.file, "user.RuntimeConfig", []byte(xattrData)); err != nil {
 		return fmt.Errorf("failed to set xattr: %w", err)
 	}
@@ -387,20 +402,7 @@ func getWorkDir(cfg *RuntimeConfig, fh *fileHandler) string {
 	workDir := os.Getenv(envKey)
 
 	if cfg.disableRandomWorkDir {
-		fileInfo, err := os.Stat(cfg.selfPath)
-		if err != nil {
-			logError("Failed to get file info", err, cfg)
-		}
-		offset := fileInfo.Size() - 256
-		buffer := make([]byte, 256)
-		if _, err := fh.file.ReadAt(buffer, offset); err != nil {
-			logError("Failed to read last 256 bytes of file", err, cfg)
-		}
-		hash := blake3.New(8, nil)
-		hash.Write(buffer)
-		hashSum := hash.Sum(nil)
-		hashStr := fmt.Sprintf("%x", hashSum)
-		workDir = filepath.Join(cfg.poolDir, "pbundle_"+cfg.rExeName+"_"+hashStr)
+		workDir = filepath.Join(cfg.poolDir, "pbundle_"+cfg.rExeName+"_"+cfg.hash)
 		cfg.noCleanup = true
 	} else {
 		workDir = filepath.Join(cfg.poolDir, "pbundle_"+cfg.rExeName+"_"+generateRandomString(8))

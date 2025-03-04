@@ -10,6 +10,7 @@ require (
 
 require (
 	fyne.io/fyne/v2 v2.5.4
+	github.com/cespare/xxhash v1.1.0
 	github.com/emmansun/base64 v0.6.2
 	github.com/goccy/go-json v0.10.2
 	github.com/klauspost/compress v1.18.0

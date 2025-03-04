@@ -17,9 +17,9 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/klauspost/compress/zstd"
-	"github.com/pkg/xattr"
 	"github.com/urfave/cli/v3"
 	"github.com/zeebo/blake3"
+	"github.com/pkg/xattr"
 )
 
 const pelFVersion = "3.0"
@@ -85,6 +85,7 @@ type RuntimeConfig struct {
 	HostInfo       string           `json:"hostInfo"`
 	Offsets        map[string]int64 `json:"offsets"`
 	FilesystemType string           `json:"filesystemType"`
+	Hash           string           `json:"hash"` // Added to store the hash
 }
 
 type Config struct {
@@ -276,7 +277,7 @@ func listStaticTools(binDepDir string) error {
 func getFilesystemTypeFromOutputFile(outputFile string) string {
 	ext := filepath.Ext(outputFile)
 	secondExt := filepath.Ext(strings.TrimSuffix(outputFile, ext))
-	
+
 	// Check if it's .dwfs.AppBundle or .sqfs.AppBundle
 	if ext == ".AppBundle" {
 		if secondExt == ".dwfs" {
@@ -285,7 +286,7 @@ func getFilesystemTypeFromOutputFile(outputFile string) string {
 			return "squashfs"
 		}
 	}
-	
+
 	// Default to squashfs if no matching extension found
 	return "squashfs"
 }
@@ -383,7 +384,7 @@ func main() {
 					return fmt.Errorf("--add-appdir, --appbundle-id and --output-to are obligatory parameters")
 				}
 			}
-			
+
 			// Determine filesystem type based on output file extension if not explicitly set
 			if !c.IsSet("filesystem") && config.OutputFile != "" {
 				config.FilesystemType = getFilesystemTypeFromOutputFile(config.OutputFile)
@@ -425,6 +426,7 @@ func initRuntimeInfo(runtimeInfo *RuntimeConfig, filesystemType, appBundleID str
 		HostInfo:       hostInfo,
 		FilesystemType: filesystemType,
 		Offsets:        make(map[string]int64),
+		Hash:           "", // Initialize hash to empty string
 	}
 
 	return nil
@@ -622,22 +624,22 @@ func createTar(srcDir, tarPath string) error {
 		if err != nil {
 			return err
 		}
-		
+
 		// Get the relative path for the header name
 		relPath, err := filepath.Rel(filepath.Clean(srcDir), file)
 		if err != nil {
 			return err
 		}
-		
+
 		// Create the header using the file info
 		header, err := tar.FileInfoHeader(fi, "")
 		if err != nil {
 			return err
 		}
-		
+
 		// Set the Name field correctly with the relative path
 		header.Name = relPath
-		
+
 		// Format the header correctly for symlinks
 		if fi.Mode()&os.ModeSymlink != 0 {
 			linkTarget, err := os.Readlink(file)
@@ -646,12 +648,12 @@ func createTar(srcDir, tarPath string) error {
 			}
 			header.Linkname = linkTarget
 		}
-		
+
 		// Write the header
 		if err := tw.WriteHeader(header); err != nil {
 			return err
 		}
-		
+
 		// If it's not a directory or symlink, copy the file content
 		if !fi.IsDir() && fi.Mode()&os.ModeSymlink == 0 {
 			f, err := os.Open(file)
@@ -659,12 +661,12 @@ func createTar(srcDir, tarPath string) error {
 				return err
 			}
 			defer f.Close()
-			
+
 			if _, err = io.Copy(tw, f); err != nil {
 				return err
 			}
 		}
-		
+
 		return nil
 	})
 }
@@ -759,19 +761,7 @@ func createSelfExtractingArchive(config *Config, workDir string, buildInfo Build
 	config.RuntimeInfo.Offsets["staticToolsEndOffset"] = staticToolsEndOffset
 	config.RuntimeInfo.Offsets["archiveOffset"] = archiveOffset
 
-	xattrData := fmt.Sprintf("%s\n%d\n%d\n%d\n%s\n%s\n%s\n%s\n",
-		config.RuntimeInfo.FilesystemType,
-		staticToolsOffset,
-		staticToolsEndOffset,
-		archiveOffset,
-		config.RuntimeInfo.AppBundleID,
-		config.RuntimeInfo.PelfVersion,
-		config.RuntimeInfo.HostInfo,
-		ternary(config.DisableRandomWorkDir, "__APPBUNDLE_OPTS__: disableRandomWorkDir", ""),
-	)
-	if err := xattr.FSet(out, "user.RuntimeConfig", []byte(xattrData)); err != nil {
-		return fmt.Errorf("failed to set xattr: %w", err)
-	}
+	xattr.FRemove(out, "user.RuntimeConfig")
 
 	if err := os.Chmod(config.OutputFile, 0755); err != nil {
 		return fmt.Errorf("failed to make output file executable: %w", err)
