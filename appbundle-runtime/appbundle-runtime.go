@@ -384,10 +384,8 @@ func initConfig() (*RuntimeConfig, *fileHandler, error) {
 }
 
 func getSelfPath() string {
-	path, err := filepath.EvalSymlinks(os.Args[0])
-	if err != nil {
-		logError("Failed to resolve executable path", err, nil)
-	}
+	path, _ := os.Executable()
+	path, _ = filepath.EvalSymlinks(path)
 	return path
 }
 
