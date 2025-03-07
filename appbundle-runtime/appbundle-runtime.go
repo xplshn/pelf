@@ -17,10 +17,10 @@ import (
 	"syscall"
 	"time"
 
-	blake3 "github.com/cespare/xxhash"
 	"github.com/emmansun/base64"
 	"github.com/klauspost/compress/zstd"
 	"github.com/pkg/xattr"
+	blake3 "github.com/cespare/xxhash"
 	"pgregory.net/rand"
 )
 
@@ -32,6 +32,8 @@ const (
 
 	DWARFS_CACHESIZE = "256M"
 )
+
+var globalPath = os.Getenv("PATH")
 
 type RuntimeConfig struct {
 	poolDir              string
@@ -47,6 +49,7 @@ type RuntimeConfig struct {
 	appBundleFS          string
 	updateInfo           string
 	signature            string
+	hash                 string
 	staticToolsOffset    uint
 	archiveOffset        uint
 	staticToolsEndOffset uint
@@ -54,7 +57,6 @@ type RuntimeConfig struct {
 	doNotMount           bool
 	noCleanup            bool
 	disableRandomWorkDir bool
-	hash                 string
 }
 
 type fileHandler struct {
@@ -372,6 +374,7 @@ func initConfig() (*RuntimeConfig, *fileHandler, error) {
 
 	cfg.mountDir = filepath.Join(cfg.workDir, "mounted")
 	cfg.entrypoint = filepath.Join(cfg.mountDir, "AppRun")
+	cfg.staticToolsDir = filepath.Join(cfg.poolDir, ".static") // Set static tools directory to poolDir + "/.static"
 
 	if err := os.MkdirAll(cfg.workDir, 0755); err != nil {
 		logError("Failed to create work directory", err, cfg)
@@ -429,36 +432,6 @@ func logError(msg string, err error, cfg *RuntimeConfig) {
 	os.Exit(1)
 }
 
-func checkFuse(cfg *RuntimeConfig, fh *fileHandler) error {
-	fs, ok := getFilesystem(cfg.appBundleFS)
-	if !ok {
-		return fmt.Errorf("unsupported filesystem: %s", cfg.appBundleFS)
-	}
-
-	var missingCmd bool
-	for _, cmd := range fs.Commands {
-		if _, err := exec.LookPath(cmd); err != nil {
-			missingCmd = true
-			break
-		}
-	}
-
-	if missingCmd {
-		cfg.staticToolsDir = filepath.Join(cfg.workDir, "static")
-		if err := os.MkdirAll(cfg.staticToolsDir, 0755); err != nil {
-			return fmt.Errorf("failed to create static tools directory: %v", err)
-		}
-
-		if err := fh.extractStaticTools(cfg); err != nil {
-			return fmt.Errorf("failed to extract static tools: %v", err)
-		}
-
-		updatePath("PATH", cfg.staticToolsDir)
-	}
-
-	return nil
-}
-
 func (f *fileHandler) extractStaticTools(cfg *RuntimeConfig) error {
 	if _, err := f.file.Seek(int64(cfg.staticToolsOffset), io.SeekStart); err != nil {
 		return fmt.Errorf("failed to seek to static tools: %w", err)
@@ -476,6 +449,25 @@ func (f *fileHandler) extractStaticTools(cfg *RuntimeConfig) error {
 	}
 	defer decoder.Close()
 
+	// Cache file sizes in the target directory
+	sizeCache := make(map[string]int64)
+	err = filepath.Walk(cfg.staticToolsDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() {
+			relPath, err := filepath.Rel(cfg.staticToolsDir, path)
+			if err != nil {
+				return err
+			}
+			sizeCache[relPath] = info.Size()
+		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("failed to cache file sizes: %w", err)
+	}
+
 	tr := tar.NewReader(decoder)
 	for {
 		hdr, err := tr.Next()
@@ -487,6 +479,16 @@ func (f *fileHandler) extractStaticTools(cfg *RuntimeConfig) error {
 		}
 
 		fpath := filepath.Join(cfg.staticToolsDir, hdr.Name)
+		relPath, err := filepath.Rel(cfg.staticToolsDir, fpath)
+		if err != nil {
+			return fmt.Errorf("failed to get relative path: %w", err)
+		}
+
+		// Skip if the file exists and has the same size
+		if size, exists := sizeCache[relPath]; exists && size == hdr.Size {
+			continue
+		}
+
 		switch hdr.Typeflag {
 		case tar.TypeDir:
 			if err := os.MkdirAll(fpath, 0755); err != nil {
@@ -506,6 +508,35 @@ func (f *fileHandler) extractStaticTools(cfg *RuntimeConfig) error {
 				return fmt.Errorf("write: %w", err)
 			}
 		}
+	}
+
+	return nil
+}
+
+func checkFuse(cfg *RuntimeConfig, fh *fileHandler) error {
+	fs, ok := getFilesystem(cfg.appBundleFS)
+	if !ok {
+		return fmt.Errorf("unsupported filesystem: %s", cfg.appBundleFS)
+	}
+
+	var missingCmd bool
+	for _, cmd := range fs.Commands {
+		if _, err := exec.LookPath(cmd); err != nil {
+			missingCmd = true
+			break
+		}
+	}
+
+	if missingCmd {
+		if err := os.MkdirAll(cfg.staticToolsDir, 0755); err != nil {
+			return fmt.Errorf("failed to create static tools directory: %v", err)
+		}
+
+		if err := fh.extractStaticTools(cfg); err != nil {
+			return fmt.Errorf("failed to extract static tools: %v", err)
+		}
+
+		updatePath("PATH", cfg.staticToolsDir)
 	}
 
 	return nil
@@ -563,7 +594,7 @@ func executeFile(args []string, cfg *RuntimeConfig) error {
 	os.Setenv("SELF", cfg.selfPath)
 	os.Setenv("ARGV0", filepath.Base(os.Args[0]))
 
-	executableFile, err := lookPath(cfg.entrypoint, os.Getenv("PATH"))
+	executableFile, err := lookPath(cfg.entrypoint, globalPath)
 	if err != nil {
 		return fmt.Errorf("Unable to find the location of %s: %v", cfg.entrypoint, err)
 	}
@@ -586,6 +617,7 @@ func updatePath(envVar, dirs string) string {
 	}
 
 	os.Setenv(envVar, newPath)
+	globalPath = newPath
 	return newPath
 }
 

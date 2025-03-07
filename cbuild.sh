@@ -1,9 +1,7 @@
 #!/bin/sh
 
-# Constants
 OPWD="$PWD"
 BASE="$(dirname "$(realpath "$0")")"
-DEPS="dwarfs/dwarfs-tools unionfs-fuse3/unionfs squashfs-tools/unsquashfs squashfs-tools/mksquashfs squashfuse/squashfuse"
 export DBIN_INSTALL_DIR="$BASE/binaryDependencies"
 export DBIN_NOCONFIG="1"
 
@@ -97,6 +95,11 @@ retrieve_executable() {
 
 handle_dependencies() {
     mkdir -p "$DBIN_INSTALL_DIR"
+	DEPS="dwarfs/dwarfs-tools
+		  unionfs-fuse3/unionfs
+		  squashfs-tools/unsquashfs
+		  squashfs-tools/mksquashfs
+		  squashfuse/squashfuse_ll"
 
     if [ -n "$(ls -A "$DBIN_INSTALL_DIR" 2>/dev/null)" ]; then
         log "Updating dependencies..."
@@ -107,12 +110,15 @@ handle_dependencies() {
     fi
 
     cd "$DBIN_INSTALL_DIR" && {
-        #upx --force-overwrite -9 ./dwarfs-tools
+        upx ./dwarfs-tools
         log "Linking dependencies"
-        #ln -sfT squashfuse_ll squashfuse
-        ln -sfT dwarfs-tools mkdwarfs
-        ln -sfT dwarfs-tools dwarfsextract
-        ln -sfT dwarfs-tools dwarfs
+        [ -f ./dwarfs-tools ]  && [ ! -h ./dwarfs-tools ]  && mv ./dwarfs-tools     ./dwarfs
+        ln -sfT                            dwarfs                                     mkdwarfs
+        ln -sfT                            dwarfs                                     dwarfsextract
+        [ -f ./squashfuse_ll ] && [ ! -h ./squashfuse_ll ] && mv ./squashfuse_ll    ./squashfuse
+        ln -sfT                            squashfuse                                 squashfuse_ll
+        ln -sfT                            /usr/bin/fusermount                        fusermount
+        ln -sfT                            /usr/bin/fusermount3                       fusermount3
     }
     cd "$BASE"
 }

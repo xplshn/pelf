@@ -52,7 +52,7 @@ var Filesystems = []Filesystem{
 	},
 	{
 		Type:     map[string]string{"dwarfs": "dwfs"},
-		Commands: []string{"mkdwarfs", "dwarfs", "fusermount3"},
+		Commands: []string{"dwarfs", "mkdwarfs", "fusermount3"},
 		CmdBuilder: func(config *Config) *exec.Cmd {
 			compressionArgs := strings.Split(config.CompressionArgs, " ")
 			args := []string{"mkdwarfs", "--input", config.AppDir, "--progress=ascii", "--set-owner", "0", "--set-group", "0", "--no-create-timestamp", "--no-history"}
@@ -146,28 +146,22 @@ func isExecutableFile(path string) error {
 	return nil
 }
 
-// Function to extract binary dependencies and set up PATH
 func setupBinaryDependencies(config *Config) (string, error) {
-	// Create temporary directory for binary dependencies
 	binDepDir, err := os.MkdirTemp("", "bindep_*.tmp")
 	if err != nil {
 		return "", fmt.Errorf("failed to create temporary directory for binary dependencies: %w", err)
 	}
 
-	// Save the bin dependencies directory to config for later cleanup
 	config.BinDepDir = binDepDir
 
-	// Create a reader for the embedded binary dependencies
 	zr, err := zstd.NewReader(bytes.NewReader(binaryDependencies))
 	if err != nil {
 		return "", err
 	}
 	defer zr.Close()
 
-	// Create tar reader
 	tr := tar.NewReader(zr)
 
-	// Extract the binary dependencies
 	for {
 		header, err := tr.Next()
 		if err == io.EOF {
@@ -177,7 +171,6 @@ func setupBinaryDependencies(config *Config) (string, error) {
 			return "", err
 		}
 
-		// Handle directory
 		if header.Typeflag == tar.TypeDir {
 			dirPath := filepath.Join(binDepDir, header.Name)
 			if err := os.MkdirAll(dirPath, 0755); err != nil {
@@ -186,7 +179,6 @@ func setupBinaryDependencies(config *Config) (string, error) {
 			continue
 		}
 
-		// Handle symlink
 		if header.Typeflag == tar.TypeSymlink {
 			target := header.Linkname
 			symlinkPath := filepath.Join(binDepDir, header.Name)
@@ -195,7 +187,6 @@ func setupBinaryDependencies(config *Config) (string, error) {
 				return "", err
 			}
 
-			// Remove existing file/symlink if necessary
 			if _, err := os.Lstat(symlinkPath); err == nil {
 				os.Remove(symlinkPath)
 			}
@@ -206,20 +197,17 @@ func setupBinaryDependencies(config *Config) (string, error) {
 			continue
 		}
 
-		// Handle regular file
 		filePath := filepath.Join(binDepDir, header.Name)
 		dir := filepath.Dir(filePath)
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return "", err
 		}
 
-		// Create the file
 		outFile, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY, os.FileMode(header.Mode))
 		if err != nil {
 			return "", err
 		}
 
-		// Copy the file content
 		if _, err := io.Copy(outFile, tr); err != nil {
 			outFile.Close()
 			return "", err
@@ -227,7 +215,6 @@ func setupBinaryDependencies(config *Config) (string, error) {
 		outFile.Close()
 	}
 
-	// Update PATH according to preference
 	var newPath string
 	if config.PreferToolsInPath {
 		newPath = globalPath + ":" + binDepDir
@@ -611,7 +598,8 @@ func createTar(srcDir, tarPath string) error {
 	}
 	defer file.Close()
 
-	zw, err := zstd.NewWriter(file, zstd.WithEncoderLevel(4))
+	//zw, err := zstd.NewWriter(file, zstd.WithEncoderLevel(4))
+	zw, err := zstd.NewWriter(file)
 	if err != nil {
 		return err
 	}
@@ -647,7 +635,17 @@ func createTar(srcDir, tarPath string) error {
 				return err
 			}
 			header.Linkname = linkTarget
+			header.Typeflag = tar.TypeSymlink
 		}
+
+		// Ensure the full file mode is preserved
+		header.Mode = int64(fi.Mode())
+
+		// FIXME: Preserve original, instead of making all files executable
+		header.Mode |= 0111
+
+		// Debug output
+		fmt.Printf("File: %s, Original Mode: %o, Header Mode: %o, Typeflag: %c\n", header.Name, fi.Mode(), header.Mode, header.Typeflag)
 
 		// Write the header
 		if err := tw.WriteHeader(header); err != nil {
