@@ -2,9 +2,9 @@ package main
 
 import (
 	"archive/tar"
-	"bufio"
 	"bytes"
 	"debug/elf"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -12,15 +12,13 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/fxamacker/cbor/v2"
 	"github.com/emmansun/base64"
 	"github.com/klauspost/compress/zstd"
-	"github.com/pkg/xattr"
-	blake3 "github.com/cespare/xxhash"
 	"pgregory.net/rand"
 )
 
@@ -50,10 +48,8 @@ type RuntimeConfig struct {
 	updateInfo           string
 	signature            string
 	hash                 string
-	staticToolsOffset    uint
-	archiveOffset        uint
-	staticToolsEndOffset uint
-	elfFileSize          uint
+	elfFileSize          uint64
+	archiveOffset        uint64
 	doNotMount           bool
 	noCleanup            bool
 	disableRandomWorkDir bool
@@ -164,10 +160,6 @@ func extractImage(cfg *RuntimeConfig, fh *fileHandler, query string) error {
 		return fmt.Errorf("unsupported filesystem for extraction: %s", cfg.appBundleFS)
 	}
 
-	if cfg.appBundleFS == "squashfs" {
-		xattr.Remove(cfg.selfPath, "user.RuntimeConfig")
-	}
-
 	cmd := fs.ExtractCmd(cfg, query)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -202,135 +194,80 @@ func (f *fileHandler) readPlaceholdersAndMarkers(cfg *RuntimeConfig) error {
 		return fmt.Errorf("parse ELF: %w", err)
 	}
 
-	for _, prog := range elfFile.Progs {
-		end := uint(prog.Off + prog.Filesz)
-		if end > cfg.elfFileSize {
-			cfg.elfFileSize = end
-		}
-	}
-
-	data, err := xattr.FGet(f.file, "user.RuntimeConfig")
-	if err == nil {
-		lines := strings.Split(string(data), "\n")
-		if len(lines) >= 8 {
-
-			cfg.appBundleFS = lines[0]
-
-			staticToolsOffset, err := strconv.ParseUint(lines[1], 10, 64)
-			if err != nil {
-				return fmt.Errorf("failed to parse staticToolsOffset: %w", err)
-			}
-			cfg.staticToolsOffset = uint(staticToolsOffset)
-
-			staticToolsEndOffset, err := strconv.ParseUint(lines[2], 10, 64)
-			if err != nil {
-				return fmt.Errorf("failed to parse staticToolsEndOffset: %w", err)
-			}
-			cfg.staticToolsEndOffset = uint(staticToolsEndOffset)
-
-			archiveOffset, err := strconv.ParseUint(lines[3], 10, 64)
-			if err != nil {
-				return fmt.Errorf("failed to parse archiveOffset: %w", err)
-			}
-
-			cfg.archiveOffset = uint(archiveOffset)
-			cfg.exeName = lines[4]
-			cfg.pelfVersion = lines[5]
-			cfg.pelfHost = lines[6]
-			cfg.hash = lines[7]
-			cfg.disableRandomWorkDir = T(lines[8] == "__APPBUNDLE_OPTS__: disableRandomWorkDir", true, false)
-
-			return nil
-		}
-	}
-
-	if _, err := f.file.Seek(int64(cfg.elfFileSize), io.SeekStart); err != nil {
-		return fmt.Errorf("seek to ELF end: %w", err)
-	}
-
-	reader := bufio.NewReader(f.file)
-	var (
-		staticToolsFound, staticToolsEndFound, archiveMarkerFound          bool
-		exeName, pelfVersion, pelfHost, appBundleFS, updateInfo, signature string
-	)
-	currentOffset := cfg.elfFileSize
-
-	for {
-		line, err := reader.ReadString('\n')
-		if err != nil && err != io.EOF {
-			return fmt.Errorf("read line: %w", err)
-		}
-		if err == io.EOF {
-			break
-		}
-
-		lineLen := uint(len(line))
-		trimmedLine := strings.TrimSpace(line)
-
-		switch trimmedLine {
-		case "__STATIC_TOOLS__":
-			cfg.staticToolsOffset = currentOffset + lineLen
-			staticToolsFound = true
-		case "__STATIC_TOOLS_EOF__":
-			cfg.staticToolsEndOffset = currentOffset
-			staticToolsEndFound = true
-		case "__ARCHIVE_MARKER__":
-			cfg.archiveOffset = currentOffset + lineLen
-			archiveMarkerFound = true
-		}
-
-		if strings.HasPrefix(trimmedLine, "__APPBUNDLE_ID__: ") {
-			exeName = strings.TrimSpace(trimmedLine[len("__APPBUNDLE_ID__: "):])
-		} else if strings.HasPrefix(trimmedLine, "__PELF_VERSION__: ") {
-			pelfVersion = strings.TrimSpace(trimmedLine[len("__PELF_VERSION__: "):])
-		} else if strings.HasPrefix(trimmedLine, "__PELF_HOST__: ") {
-			pelfHost = strings.TrimSpace(trimmedLine[len("__PELF_HOST__: "):])
-		} else if strings.HasPrefix(trimmedLine, "__APPBUNDLE_FS__: ") {
-			appBundleFS = strings.TrimSpace(trimmedLine[len("__APPBUNDLE_FS__: "):])
-		} else if strings.HasPrefix(trimmedLine, "__UPD_INFO__: ") {
-			updateInfo = strings.TrimSpace(trimmedLine[len("__UPD_INFO__: "):])
-		} else if strings.HasPrefix(trimmedLine, "__SHA256_SIG__: ") {
-			signature = strings.TrimSpace(trimmedLine[len("__SHA256_SIG__: "):])
-		} else if strings.HasPrefix(trimmedLine, "__APPBUNDLE_OPTS__: disableRandomWorkDir") {
-			cfg.disableRandomWorkDir = true
-		}
-
-		currentOffset += lineLen
-	}
-
-	cfg.exeName = exeName
-	cfg.pelfVersion = pelfVersion
-	cfg.pelfHost = pelfHost
-	cfg.appBundleFS = appBundleFS
-	cfg.updateInfo = updateInfo
-	cfg.signature = signature
-
-	if !archiveMarkerFound || !staticToolsFound || !staticToolsEndFound {
-		return fmt.Errorf("markers not found: archiveOffset=%d, staticToolsOffset=%d, staticToolsEndOffset=%d", cfg.archiveOffset, cfg.staticToolsOffset, cfg.staticToolsEndOffset)
-	}
-
-	// Compute the hash
-	fileInfo, err := os.Stat(cfg.selfPath)
+	// Calculate the size of the ELF file
+	cfg.elfFileSize, err = calculateElfSize(elfFile, f.file)
 	if err != nil {
-		return fmt.Errorf("failed to get file info: %w", err)
+		return fmt.Errorf("parse ELF: %w", err)
 	}
-	offset := fileInfo.Size() - 256
-	buffer := make([]byte, 256)
-	if _, err := f.file.ReadAt(buffer, offset); err != nil {
-		return fmt.Errorf("failed to read last 256 bytes of file: %w", err)
-	}
-	hash := blake3.New()
-	hash.Write(buffer)
-	hashSum := hash.Sum(nil)
-	cfg.hash = fmt.Sprintf("%x", hashSum)
 
-	xattrData := fmt.Sprintf("%s\n%d\n%d\n%d\n%s\n%s\n%s\n%s\n%s\n",
-		cfg.appBundleFS, cfg.staticToolsOffset, cfg.staticToolsEndOffset, cfg.archiveOffset, cfg.exeName, cfg.pelfVersion, cfg.pelfHost, cfg.hash, T(cfg.disableRandomWorkDir, "__APPBUNDLE_OPTS__: disableRandomWorkDir", ""))
-	if err := xattr.FSet(f.file, "user.RuntimeConfig", []byte(xattrData)); err != nil {
-		return fmt.Errorf("failed to set xattr: %w", err)
+	// Read the .runtime_info section
+	runtimeInfoSection := elfFile.Section(".runtime_info")
+	if runtimeInfoSection == nil {
+		return fmt.Errorf("runtime_info section not found")
 	}
+
+	runtimeInfoData, err := runtimeInfoSection.Data()
+	if err != nil {
+		return fmt.Errorf("failed to read runtime_info section: %w", err)
+	}
+
+	var runtimeInfo map[string]interface{}
+	if err := cbor.Unmarshal(runtimeInfoData, &runtimeInfo); err != nil {
+		return fmt.Errorf("failed to parse runtime_info CBOR: %w", err)
+	}
+
+	cfg.appBundleFS = runtimeInfo["filesystemType"].(string)
+	cfg.exeName = runtimeInfo["appBundleID"].(string)
+	cfg.pelfVersion = runtimeInfo["pelfVersion"].(string)
+	cfg.pelfHost = runtimeInfo["hostInfo"].(string)
+	cfg.hash = runtimeInfo["hash"].(string)
+
+	cfg.archiveOffset = cfg.elfFileSize
+	fmt.Println(cfg.archiveOffset)
 
 	return nil
+}
+
+// CalculateElfSize returns the size of an ELF binary as an int64 based on the information in the ELF header
+// Taken from github.com/probonopd/go-appimage/internal/helpers/elfsize.go
+func calculateElfSize(elfFile *elf.File, file *os.File) (len uint64, err error) {
+	// Process by architecture
+	sr := io.NewSectionReader(file, 0, 1<<63-1)
+	var shoff, shentsize, shnum uint64
+	switch elfFile.Class.String() {
+	case "ELFCLASS64":
+		hdr := new(elf.Header64)
+		_, err = sr.Seek(0, 0)
+		if err != nil {
+			return
+		}
+		err = binary.Read(sr, elfFile.ByteOrder, hdr)
+		if err != nil {
+			return
+		}
+		shoff = uint64(hdr.Shoff)
+		shnum = uint64(hdr.Shnum)
+		shentsize = uint64(hdr.Shentsize)
+	case "ELFCLASS32":
+		hdr := new(elf.Header32)
+		_, err = sr.Seek(0, 0)
+		if err != nil {
+			return
+		}
+		err = binary.Read(sr, elfFile.ByteOrder, hdr)
+		if err != nil {
+			return
+		}
+		shoff = uint64(hdr.Shoff)
+		shnum = uint64(hdr.Shnum)
+		shentsize = uint64(hdr.Shentsize)
+	default:
+		err = fmt.Errorf("unsupported elf architecture\n")
+		return
+	}
+	// Calculate ELF size
+	len = shoff + (shentsize * shnum)
+	return
 }
 
 func getEnvWithDefault(key, defaultValue string) string {
@@ -431,14 +368,19 @@ func logError(msg string, err error, cfg *RuntimeConfig) {
 }
 
 func (f *fileHandler) extractStaticTools(cfg *RuntimeConfig) error {
-	if _, err := f.file.Seek(int64(cfg.staticToolsOffset), io.SeekStart); err != nil {
-		return fmt.Errorf("failed to seek to static tools: %w", err)
+	elfFile, err := elf.NewFile(f.file)
+	if err != nil {
+		return fmt.Errorf("parse ELF: %w", err)
 	}
 
-	staticToolsLength := cfg.staticToolsEndOffset - cfg.staticToolsOffset
-	staticToolsData := make([]byte, staticToolsLength)
-	if _, err := io.ReadFull(f.file, staticToolsData); err != nil {
-		return fmt.Errorf("failed to read static tools section: %w", err)
+	staticToolsSection := elfFile.Section(".static_tools")
+	if staticToolsSection == nil {
+		return fmt.Errorf("static_tools section not found")
+	}
+
+	staticToolsData, err := staticToolsSection.Data()
+	if err != nil {
+		return fmt.Errorf("failed to read static_tools section: %w", err)
 	}
 
 	decoder, err := zstd.NewReader(bytes.NewReader(staticToolsData))
@@ -806,13 +748,6 @@ func isExecutableFile(file string) error {
 	return os.ErrPermission
 }
 
-func T[T any](cond bool, vtrue, vfalse T) T {
-	if cond {
-		return vtrue
-	}
-	return vfalse
-}
-
 func mountOrExtract(cfg *RuntimeConfig, fh *fileHandler) {
 	if cfg.doNotMount {
 		if err := extractImage(cfg, fh, ""); err != nil {
@@ -823,3 +758,11 @@ func mountOrExtract(cfg *RuntimeConfig, fh *fileHandler) {
 		logError("Failed to mount image", err, cfg)
 	}
 }
+
+func T[T any](cond bool, vtrue, vfalse T) T {
+	if cond {
+		return vtrue
+	}
+	return vfalse
+}
+

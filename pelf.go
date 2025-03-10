@@ -14,12 +14,11 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/fxamacker/cbor/v2"
 	"golang.org/x/sys/unix"
-
 	"github.com/klauspost/compress/zstd"
 	"github.com/urfave/cli/v3"
 	"github.com/zeebo/blake3"
-	"github.com/pkg/xattr"
 )
 
 const pelFVersion = "3.0"
@@ -31,8 +30,8 @@ var globalPath = os.Getenv("PATH")
 var binaryDependencies []byte
 
 type Filesystem struct {
-	Type       map[string]string
-	Commands   []string
+	Type     map[string]string
+	Commands []string
 	CmdBuilder func(*Config) *exec.Cmd
 }
 
@@ -72,20 +71,11 @@ type BuildInfo struct {
 }
 
 type RuntimeInfo struct {
-	AppBundleID    string
-	PelfVersion    string
-	HostInfo       string
-	FilesystemType string
-	Offsets        map[string]int64
-}
-
-type RuntimeConfig struct {
-	AppBundleID    string           `json:"appBundleID"`
-	PelfVersion    string           `json:"pelfVersion"`
-	HostInfo       string           `json:"hostInfo"`
-	Offsets        map[string]int64 `json:"offsets"`
-	FilesystemType string           `json:"filesystemType"`
-	Hash           string           `json:"hash"` // Added to store the hash
+	AppBundleID    string            `json:"appBundleID"`
+	PelfVersion    string            `json:"pelfVersion"`
+	HostInfo       string            `json:"hostInfo"`
+	FilesystemType string            `json:"filesystemType"`
+	Hash           string            `json:"hash"`
 }
 
 type Config struct {
@@ -99,7 +89,7 @@ type Config struct {
 	Runtime               string
 	DoNotEmbedStaticTools bool
 	UseUPX                bool
-	RuntimeInfo           RuntimeConfig
+	RuntimeInfo           RuntimeInfo
 	PreferToolsInPath     bool
 	BinDepDir             string
 	DisableRandomWorkDir  bool
@@ -346,7 +336,7 @@ func main() {
 				AppDir:                c.String("add-appdir"),
 				AppBundleID:           c.String("appbundle-id"),
 				OutputFile:            c.String("output-to"),
-				CompressionArgs:       c.String("compression"),
+				CompressionArgs:        c.String("compression"),
 				DoNotEmbedStaticTools: c.Bool("do-not-embed-static-tools"),
 				CustomEmbedDir:        c.String("static-tools-dir"),
 				Runtime:               c.String("runtime"),
@@ -394,7 +384,7 @@ func main() {
 	}
 }
 
-func initRuntimeInfo(runtimeInfo *RuntimeConfig, filesystemType, appBundleID string) error {
+func initRuntimeInfo(runtimeInfo *RuntimeInfo, filesystemType, appBundleID string) error {
 	uname := unix.Utsname{}
 	if err := unix.Uname(&uname); err != nil {
 		return err
@@ -407,13 +397,12 @@ func initRuntimeInfo(runtimeInfo *RuntimeConfig, filesystemType, appBundleID str
 		bytesToString(uname.Machine[:]),
 	)
 
-	*runtimeInfo = RuntimeConfig{
+	*runtimeInfo = RuntimeInfo{
 		AppBundleID:    appBundleID,
 		PelfVersion:    pelFVersion,
 		HostInfo:       hostInfo,
 		FilesystemType: filesystemType,
-		Offsets:        make(map[string]int64),
-		Hash:           "", // Initialize hash to empty string
+		Hash:           "",
 	}
 
 	return nil
@@ -598,7 +587,6 @@ func createTar(srcDir, tarPath string) error {
 	}
 	defer file.Close()
 
-	//zw, err := zstd.NewWriter(file, zstd.WithEncoderLevel(4))
 	zw, err := zstd.NewWriter(file)
 	if err != nil {
 		return err
@@ -640,9 +628,6 @@ func createTar(srcDir, tarPath string) error {
 
 		// Ensure the full file mode is preserved
 		header.Mode = int64(fi.Mode())
-
-		// FIXME: Preserve original, instead of making all files executable
-		header.Mode |= 0111
 
 		// Debug output
 		fmt.Printf("File: %s, Original Mode: %o, Header Mode: %o, Typeflag: %c\n", header.Name, fi.Mode(), header.Mode, header.Typeflag)
@@ -699,46 +684,52 @@ func createSelfExtractingArchive(config *Config, workDir string, buildInfo Build
 		return err
 	}
 
-	out, err := os.OpenFile(config.OutputFile, os.O_APPEND|os.O_WRONLY, 0644)
+	var err error
+	// Calculate the hash of the filesystem image
+	config.RuntimeInfo.Hash, err = calculateB3Sum(filepath.Join(workDir, "archive."+config.FilesystemType))
+	if err != nil {
+		return fmt.Errorf("failed to calculate hash of filesystem image: %w", err)
+	}
+
+	if err := os.Chmod(config.OutputFile, 0755); err != nil {
+		return fmt.Errorf("failed to make output file executable: %w", err)
+	}
+
+	// Convert the RuntimeInfo to CBOR and save it in a tempfile
+	runtimeInfoCBOR, err := cbor.Marshal(config.RuntimeInfo)
+	if err != nil {
+		return fmt.Errorf("failed to marshal RuntimeInfo to CBOR: %w", err)
+	}
+
+	runtimeInfoTempFile, err := os.CreateTemp("", "runtime_info_*.json")
+	if err != nil {
+		return fmt.Errorf("failed to create tempfile for RuntimeInfo CBOR: %w", err)
+	}
+	defer os.Remove(runtimeInfoTempFile.Name())
+
+	if _, err := runtimeInfoTempFile.Write(runtimeInfoCBOR); err != nil {
+		return fmt.Errorf("failed to write RuntimeInfo CBOR to tempfile: %w", err)
+	}
+	if err := runtimeInfoTempFile.Close(); err != nil {
+		return fmt.Errorf("failed to close RuntimeInfo CBOR tempfile: %w", err)
+	}
+
+	// Use objcopy to add ELF sections for static tools and runtime info
+	objcopyCmd := exec.Command("objcopy",
+		"--add-section", ".static_tools="+filepath.Join(workDir, "static.tar.zst"),
+		"--add-section", ".runtime_info="+runtimeInfoTempFile.Name(),
+		config.OutputFile,
+	)
+
+	if out, err := objcopyCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to add ELF sections: %s", string(out))
+	}
+
+	outFile, err := os.OpenFile(config.OutputFile, os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
 	}
-	defer out.Close()
-
-	if _, err := fmt.Fprintf(out, "\n__APPBUNDLE_ID__: %s\n__PELF_VERSION__: %s\n__PELF_HOST__: %s\n__APPBUNDLE_FS__: %s\n",
-		config.RuntimeInfo.AppBundleID, config.RuntimeInfo.PelfVersion, config.RuntimeInfo.HostInfo, config.RuntimeInfo.FilesystemType); err != nil {
-		return err
-	}
-
-	if config.DisableRandomWorkDir {
-		if _, err := fmt.Fprintf(out, "__APPBUNDLE_OPTS__: disableRandomWorkDir"); err != nil {
-			return err
-		}
-	}
-
-	var staticToolsOffset, staticToolsEndOffset, archiveOffset int64
-
-	if !config.DoNotEmbedStaticTools {
-		tarFile, err := os.Open(filepath.Join(workDir, "static.tar.zst"))
-		if err != nil {
-			return err
-		}
-		defer tarFile.Close()
-
-		out.WriteString("\n__STATIC_TOOLS__\n")
-		staticToolsOffset, err = out.Seek(0, io.SeekCurrent)
-		if err != nil {
-			return err
-		}
-		if _, err := io.Copy(out, tarFile); err != nil {
-			return err
-		}
-		staticToolsEndOffset, err = out.Seek(0, io.SeekCurrent)
-		if err != nil {
-			return err
-		}
-		out.WriteString("\n__STATIC_TOOLS_EOF__\n")
-	}
+	defer outFile.Close()
 
 	fsFile, err := os.Open(filepath.Join(workDir, "archive."+config.FilesystemType))
 	if err != nil {
@@ -746,23 +737,8 @@ func createSelfExtractingArchive(config *Config, workDir string, buildInfo Build
 	}
 	defer fsFile.Close()
 
-	out.WriteString("\n__ARCHIVE_MARKER__\n")
-	archiveOffset, err = out.Seek(0, io.SeekCurrent)
-	if err != nil {
+	if _, err := io.Copy(outFile, fsFile); err != nil {
 		return err
-	}
-	if _, err := io.Copy(out, fsFile); err != nil {
-		return err
-	}
-
-	config.RuntimeInfo.Offsets["staticToolsOffset"] = staticToolsOffset
-	config.RuntimeInfo.Offsets["staticToolsEndOffset"] = staticToolsEndOffset
-	config.RuntimeInfo.Offsets["archiveOffset"] = archiveOffset
-
-	xattr.FRemove(out, "user.RuntimeConfig")
-
-	if err := os.Chmod(config.OutputFile, 0755); err != nil {
-		return fmt.Errorf("failed to make output file executable: %w", err)
 	}
 
 	return nil
@@ -771,11 +747,4 @@ func createSelfExtractingArchive(config *Config, workDir string, buildInfo Build
 func getFileSize(filePath string) int64 {
 	fi, _ := os.Stat(filePath)
 	return fi.Size()
-}
-
-func ternary[T any](cond bool, vtrue, vfalse T) T {
-	if cond {
-		return vtrue
-	}
-	return vfalse
 }

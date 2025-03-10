@@ -12,13 +12,18 @@ require (
 	fyne.io/fyne/v2 v2.5.4
 	github.com/cespare/xxhash v1.1.0
 	github.com/emmansun/base64 v0.6.2
+	github.com/fxamacker/cbor v1.5.1
+	github.com/fxamacker/cbor/v2 v2.7.0
 	github.com/goccy/go-json v0.10.2
 	github.com/klauspost/compress v1.18.0
 	github.com/liamg/tml v0.7.0
 	github.com/minio/md5-simd v1.1.2
+	github.com/orisano/wyhash v1.1.0
+	github.com/orisano/wyhash/v4 v4.0.0-20250108071936-11ac4b188eeb
 	github.com/pkg/xattr v0.4.10
 	github.com/u-root/u-root v0.14.0
 	github.com/zeebo/blake3 v0.2.4
+	github.com/zeebo/xxh3 v1.0.2
 	lukechampine.com/blake3 v1.4.0
 	pgregory.net/rand v1.0.2
 )
@@ -48,6 +53,7 @@ require (
 	github.com/srwiley/oksvg v0.0.0-20221011165216-be6e8873101c // indirect
 	github.com/srwiley/rasterx v0.0.0-20220730225603-2ab79fcdd4ef // indirect
 	github.com/stretchr/testify v1.9.0 // indirect
+	github.com/x448/float16 v0.8.4 // indirect
 	github.com/yuin/goldmark v1.7.1 // indirect
 	golang.org/x/image v0.18.0 // indirect
 	golang.org/x/mobile v0.0.0-20231127183840-76ac6878050a // indirect

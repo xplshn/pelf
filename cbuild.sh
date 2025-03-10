@@ -110,11 +110,11 @@ handle_dependencies() {
     fi
 
     cd "$DBIN_INSTALL_DIR" && {
-        upx ./dwarfs-tools
         log "Linking dependencies"
         [ -f ./dwarfs-tools ]  && [ ! -h ./dwarfs-tools ]  && mv ./dwarfs-tools     ./dwarfs
         ln -sfT                            dwarfs                                     mkdwarfs
         ln -sfT                            dwarfs                                     dwarfsextract
+        upx                                dwarfs
         [ -f ./squashfuse_ll ] && [ ! -h ./squashfuse_ll ] && mv ./squashfuse_ll    ./squashfuse
         ln -sfT                            squashfuse                                 squashfuse_ll
         ln -sfT                            /usr/bin/fusermount                        fusermount
