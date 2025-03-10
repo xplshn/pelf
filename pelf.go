@@ -85,7 +85,7 @@ type RuntimeConfig struct {
 	HostInfo       string           `json:"hostInfo"`
 	Offsets        map[string]int64 `json:"offsets"`
 	FilesystemType string           `json:"filesystemType"`
-	Hash           string           `json:"hash"` // Added to store the hash
+	Hash           string           `json:"hash"`
 }
 
 type Config struct {
@@ -413,7 +413,7 @@ func initRuntimeInfo(runtimeInfo *RuntimeConfig, filesystemType, appBundleID str
 		HostInfo:       hostInfo,
 		FilesystemType: filesystemType,
 		Offsets:        make(map[string]int64),
-		Hash:           "", // Initialize hash to empty string
+		Hash:           "",
 	}
 
 	return nil
@@ -779,3 +779,4 @@ func ternary[T any](cond bool, vtrue, vfalse T) T {
 	}
 	return vfalse
 }
+

@@ -16,11 +16,12 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	//"runtime/pprof"
 
+	blake3 "github.com/cespare/xxhash"
 	"github.com/emmansun/base64"
 	"github.com/klauspost/compress/zstd"
 	"github.com/pkg/xattr"
-	blake3 "github.com/cespare/xxhash"
 	"pgregory.net/rand"
 )
 
@@ -746,6 +747,18 @@ func main() {
 		die()
 	}()
 
+	/*
+	f, err := os.Create("default.pgo")
+	if err != nil {
+		logError("Failed to create PGO profile", err, nil)
+	}
+	defer f.Close()
+	if err := pprof.StartCPUProfile(f); err != nil {
+		logError("Failed to start CPU profiling", err, nil)
+	}
+	defer pprof.StopCPUProfile()
+	*/
+
 	args := os.Args[1:]
 	if len(args) > 0 {
 		if err := handleRuntimeFlags(fh, &args, cfg); err != nil {
@@ -806,13 +819,6 @@ func isExecutableFile(file string) error {
 	return os.ErrPermission
 }
 
-func T[T any](cond bool, vtrue, vfalse T) T {
-	if cond {
-		return vtrue
-	}
-	return vfalse
-}
-
 func mountOrExtract(cfg *RuntimeConfig, fh *fileHandler) {
 	if cfg.doNotMount {
 		if err := extractImage(cfg, fh, ""); err != nil {
@@ -822,4 +828,11 @@ func mountOrExtract(cfg *RuntimeConfig, fh *fileHandler) {
 	if err := mountImage(cfg, fh); err != nil {
 		logError("Failed to mount image", err, cfg)
 	}
+}
+
+func T[T any](cond bool, vtrue, vfalse T) T {
+	if cond {
+		return vtrue
+	}
+	return vfalse
 }
