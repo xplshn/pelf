@@ -4,8 +4,8 @@ import (
 	"archive/tar"
 	"bytes"
 	"debug/elf"
-	"encoding/binary"
 	"encoding/hex"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"os"
@@ -15,10 +15,12 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"strconv"
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/emmansun/base64"
 	"github.com/klauspost/compress/zstd"
+	"github.com/pkg/xattr"
 	"pgregory.net/rand"
 )
 
@@ -189,18 +191,31 @@ func newFileHandler(path string) (*fileHandler, error) {
 }
 
 func (f *fileHandler) readPlaceholdersAndMarkers(cfg *RuntimeConfig) error {
+	data, err := xattr.FGet(f.file, "user.RuntimeConfig")
+	if err == nil {
+		lines := strings.Split(string(data), "\n")
+		if len(lines) >= 6 {
+			cfg.appBundleFS = lines[0]
+			cfg.archiveOffset = uint64(parseUint(lines[1]))
+			cfg.exeName = lines[2]
+			cfg.pelfVersion = lines[3]
+			cfg.pelfHost = lines[4]
+			cfg.hash = lines[5]
+			cfg.disableRandomWorkDir = T(lines[6] == "1", true, false)
+			return nil
+		}
+	}
+
 	elfFile, err := elf.NewFile(f.file)
 	if err != nil {
 		return fmt.Errorf("parse ELF: %w", err)
 	}
 
-	// Calculate the size of the ELF file
 	cfg.elfFileSize, err = calculateElfSize(elfFile, f.file)
 	if err != nil {
 		return fmt.Errorf("parse ELF: %w", err)
 	}
 
-	// Read the .runtime_info section
 	runtimeInfoSection := elfFile.Section(".runtime_info")
 	if runtimeInfoSection == nil {
 		return fmt.Errorf("runtime_info section not found")
@@ -221,17 +236,24 @@ func (f *fileHandler) readPlaceholdersAndMarkers(cfg *RuntimeConfig) error {
 	cfg.pelfVersion = runtimeInfo["pelfVersion"].(string)
 	cfg.pelfHost = runtimeInfo["hostInfo"].(string)
 	cfg.hash = runtimeInfo["hash"].(string)
-
+	cfg.disableRandomWorkDir = runtimeInfo["disableRandomWorkDir"].(bool)
 	cfg.archiveOffset = cfg.elfFileSize
-	fmt.Println(cfg.archiveOffset)
+
+	xattrData := fmt.Sprintf("%s\n%d\n%s\n%s\n%s\n%s\n%s\n",
+		cfg.appBundleFS, cfg.archiveOffset, cfg.exeName, cfg.pelfVersion, cfg.pelfHost, cfg.hash, T(cfg.disableRandomWorkDir, "1", ""))
+	if err := xattr.FSet(f.file, "user.RuntimeConfig", []byte(xattrData)); err != nil {
+		return fmt.Errorf("failed to set xattr: %w", err)
+	}
 
 	return nil
 }
 
-// CalculateElfSize returns the size of an ELF binary as an int64 based on the information in the ELF header
-// Taken from github.com/probonopd/go-appimage/internal/helpers/elfsize.go
+func parseUint(s string) uint64 {
+	val, _ := strconv.ParseUint(s, 10, 64)
+	return val
+}
+
 func calculateElfSize(elfFile *elf.File, file *os.File) (len uint64, err error) {
-	// Process by architecture
 	sr := io.NewSectionReader(file, 0, 1<<63-1)
 	var shoff, shentsize, shnum uint64
 	switch elfFile.Class.String() {
@@ -265,7 +287,6 @@ func calculateElfSize(elfFile *elf.File, file *os.File) (len uint64, err error) 
 		err = fmt.Errorf("unsupported elf architecture\n")
 		return
 	}
-	// Calculate ELF size
 	len = shoff + (shentsize * shnum)
 	return
 }
@@ -282,12 +303,12 @@ func getEnvWithDefault(key, defaultValue string) string {
 
 func initConfig() (*RuntimeConfig, *fileHandler, error) {
 	cfg := &RuntimeConfig{
-		exeName:              os.Getenv("EXE_NAME"),
+		exeName:              "",
 		poolDir:              filepath.Join(os.TempDir(), ".pelfbundles"),
 		selfPath:             getSelfPath(),
 		doNotMount:           T(os.Getenv("APPIMAGE_EXTRACT_AND_RUN") == "1" || os.Getenv("PBUNDLE_EXTRACT_AND_RUN") == "1", true, false),
-		noCleanup:            T(os.Getenv("PBUNDLE_NO_CLEANUP") == "1", true, false),
-		disableRandomWorkDir: T(os.Getenv("PBUNDLE_DISABLE_RANDOM_WORKDIR") == "__APPBUNDLE_OPTS__: disableRandomWorkDir", true, false),
+		disableRandomWorkDir: T(os.Getenv("PBUNDLE_DISABLE_RANDOM_WORKDIR") == "1", true, false),
+		noCleanup:            false,
 	}
 
 	fh, err := newFileHandler(cfg.selfPath)
@@ -305,13 +326,10 @@ func initConfig() (*RuntimeConfig, *fileHandler, error) {
 
 	cfg.rExeName = sanitizeFilename(cfg.exeName)
 
-	if cfg.workDir == "" {
-		cfg.workDir = getWorkDir(cfg, fh)
-	}
-
+	cfg.workDir = getWorkDir(cfg, fh)
 	cfg.mountDir = filepath.Join(cfg.workDir, "mounted")
 	cfg.entrypoint = filepath.Join(cfg.mountDir, "AppRun")
-	cfg.staticToolsDir = filepath.Join(cfg.poolDir, ".static") // Set static tools directory to poolDir + "/.static"
+	cfg.staticToolsDir = filepath.Join(cfg.poolDir, ".static")
 
 	if err := os.MkdirAll(cfg.workDir, 0755); err != nil {
 		logError("Failed to create work directory", err, cfg)
@@ -340,7 +358,7 @@ func getWorkDir(cfg *RuntimeConfig, fh *fileHandler) string {
 	workDir := os.Getenv(envKey)
 
 	if cfg.disableRandomWorkDir {
-		workDir = filepath.Join(cfg.poolDir, "pbundle_"+cfg.rExeName+"_"+cfg.hash)
+		workDir = filepath.Join(cfg.poolDir, "pbundle_"+cfg.rExeName+"_"+cfg.hash[:8])
 		cfg.noCleanup = true
 	} else {
 		workDir = filepath.Join(cfg.poolDir, "pbundle_"+cfg.rExeName+"_"+generateRandomString(8))
@@ -389,7 +407,6 @@ func (f *fileHandler) extractStaticTools(cfg *RuntimeConfig) error {
 	}
 	defer decoder.Close()
 
-	// Cache file sizes in the target directory
 	sizeCache := make(map[string]int64)
 	err = filepath.Walk(cfg.staticToolsDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -424,7 +441,6 @@ func (f *fileHandler) extractStaticTools(cfg *RuntimeConfig) error {
 			return fmt.Errorf("failed to get relative path: %w", err)
 		}
 
-		// Skip if the file exists and has the same size
 		if size, exists := sizeCache[relPath]; exists && size == hdr.Size {
 			continue
 		}
@@ -765,4 +781,3 @@ func T[T any](cond bool, vtrue, vfalse T) T {
 	}
 	return vfalse
 }
-

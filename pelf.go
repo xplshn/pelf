@@ -14,16 +14,16 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/fxamacker/cbor/v2"
 	"golang.org/x/sys/unix"
+	"github.com/fxamacker/cbor/v2"
 	"github.com/klauspost/compress/zstd"
 	"github.com/urfave/cli/v3"
 	"github.com/zeebo/blake3"
+	"github.com/pkg/xattr"
 )
 
 const pelFVersion = "3.0"
 
-// Global variable to store the PATH environment variable
 var globalPath = os.Getenv("PATH")
 
 //go:embed binaryDependencies.tar.zst
@@ -71,11 +71,12 @@ type BuildInfo struct {
 }
 
 type RuntimeInfo struct {
-	AppBundleID    string            `json:"appBundleID"`
-	PelfVersion    string            `json:"pelfVersion"`
-	HostInfo       string            `json:"hostInfo"`
-	FilesystemType string            `json:"filesystemType"`
-	Hash           string            `json:"hash"`
+	AppBundleID          string `json:"appBundleID"`
+	PelfVersion          string `json:"pelfVersion"`
+	HostInfo             string `json:"hostInfo"`
+	FilesystemType       string `json:"filesystemType"`
+	Hash                 string `json:"hash"`
+	DisableRandomWorkDir bool   `json:"disableRandomWorkDir"`
 }
 
 type Config struct {
@@ -95,32 +96,25 @@ type Config struct {
 	DisableRandomWorkDir  bool
 }
 
-// Modified lookPath function to handle custom PATH ordering
 func lookPath(file string) (string, error) {
-	errNotFound := fmt.Errorf("executable file not found in $PATH")
 	if strings.Contains(file, "/") {
-		err := isExecutableFile(file)
-		if err == nil {
+		if isExecutableFile(file) == nil {
 			return file, nil
 		}
-		return "", err
-	}
-	if globalPath == "" {
-		return "", errNotFound
+		return "", fmt.Errorf("executable file not found in $PATH")
 	}
 	for _, dir := range strings.Split(globalPath, ":") {
 		if dir == "" {
 			dir = "."
 		}
 		path := dir + "/" + file
-		if err := isExecutableFile(path); err == nil {
+		if isExecutableFile(path) == nil {
 			return path, nil
 		}
 	}
-	return "", errNotFound
+	return "", fmt.Errorf("executable file not found in $PATH")
 }
 
-// Helper function to check if a file is executable
 func isExecutableFile(path string) error {
 	fi, err := os.Stat(path)
 	if err != nil {
@@ -129,7 +123,6 @@ func isExecutableFile(path string) error {
 	if fi.IsDir() {
 		return fmt.Errorf("%s is a directory", path)
 	}
-	// Check if file is executable
 	if fi.Mode()&0111 == 0 {
 		return fmt.Errorf("%s is not executable", path)
 	}
@@ -141,7 +134,6 @@ func setupBinaryDependencies(config *Config) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to create temporary directory for binary dependencies: %w", err)
 	}
-
 	config.BinDepDir = binDepDir
 
 	zr, err := zstd.NewReader(bytes.NewReader(binaryDependencies))
@@ -151,7 +143,6 @@ func setupBinaryDependencies(config *Config) (string, error) {
 	defer zr.Close()
 
 	tr := tar.NewReader(zr)
-
 	for {
 		header, err := tr.Next()
 		if err == io.EOF {
@@ -161,35 +152,22 @@ func setupBinaryDependencies(config *Config) (string, error) {
 			return "", err
 		}
 
+		filePath := filepath.Join(binDepDir, header.Name)
 		if header.Typeflag == tar.TypeDir {
-			dirPath := filepath.Join(binDepDir, header.Name)
-			if err := os.MkdirAll(dirPath, 0755); err != nil {
+			if err := os.MkdirAll(filePath, 0755); err != nil {
 				return "", err
 			}
 			continue
 		}
 
 		if header.Typeflag == tar.TypeSymlink {
-			target := header.Linkname
-			symlinkPath := filepath.Join(binDepDir, header.Name)
-			dir := filepath.Dir(symlinkPath)
-			if err := os.MkdirAll(dir, 0755); err != nil {
-				return "", err
-			}
-
-			if _, err := os.Lstat(symlinkPath); err == nil {
-				os.Remove(symlinkPath)
-			}
-
-			if err := os.Symlink(target, symlinkPath); err != nil {
-				return "", fmt.Errorf("failed to create symlink %s -> %s: %w", symlinkPath, target, err)
+			if err := os.Symlink(header.Linkname, filePath); err != nil {
+				return "", fmt.Errorf("failed to create symlink %s -> %s: %w", filePath, header.Linkname, err)
 			}
 			continue
 		}
 
-		filePath := filepath.Join(binDepDir, header.Name)
-		dir := filepath.Dir(filePath)
-		if err := os.MkdirAll(dir, 0755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
 			return "", err
 		}
 
@@ -197,65 +175,51 @@ func setupBinaryDependencies(config *Config) (string, error) {
 		if err != nil {
 			return "", err
 		}
+		defer outFile.Close()
 
 		if _, err := io.Copy(outFile, tr); err != nil {
-			outFile.Close()
 			return "", err
 		}
-		outFile.Close()
 	}
 
-	var newPath string
+	newPath := fmt.Sprintf("%s:%s", binDepDir, globalPath)
 	if config.PreferToolsInPath {
-		newPath = globalPath + ":" + binDepDir
-	} else {
-		newPath = binDepDir + ":" + globalPath
+		newPath = fmt.Sprintf("%s:%s", globalPath, binDepDir)
 	}
-
 	return newPath, nil
 }
 
-// Function to calculate b3sum hash of a file
 func calculateB3Sum(filePath string) (string, error) {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return "", err
 	}
-
 	hash := blake3.Sum256(data)
 	return hex.EncodeToString(hash[:]), nil
 }
 
-// Function to list all static tools with their B3SUMs
 func listStaticTools(binDepDir string) error {
 	files, err := os.ReadDir(binDepDir)
 	if err != nil {
 		return err
 	}
-
 	for _, file := range files {
 		if file.IsDir() {
 			continue
 		}
-
 		filePath := filepath.Join(binDepDir, file.Name())
 		hash, err := calculateB3Sum(filePath)
 		if err != nil {
 			return err
 		}
-
 		fmt.Printf("%s # %s\n", file.Name(), hash)
 	}
-
 	return nil
 }
 
-// Function to determine filesystem type from output file extension
 func getFilesystemTypeFromOutputFile(outputFile string) string {
 	ext := filepath.Ext(outputFile)
 	secondExt := filepath.Ext(strings.TrimSuffix(outputFile, ext))
-
-	// Check if it's .dwfs.AppBundle or .sqfs.AppBundle
 	if ext == ".AppBundle" {
 		if secondExt == ".dwfs" {
 			return "dwarfs"
@@ -263,8 +227,6 @@ func getFilesystemTypeFromOutputFile(outputFile string) string {
 			return "squashfs"
 		}
 	}
-
-	// Default to squashfs if no matching extension found
 	return "squashfs"
 }
 
@@ -273,70 +235,25 @@ func main() {
 		Name:  "pelf",
 		Usage: "Create self-contained AppDir executables",
 		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:    "output-to",
-				Aliases: []string{"o"},
-				Usage:   "Specify the output file name for the bundle",
-			},
-			&cli.StringFlag{
-				Name:    "compression",
-				Aliases: []string{"c"},
-				Usage:   "Specify compression flags for the selected filesystem",
-			},
-			&cli.StringFlag{
-				Name:    "add-appdir",
-				Aliases: []string{"a"},
-				Usage:   "Add an AppDir",
-			},
-			&cli.StringFlag{
-				Name:    "appbundle-id",
-				Aliases: []string{"i"},
-				Usage:   "Specify the ID of the AppBundle",
-			},
-			&cli.BoolFlag{
-				Name:    "do-not-embed-static-tools",
-				Aliases: []string{"t"},
-				Usage:   "Do not embed static tools into the bundle",
-			},
-			&cli.StringFlag{
-				Name:  "static-tools-dir",
-				Usage: "Specify a custom directory from which to get the static tools",
-			},
-			&cli.StringFlag{
-				Name:    "runtime",
-				Usage:   "Specify which runtime shall be used",
-				Sources: cli.EnvVars("PBUNDLE_RUNTIME", "_VAR_CUSTOM_RUNTIME"),
-			},
-			&cli.BoolFlag{
-				Name:  "upx",
-				Usage: "Enables usage of UPX compression in the static tools",
-			},
-			&cli.StringFlag{
-				Name:    "filesystem",
-				Aliases: []string{"j"},
-				Usage:   "Specify the filesystem type: 'dwarfs' for DWARFS, 'squashfs' for SQUASHFS",
-				Value:   "squashfs",
-			},
-			&cli.BoolFlag{
-				Name:  "prefer-tools-in-path",
-				Usage: "Prefer tools in PATH over embedded binary dependencies",
-			},
-			&cli.BoolFlag{
-				Name:  "list-static-tools",
-				Usage: "List all binary dependencies with their B3SUMs",
-			},
-			&cli.BoolFlag{
-				Name:    "disable-use-random-workdir",
-				Aliases: []string{"d"},
-				Usage:   "Disable the use of a random working directory",
-			},
+			&cli.StringFlag{Name: "output-to", Aliases: []string{"o"}, Usage: "Specify the output file name for the bundle"},
+			&cli.StringFlag{Name: "compression", Aliases: []string{"c"}, Usage: "Specify compression flags for the selected filesystem"},
+			&cli.StringFlag{Name: "add-appdir", Aliases: []string{"a"}, Usage: "Add an AppDir"},
+			&cli.StringFlag{Name: "appbundle-id", Aliases: []string{"i"}, Usage: "Specify the ID of the AppBundle"},
+			&cli.BoolFlag{Name: "do-not-embed-static-tools", Aliases: []string{"t"}, Usage: "Do not embed static tools into the bundle"},
+			&cli.StringFlag{Name: "static-tools-dir", Usage: "Specify a custom directory from which to get the static tools"},
+			&cli.StringFlag{Name: "runtime", Usage: "Specify which runtime shall be used", Sources: cli.EnvVars("PBUNDLE_RUNTIME", "_VAR_CUSTOM_RUNTIME")},
+			&cli.BoolFlag{Name: "upx", Usage: "Enables usage of UPX compression in the static tools"},
+			&cli.StringFlag{Name: "filesystem", Aliases: []string{"j"}, Usage: "Specify the filesystem type: 'dwarfs' for DWARFS, 'squashfs' for SQUASHFS", Value: "squashfs"},
+			&cli.BoolFlag{Name: "prefer-tools-in-path", Usage: "Prefer tools in PATH over embedded binary dependencies"},
+			&cli.BoolFlag{Name: "list-static-tools", Usage: "List all binary dependencies with their B3SUMs"},
+			&cli.BoolFlag{Name: "disable-use-random-workdir", Aliases: []string{"d"}, Usage: "Disable the use of a random working directory"},
 		},
 		Action: func(ctx context.Context, c *cli.Command) error {
 			config := &Config{
 				AppDir:                c.String("add-appdir"),
 				AppBundleID:           c.String("appbundle-id"),
 				OutputFile:            c.String("output-to"),
-				CompressionArgs:        c.String("compression"),
+				CompressionArgs:       c.String("compression"),
 				DoNotEmbedStaticTools: c.Bool("do-not-embed-static-tools"),
 				CustomEmbedDir:        c.String("static-tools-dir"),
 				Runtime:               c.String("runtime"),
@@ -345,7 +262,6 @@ func main() {
 				DisableRandomWorkDir:  c.Bool("disable-use-random-workdir"),
 			}
 
-			// Extract binary dependencies and set up PATH
 			var err error
 			globalPath, err = setupBinaryDependencies(config)
 			if err != nil {
@@ -353,23 +269,21 @@ func main() {
 			}
 			defer os.RemoveAll(config.BinDepDir)
 
-			// Handle list-static-tools flag
 			if c.Bool("list-static-tools") {
 				return listStaticTools(config.BinDepDir)
-			} else {
-				if c.String("add-appdir") == "" || c.String("appbundle-id") == "" || c.String("output-to") == "" {
-					return fmt.Errorf("--add-appdir, --appbundle-id and --output-to are obligatory parameters")
-				}
 			}
 
-			// Determine filesystem type based on output file extension if not explicitly set
+			if c.String("add-appdir") == "" || c.String("appbundle-id") == "" || c.String("output-to") == "" {
+				return fmt.Errorf("--add-appdir, --appbundle-id and --output-to are obligatory parameters")
+			}
+
 			if !c.IsSet("filesystem") && config.OutputFile != "" {
 				config.FilesystemType = getFilesystemTypeFromOutputFile(config.OutputFile)
 			} else {
 				config.FilesystemType = c.String("filesystem")
 			}
 
-			if err := initRuntimeInfo(&config.RuntimeInfo, config.FilesystemType, config.AppBundleID); err != nil {
+			if err := initRuntimeInfo(&config.RuntimeInfo, config.FilesystemType, config.AppBundleID, config.DisableRandomWorkDir); err != nil {
 				return err
 			}
 
@@ -384,7 +298,7 @@ func main() {
 	}
 }
 
-func initRuntimeInfo(runtimeInfo *RuntimeInfo, filesystemType, appBundleID string) error {
+func initRuntimeInfo(runtimeInfo *RuntimeInfo, filesystemType, appBundleID string, disableRandomWorkDir bool) error {
 	uname := unix.Utsname{}
 	if err := unix.Uname(&uname); err != nil {
 		return err
@@ -403,6 +317,7 @@ func initRuntimeInfo(runtimeInfo *RuntimeInfo, filesystemType, appBundleID strin
 		HostInfo:       hostInfo,
 		FilesystemType: filesystemType,
 		Hash:           "",
+		DisableRandomWorkDir: disableRandomWorkDir,
 	}
 
 	return nil
@@ -426,14 +341,9 @@ func run(config *Config) error {
 
 	fsType := config.FilesystemType
 	var fs *Filesystem
-	for i := range Filesystems {
-		for fsName := range Filesystems[i].Type {
-			if fsName == fsType {
-				fs = &Filesystems[i]
-				break
-			}
-		}
-		if fs != nil {
+	for _, f := range Filesystems {
+		if _, ok := f.Type[fsType]; ok {
+			fs = &f
 			break
 		}
 	}
@@ -441,7 +351,6 @@ func run(config *Config) error {
 		return fmt.Errorf("unsupported filesystem type: %s", fsType)
 	}
 
-	// Use our custom lookPath instead of exec.LookPath
 	for _, cmd := range fs.Commands {
 		path, err := lookPath(cmd)
 		if err != nil {
@@ -536,24 +445,20 @@ func copyTools(customDir, destDir string, tools []string) error {
 		}
 		dest := filepath.Join(destDir, filepath.Base(src))
 
-		// Check if the source is a symlink
 		fi, err := os.Lstat(src)
 		if err != nil {
 			return err
 		}
 
 		if fi.Mode()&os.ModeSymlink != 0 {
-			// Read the symlink target
 			target, err := os.Readlink(src)
 			if err != nil {
 				return err
 			}
-			// Create the symlink at the destination
 			if err := os.Symlink(target, dest); err != nil {
 				return fmt.Errorf("failed to create symlink %s -> %s: %w", dest, target, err)
 			}
 		} else {
-			// Copy regular file or directory
 			if err := copyFile(src, dest); err != nil {
 				return err
 			}
@@ -563,7 +468,6 @@ func copyTools(customDir, destDir string, tools []string) error {
 }
 
 func compressWithUPX(dir string) error {
-	// Use our custom lookPath instead of exec.LookPath
 	if _, err := lookPath("upx"); err != nil {
 		return fmt.Errorf("UPX not found")
 	}
@@ -601,22 +505,17 @@ func createTar(srcDir, tarPath string) error {
 			return err
 		}
 
-		// Get the relative path for the header name
 		relPath, err := filepath.Rel(filepath.Clean(srcDir), file)
 		if err != nil {
 			return err
 		}
 
-		// Create the header using the file info
 		header, err := tar.FileInfoHeader(fi, "")
 		if err != nil {
 			return err
 		}
-
-		// Set the Name field correctly with the relative path
 		header.Name = relPath
 
-		// Format the header correctly for symlinks
 		if fi.Mode()&os.ModeSymlink != 0 {
 			linkTarget, err := os.Readlink(file)
 			if err != nil {
@@ -626,18 +525,12 @@ func createTar(srcDir, tarPath string) error {
 			header.Typeflag = tar.TypeSymlink
 		}
 
-		// Ensure the full file mode is preserved
 		header.Mode = int64(fi.Mode())
 
-		// Debug output
-		fmt.Printf("File: %s, Original Mode: %o, Header Mode: %o, Typeflag: %c\n", header.Name, fi.Mode(), header.Mode, header.Typeflag)
-
-		// Write the header
 		if err := tw.WriteHeader(header); err != nil {
 			return err
 		}
 
-		// If it's not a directory or symlink, copy the file content
 		if !fi.IsDir() && fi.Mode()&os.ModeSymlink == 0 {
 			f, err := os.Open(file)
 			if err != nil {
@@ -684,8 +577,10 @@ func createSelfExtractingArchive(config *Config, workDir string, buildInfo Build
 		return err
 	}
 
+	// Ensure DisableRandomWorkDir is set correctly in RuntimeInfo
+	config.RuntimeInfo.DisableRandomWorkDir = config.DisableRandomWorkDir
+
 	var err error
-	// Calculate the hash of the filesystem image
 	config.RuntimeInfo.Hash, err = calculateB3Sum(filepath.Join(workDir, "archive."+config.FilesystemType))
 	if err != nil {
 		return fmt.Errorf("failed to calculate hash of filesystem image: %w", err)
@@ -695,13 +590,12 @@ func createSelfExtractingArchive(config *Config, workDir string, buildInfo Build
 		return fmt.Errorf("failed to make output file executable: %w", err)
 	}
 
-	// Convert the RuntimeInfo to CBOR and save it in a tempfile
 	runtimeInfoCBOR, err := cbor.Marshal(config.RuntimeInfo)
 	if err != nil {
 		return fmt.Errorf("failed to marshal RuntimeInfo to CBOR: %w", err)
 	}
 
-	runtimeInfoTempFile, err := os.CreateTemp("", "runtime_info_*.json")
+	runtimeInfoTempFile, err := os.CreateTemp("", "runtime_info_*.cbor")
 	if err != nil {
 		return fmt.Errorf("failed to create tempfile for RuntimeInfo CBOR: %w", err)
 	}
@@ -714,7 +608,6 @@ func createSelfExtractingArchive(config *Config, workDir string, buildInfo Build
 		return fmt.Errorf("failed to close RuntimeInfo CBOR tempfile: %w", err)
 	}
 
-	// Use objcopy to add ELF sections for static tools and runtime info
 	objcopyCmd := exec.Command("objcopy",
 		"--add-section", ".static_tools="+filepath.Join(workDir, "static.tar.zst"),
 		"--add-section", ".runtime_info="+runtimeInfoTempFile.Name(),
@@ -740,6 +633,8 @@ func createSelfExtractingArchive(config *Config, workDir string, buildInfo Build
 	if _, err := io.Copy(outFile, fsFile); err != nil {
 		return err
 	}
+
+	xattr.FRemove(outFile, "user.RuntimeConfig")
 
 	return nil
 }

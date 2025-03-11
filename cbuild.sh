@@ -52,15 +52,15 @@ build_project() {
                 	log "Building appbundle-runtime"
                     go build
 
-                    available "strip" && {
+                    available "strip" || log_warning "strip tool not found, unable to remove debug sections from the runtime" && {
                         log "Stripping debug symbols from ./appbundle-runtime"
                         strip -s --strip-all ./appbundle-runtime || log_error "Strip of ./appbundle-runtime failed"
-                    } || log_warning "strip tool not found, unable to remove debug sections from the runtime"
+                    }
 
                     log "Moving appbundle-runtime to $DBIN_INSTALL_DIR"
-                    mv ./appbundle-runtime $DBIN_INSTALL_DIR/
+                    mv ./appbundle-runtime "$DBIN_INSTALL_DIR"
                 }
-                cd "$BASE"
+                cd "$BASE" || log_error "Unable to go back to $BASE"
             fi
         #fi
 
@@ -73,11 +73,11 @@ build_project() {
         export GOFLAGS="-ldflags=-static-pie -ldflags=-s -ldflags=-w"
         go build -o ./pelf || log_error "Unable to build ./pelf"
 
-        available "upx" && {
+        available "upx" || log_warning "upx not available. The resulting binary will be unnecessarily large" && {
             log "Compressing ./pelf tool"
             upx ./pelf || log_error "unable to compress ./pelf"
             rm -f ./pelf.upx
-        } || log_warning "upx not available. The resulting binary will be unnecessarily large"
+        }
     else
         log_error "./pelf.go not found."
     fi
@@ -106,6 +106,7 @@ handle_dependencies() {
         dbin update
     else
         log "Installing dependencies..."
+        # shellcheck disable=SC2086
         dbin add $DEPS
     fi
 
@@ -120,7 +121,7 @@ handle_dependencies() {
         ln -sfT                            /usr/bin/fusermount                        fusermount
         ln -sfT                            /usr/bin/fusermount3                       fusermount3
     }
-    cd "$BASE"
+    cd "$BASE" || log_error "Unable to go back to $BASE"
 }
 
 update_dependencies() {
