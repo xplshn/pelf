@@ -1,5 +1,7 @@
 #!/bin/sh
 
+[ "$DEBUG" = 1 ] && set -x
+
 OPWD="$PWD"
 BASE="$(dirname "$(realpath "$0")")"
 export DBIN_INSTALL_DIR="$BASE/binaryDependencies"
