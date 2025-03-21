@@ -56,6 +56,7 @@ build_project() {
 
                     available "strip" || log_warning "strip tool not found, unable to remove debug sections from the runtime" && {
                         log "Stripping debug symbols from ./appbundle-runtime"
+			set -x
                         strip -s --strip-all ./appbundle-runtime || log_error "Strip of ./appbundle-runtime failed"
                     }
 
