@@ -13,7 +13,7 @@ jobs:
     name: Build tooling
     runs-on: ubuntu-latest
     container:
-      image: "docker.io/azathothas/appbundler-alpine:latest"
+      image: "alpine:latest"
       options: --privileged
 
     steps:
