@@ -46,7 +46,12 @@ var Filesystems = []Filesystem{
 				compressionArgs = strings.Split("-comp zstd -Xcompression-level 22", " ")
 			}
 			args = append(args, compressionArgs...)
-			return exec.Command(args[0], args[1:]...)
+			path, err := lookPath(args[0])
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				os.Exit(1)
+			}
+			return exec.Command(path, args[1:]...)
 		},
 	},
 	{
@@ -60,7 +65,12 @@ var Filesystems = []Filesystem{
 			}
 			args = append(args, compressionArgs...)
 			args = append(args, "--output", config.ArchivePath)
-			return exec.Command(args[0], args[1:]...)
+			path, err := lookPath(args[0])
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				os.Exit(1)
+			}
+			return exec.Command(path, args[1:]...)
 		},
 	},
 }
