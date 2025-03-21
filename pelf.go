@@ -537,6 +537,9 @@ func createTar(srcDir, tarPath string) error {
 
 		header.Mode = int64(fi.Mode())
 
+		// FIXME: Preserve original, instead of making all files executable
+		header.Mode |= 0111
+
 		if err := tw.WriteHeader(header); err != nil {
 			return err
 		}
