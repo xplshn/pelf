@@ -38,7 +38,7 @@ type Filesystem struct {
 var Filesystems = []Filesystem{
 	{
 		Type:     map[string]string{"squashfs": "sqfs"},
-		Commands: []string{"mksquashfs", "squashfuse", "fusermount"},
+		Commands: []string{"mksquashfs", "squashfuse"},
 		CmdBuilder: func(config *Config) *exec.Cmd {
 			args := []string{"mksquashfs", config.AppDir, config.ArchivePath}
 			compressionArgs := strings.Split(config.CompressionArgs, " ")
@@ -56,7 +56,7 @@ var Filesystems = []Filesystem{
 	},
 	{
 		Type:     map[string]string{"dwarfs": "dwfs"},
-		Commands: []string{"dwarfs", "mkdwarfs", "fusermount3"},
+		Commands: []string{"dwarfs", "mkdwarfs"},
 		CmdBuilder: func(config *Config) *exec.Cmd {
 			compressionArgs := strings.Split(config.CompressionArgs, " ")
 			args := []string{"mkdwarfs", "--input", config.AppDir, "--progress=ascii", "--set-owner", "0", "--set-group", "0", "--no-create-timestamp", "--no-history"}
