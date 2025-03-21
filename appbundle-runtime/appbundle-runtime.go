@@ -74,7 +74,11 @@ var Filesystems = []*Filesystem{
 		Type:     "squashfs",
 		Commands: []string{"squashfuse", "fusermount"},
 		MountCmd: func(cfg *RuntimeConfig) *exec.Cmd {
-			return exec.Command("squashfuse",
+			executable, err := lookPath("squashfuse", globalPath)
+			if err != nil {
+				logError("squashfuse not found in PATH", err, cfg)
+			}
+			return exec.Command(executable,
 				"-o", "ro,nodev,noatime",
 				"-o", "uid=0,gid=0",
 				"-o", fmt.Sprintf("offset=%d", cfg.archiveOffset),
@@ -83,20 +87,28 @@ var Filesystems = []*Filesystem{
 			)
 		},
 		ExtractCmd: func(cfg *RuntimeConfig, query string) *exec.Cmd {
+			executable, err := lookPath("unsquashfs", globalPath)
+			if err != nil {
+				logError("unsquashfs not found in PATH", err, cfg)
+			}
 			args := []string{"-d", cfg.mountDir, "-o", fmt.Sprintf("%d", cfg.archiveOffset), cfg.selfPath}
 			if query != "" {
 				for _, file := range strings.Split(query, " ") {
 					args = append(args, "-e", file)
 				}
 			}
-			return exec.Command("unsquashfs", args...)
+			return exec.Command(executable, args...)
 		},
 	},
 	{
 		Type:     "dwarfs",
 		Commands: []string{"dwarfs", "fusermount3"},
 		MountCmd: func(cfg *RuntimeConfig) *exec.Cmd {
-			return exec.Command("dwarfs",
+			executable, err := exec.LookPath("dwarfs")
+			if err != nil {
+				logError("dwarfs not found in PATH", err, cfg)
+			}
+			return exec.Command(executable,
 				"-o", fmt.Sprintf("offset=%d", cfg.archiveOffset),
 				"-o", "ro,nodev,noatime,auto_unmount",
 				"-o", "cache_files,no_cache_image,clone_fd",
@@ -107,10 +119,14 @@ var Filesystems = []*Filesystem{
 			)
 		},
 		ExtractCmd: func(cfg *RuntimeConfig, query string) *exec.Cmd {
+			executable, err := exec.LookPath("dwarfsextract")
+			if err != nil {
+				logError("dwarfsextract not found in PATH", err, cfg)
+			}
 			if query != "" {
 				logWarning(fmt.Sprintf("dwarfsextract cannot do a partial extraction. The following arguments will be ignored: %s", query))
 			}
-			return exec.Command("dwarfsextract",
+			return exec.Command(executable,
 				"-o", cfg.mountDir,
 				"-O", fmt.Sprintf("%d", cfg.archiveOffset),
 				cfg.selfPath,
