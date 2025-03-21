@@ -25,10 +25,9 @@ jobs:
       - name: Set up GOBIN and install lib4bin
         run: |
           set -x
-          apk add git bash file binutils patchelf findutils grep sed coreutils strace go fuse3 fuse curl yq-go b3sum wget
+          apk add git bash file binutils patchelf findutils grep sed strace go fuse3 fuse curl yq-go b3sum wget
           export GOBIN="\$GITHUB_WORKSPACE/.local/bin" CGO_ENABLED=0 GO_LDFLAGS='-buildmode=static-pie' GOFLAGS='-ldflags=-static-pie -ldflags=-s -ldflags=-w'
           export DBIN_INSTALL_DIR="\$GOBIN" DBIN_NOCONFIG=1 PATH="\$GOBIN:\$PATH"
-          which wget
           wget -qO- "https://raw.githubusercontent.com/xplshn/dbin/master/stubdl" | sh -s -- --install "\$DBIN_INSTALL_DIR/dbin" -v
           DBIN_INSTALL_DIR="\$GOBIN" "\$DBIN_INSTALL_DIR/dbin" --silent add yq
           echo "WITH_SHARUN=1" >> \$GITHUB_ENV
@@ -43,6 +42,7 @@ jobs:
           ROOTFS_URL="https://dl-cdn.alpinelinux.org/alpine/edge/releases/$(uname -m)/\${ROOTFS_URL}"
           export ROOTFS_URL
           echo "ROOTFS_URL=\$ROOTFS_URL" >> "\$GITHUB_ENV"
+          apk add coreutils
 
       - name: Create AppBundle
         run: |
