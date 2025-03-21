@@ -27,19 +27,21 @@ jobs:
           set -x
           apk add git bash file binutils patchelf findutils grep sed strace go fuse3 fuse curl yq-go b3sum
           wget -qO- "https://raw.githubusercontent.com/xplshn/dbin/master/stubdl" | sh -s -- --install "\$DBIN_INSTALL_DIR/dbin" -v
-          export GOBIN="\$GITHUB_WORKSPACE/.local/bin" CGO_ENABLED=0 GO_LDFLAGS='-buildmode=static-pie' GOFLAGS='-ldflags=-static-pie -ldflags=-s -ldflags=-w'
-          export DBIN_INSTALL_DIR="\$GOBIN" DBIN_NOCONFIG=1 PATH="$GOBIN:$PATH"
-          DBIN_INSTALL_DIR="\$GOBIN" "\$DBIN_INSTALL_DIR/dbin" --silent add yq
-          echo "WITH_SHARUN=1" >> \$GITHUB_ENV
-          echo "GEN_LIB_PATH=1" >> \$GITHUB_ENV
-          echo "ANY_EXECUTABLE=1" >> \$GITHUB_ENV
+          export GOBIN="$GITHUB_WORKSPACE/.local/bin" CGO_ENABLED=0 GO_LDFLAGS='-buildmode=static-pie' GOFLAGS='-ldflags=-static-pie -ldflags=-s -ldflags=-w'
+          export DBIN_INSTALL_DIR="$GOBIN" DBIN_NOCONFIG=1 PATH="$GOBIN:$PATH"
+          DBIN_INSTALL_DIR="$GOBIN" "$DBIN_INSTALL_DIR/dbin" --silent add yq
+          echo "PATH=$PATH" >> $GITHUB_ENV
+          echo "DBIN_INSTALL_DIR=$GOBIN" >> $GITHUB_ENV
+          echo "WITH_SHARUN=1" >> $GITHUB_ENV
+          echo "GEN_LIB_PATH=1" >> $GITHUB_ENV
+          echo "ANY_EXECUTABLE=1" >> $GITHUB_ENV
           mkdir "$GITHUB_WORKSPACE/dist"
           ROOTFS_URL="$(curl -qsL https://dl-cdn.alpinelinux.org/alpine/edge/releases/x86_64/latest-releases.yaml | yq '.[0].file')"
-          echo "https://dl-cdn.alpinelinux.org/alpine/edge/releases/x86_64/\${ROOTFS_URL}" >"$GITHUB_WORKSPACE/dist/alpineLinuxEdge.x86_64.rootfsURL"
+          echo "https://dl-cdn.alpinelinux.org/alpine/edge/releases/x86_64/${ROOTFS_URL}" >"$GITHUB_WORKSPACE/dist/alpineLinuxEdge.x86_64.rootfsURL"
           ROOTFS_URL="$(curl -qsL https://dl-cdn.alpinelinux.org/alpine/edge/releases/aarch64/latest-releases.yaml | yq '.[0].file')"
-          echo "https://dl-cdn.alpinelinux.org/alpine/edge/releases/aarch64/\${ROOTFS_URL}" >"$GITHUB_WORKSPACE/dist/alpineLinuxEdge.aarch64.rootfsURL"
+          echo "https://dl-cdn.alpinelinux.org/alpine/edge/releases/aarch64/${ROOTFS_URL}" >"$GITHUB_WORKSPACE/dist/alpineLinuxEdge.aarch64.rootfsURL"
           ROOTFS_URL="$(curl -qsL https://dl-cdn.alpinelinux.org/alpine/edge/releases/$(uname -m)/latest-releases.yaml | yq '.[0].file')"
-          ROOTFS_URL="https://dl-cdn.alpinelinux.org/alpine/edge/releases/$(uname -m)/\${ROOTFS_URL}"
+          ROOTFS_URL="https://dl-cdn.alpinelinux.org/alpine/edge/releases/$(uname -m)/${ROOTFS_URL}"
           export ROOTFS_URL
           echo "ROOTFS_URL=\$ROOTFS_URL" >> "\$GITHUB_ENV"
           apk add coreutils
