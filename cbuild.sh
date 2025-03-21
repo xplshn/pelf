@@ -52,7 +52,7 @@ build_project() {
             if [ -d "./appbundle-runtime" ]; then
                 cd ./appbundle-runtime && {
                 	log "Building appbundle-runtime"
-                    go build
+                    go build || log_error "./appbundle-runtime could not be built by go command"
 		    [ "$DEBUG" = "1" ] && ls
 
                     available "strip" || log_warning "strip tool not found, unable to remove debug sections from the runtime" && {
