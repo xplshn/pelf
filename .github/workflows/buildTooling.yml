@@ -29,7 +29,7 @@ jobs:
           export GOBIN="$GITHUB_WORKSPACE/.local/bin" CGO_ENABLED=0 GO_LDFLAGS='-buildmode=static-pie' GOFLAGS='-ldflags=-static-pie -ldflags=-s -ldflags=-w'
           export DBIN_INSTALL_DIR="$GOBIN" DBIN_NOCONFIG=1 PATH="$GOBIN:$PATH"
           mkdir -p "$GOBIN"
-          wget -qO- "https://raw.githubusercontent.com/xplshn/dbin/master/stubdl" | sh -s -- --install "\$DBIN_INSTALL_DIR/dbin" -v
+          wget -qO- "https://raw.githubusercontent.com/xplshn/dbin/master/stubdl" | sh -s -- --install "$DBIN_INSTALL_DIR/dbin" -v
           "$DBIN_INSTALL_DIR/dbin" --silent add yq
           echo "PATH=$PATH" >> $GITHUB_ENV
           echo "DBIN_INSTALL_DIR=$GOBIN" >> $GITHUB_ENV
