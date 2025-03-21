@@ -46,8 +46,8 @@ jobs:
         run: |
           cd "$GITHUB_WORKSPACE"
           ./cbuild.sh
-          mv ./pelf "$GITHUB_WORKSPACE/dist/pelf_$(uname -m)"
           B3SUM_CHECKSUM="$(b3sum ./pelf)"
+          mv ./pelf "$GITHUB_WORKSPACE/dist/pelf_$(uname -m)"
           echo "RELEASE_TAG=build-$(date +%Y%m%d)-$B3SUM_CHECKSUM" >> $GITHUB_ENV
 
       - name: Upload artifact
