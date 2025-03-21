@@ -103,7 +103,8 @@ handle_dependencies() {
 		  unionfs-fuse3/unionfs
 		  squashfs-tools/unsquashfs
 		  squashfs-tools/mksquashfs
-		  squashfuse/squashfuse_ll"
+		  squashfuse/squashfuse_ll
+		  bintools/objcopy#nixpkgs.bintools"
 
     if [ -n "$(ls -A "$DBIN_INSTALL_DIR" 2>/dev/null)" ]; then
         log "Updating dependencies..."
