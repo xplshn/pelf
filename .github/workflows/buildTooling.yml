@@ -46,7 +46,7 @@ jobs:
         run: |
           cd "$GITHUB_WORKSPACE"
           ./cbuild.sh
-          B3SUM_CHECKSUM="$(b3sum ./pelf)"
+          B3SUM_CHECKSUM="$(b3sum ./pelf | awk '{print $1}')"
           mv ./pelf "$GITHUB_WORKSPACE/dist/pelf_$(uname -m)"
           echo "RELEASE_TAG=build-$(date +%Y%m%d)-$B3SUM_CHECKSUM" >> $GITHUB_ENV
 
