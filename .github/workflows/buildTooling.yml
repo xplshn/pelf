@@ -46,11 +46,8 @@ jobs:
         run: |
           cd "$GITHUB_WORKSPACE"
           ./cbuild.sh
-          mv ./pelf "$GITHUB_WORKSPACE/dist/pelf_amd64"
-          # Calculate b3sum checksum
-          B3SUM_CHECKSUM="$(b3sum ./pelf-toolchain*.AppBundle | awk '{print $1}')"
-          echo "B3SUM_CHECKSUM=$B3SUM_CHECKSUM" >> $GITHUB_ENV
-          # Store version/date for tag name
+          mv ./pelf "$GITHUB_WORKSPACE/dist/pelf_$(uname -m)"
+          B3SUM_CHECKSUM="$(b3sum ./pelf)"
           echo "RELEASE_TAG=build-$(date +%Y%m%d)-$B3SUM_CHECKSUM" >> $GITHUB_ENV
 
       - name: Upload artifact
