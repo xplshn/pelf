@@ -45,36 +45,25 @@ jobs:
       - name: Create AppBundle
         run: |
           cd "$GITHUB_WORKSPACE"
-          set -x
-          which -a strip
-          DEBUG=1 ./cbuild.sh
+          ./cbuild.sh
           mv ./pelf "$GITHUB_WORKSPACE/dist/pelf_amd64"
           # Calculate b3sum checksum
           B3SUM_CHECKSUM="$(b3sum ./pelf-toolchain*.AppBundle | awk '{print $1}')"
           echo "B3SUM_CHECKSUM=$B3SUM_CHECKSUM" >> $GITHUB_ENV
           # Store version/date for tag name
           echo "RELEASE_TAG=build-$(date +%Y%m%d)-$B3SUM_CHECKSUM" >> $GITHUB_ENV
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4.6.1
         with:
           name: AppBundle
           path: ${{ github.workspace }}/dist/*
-      - name: Create Git Tag
-        run: |
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
-          # Ensure the tag doesn't already exist to prevent errors
-          if ! git tag | grep -q "${{ env.RELEASE_TAG }}"; then
-            git tag "${{ env.RELEASE_TAG }}"
-            git push origin "${{ env.RELEASE_TAG }}"
-          else
-            echo "Tag ${{ env.RELEASE_TAG }} already exists, using existing tag"
-          fi
+
       - name: Create Release
         uses: softprops/action-gh-release@v2.2.1
         with:
-          name: "Build ${{ env.RELEASE_TAG }}"
-          tag_name: "${{ env.RELEASE_TAG }}"
+          name: "Build $(date +%Y%m%d)"
+          tag_name: "build-$(date +%Y%m%d)"
           prerelease: false
           draft: false
           generate_release_notes: true
