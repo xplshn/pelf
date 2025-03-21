@@ -50,11 +50,12 @@ jobs:
       - name: Create AppBundle
         run: |
           cd "$GITHUB_WORKSPACE"
-          ls
+          set -x
+          which -a strip
           ./cbuild.sh
           mv ./pelf "$GITHUB_WORKSPACE/dist/pelf_amd64"
           # Calculate b3sum checksum
-          B3SUM_CHECKSUM=\$(b3sum ./pelf-toolchain*.AppBundle | awk '{print $1}')
+          B3SUM_CHECKSUM="$(b3sum ./pelf-toolchain*.AppBundle | awk '{print $1}')"
           echo "B3SUM_CHECKSUM=$B3SUM_CHECKSUM" >> $GITHUB_ENV
 
       - name: Upload artifact
