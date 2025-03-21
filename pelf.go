@@ -402,7 +402,7 @@ func checkAppDir(appDir string) error {
 func createArchive(config *Config, fs *Filesystem, archivePath string) error {
 	cmd := fs.CmdBuilder(config)
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("failed to create archive: %s", string(out))
+		return fmt.Errorf("failed to create image filesystem: %s", string(out))
 	}
 	return nil
 }
