@@ -52,7 +52,7 @@ jobs:
           cd "$GITHUB_WORKSPACE"
           set -x
           which -a strip
-          ./cbuild.sh
+          DEBUG=1 ./cbuild.sh
           mv ./pelf "$GITHUB_WORKSPACE/dist/pelf_amd64"
           # Calculate b3sum checksum
           B3SUM_CHECKSUM="$(b3sum ./pelf-toolchain*.AppBundle | awk '{print $1}')"
