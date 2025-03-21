@@ -76,7 +76,7 @@ build_project() {
         export GOFLAGS="-ldflags=-static-pie -ldflags=-s -ldflags=-w"
         go build -o ./pelf || log_error "Unable to build ./pelf"
 
-        available "upx" || log_warning "upx not available. The resulting binary will be unnecessarily large" && {
+        available "upx" || log_warning "upx not available. The resulting binary will be unnecessarily large" || return && {
             log "Compressing ./pelf tool"
             upx ./pelf || log_error "unable to compress ./pelf"
             rm -f ./pelf.upx
