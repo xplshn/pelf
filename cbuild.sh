@@ -121,6 +121,8 @@ handle_dependencies() {
         ln -sfT                            dwarfs                                     mkdwarfs
         ln -sfT                            dwarfs                                     dwarfsextract
         upx                                dwarfs
+        upx                                mksquashfs
+        upx                                objcopy
         [ -f ./squashfuse_ll ] && [ ! -h ./squashfuse_ll ] && mv ./squashfuse_ll    ./squashfuse
         ln -sfT                            squashfuse                                 squashfuse_ll
         ln -sfT                            /usr/bin/fusermount                        fusermount
