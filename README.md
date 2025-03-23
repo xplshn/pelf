@@ -22,15 +22,15 @@ AppBundles can serve as a drop-in replacement for AppImages. Both AppBundles and
 
 ### Usage
 ```
-./pelf --add-appdir "nano-14_02_2025.AppDir" --appbundle-id "nano-14_02_2025-xplshn" --output-to "nano-14_02_2025.dwfs.AppBundle" -j "dwarfs" # you can skip the -j flag, "dwarfs" is the default filesystem used by "./pelf"
+./pelf --add-appdir "nano-14_02_2025.AppDir" --appbundle-id "nano-14_02_2025-xplshn" --output-to "nano-14_02_2025.dwfs.AppBundle"
 ```
 OR
 ```
-./pelf --add-appdir "nano-14_02_2025.AppDir" --appbundle-id "nano-14_02_2025-xplshn" --output-to "nano-14_02_2025.sqfs.AppBundle" -j "squashfs"
+./pelf --add-appdir "nano-14_02_2025.AppDir" --appbundle-id "nano-14_02_2025-xplshn" --output-to "nano-14_02_2025.sqfs.AppBundle"
 ```
 
 ### Build ./pelf
-1. Procure "go*", "strip" and "upx"
+1. Get yourself an up-to-date `go` toolchain and install `dbin` into your system or put it anywhere in your `$PATH`
 2. execute `./cbuild.sh`
 3. Put the resulting `./pelf` binary in your `$PATH`
 4. Spread the joy of AppBundles! :)
