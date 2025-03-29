@@ -16,6 +16,7 @@ import (
 	"syscall"
 	"time"
 	"strconv"
+	"runtime"
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/emmansun/base64"
@@ -31,6 +32,8 @@ const (
 	resetColor   = "\x1b[0m"
 
 	DWARFS_CACHESIZE = "256M"
+	DWARFS_BLOCKSIZE = "512K"
+	DWARFS_READAHEAD = "32M"
 )
 
 var globalPath = os.Getenv("PATH")
@@ -76,6 +79,7 @@ var Filesystems = []*Filesystem{
 		MountCmd: func(cfg *RuntimeConfig) *exec.Cmd {
 			executable, err := lookPath("squashfuse", globalPath)
 			if err != nil {
+				println(globalPath)
 				logError("squashfuse not found in PATH", err, cfg)
 			}
 			return exec.Command(executable,
@@ -113,6 +117,9 @@ var Filesystems = []*Filesystem{
 				"-o", "ro,nodev,noatime,auto_unmount",
 				"-o", "cache_files,no_cache_image,clone_fd",
 				"-o", "cachesize="+getEnvWithDefault("DWARFS_CACHESIZE", DWARFS_CACHESIZE),
+				"-o", "readahead="+getEnvWithDefault("DWARFS_READAHEAD", DWARFS_READAHEAD),
+				"-o", "blocksize="+getEnvWithDefault("DWARFS_BLOCKSIZE", DWARFS_BLOCKSIZE),
+				"-o", fmt.Sprintf("workers=%d", getEnvWithDefault("DWARFS_WORKERS", runtime.NumCPU())),
 				"-o", "debuglevel=error",
 				cfg.selfPath,
 				cfg.mountDir,
@@ -307,11 +314,13 @@ func calculateElfSize(elfFile *elf.File, file *os.File) (len uint64, err error) 
 	return
 }
 
-func getEnvWithDefault(key, defaultValue string) string {
+// getEnvWithDefault is a generic function that retrieves an environment variable
+// and returns the first value if it exists, otherwise it returns the default value.
+func getEnvWithDefault[T any](key string, defaultValue T) T {
 	if value := os.Getenv(key); value != "" {
 		opts := strings.Split(value, ",")
 		if len(opts) > 0 {
-			return opts[0]
+			return any(opts[0]).(T)
 		}
 	}
 	return defaultValue
