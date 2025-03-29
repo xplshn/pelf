@@ -42,54 +42,69 @@ require() {
 }
 
 # Project functions
-build_project() {
+build_pelf() {
     if [ -f "./pelf.go" ]; then
         mkdir -p "$DBIN_INSTALL_DIR"
+        echo ./appbundle-runtime/*.go | xargs go build -o "$DBIN_INSTALL_DIR/appbundle-runtime"
         handle_dependencies
 
-        #if [ ! -f "$DBIN_INSTALL_DIR/appbundle-runtime" ]; then
-        #    log "appbundle-runtime executable not found in $DBIN_INSTALL_DIR"
-            if [ -d "./appbundle-runtime" ]; then
-                cd ./appbundle-runtime && {
-                	log "Building appbundle-runtime"
-                    go build || log_error "./appbundle-runtime could not be built by go command"
-		    [ "$DEBUG" = "1" ] && ls
-
-                    available "strip" || log_warning "strip tool not found, unable to remove debug sections from the runtime" && {
-                        log "Stripping debug symbols from ./appbundle-runtime"
-                        strip -s --strip-all ./appbundle-runtime || log_error "Strip of ./appbundle-runtime failed"
-                    }
-
-                    log "Moving appbundle-runtime to $DBIN_INSTALL_DIR"
-                    mv ./appbundle-runtime "$DBIN_INSTALL_DIR"
-                }
-                cd "$BASE" || log_error "Unable to go back to $BASE"
-            fi
-        #fi
-
-		log "Creating binaryDependencies.tar.zst"
-		tar -C binaryDependencies -c . | zstd -T0 -19 -fo binaryDependencies.tar.zst
-		#tar -C binaryDependencies -c . | zstd -T0 -fo binaryDependencies.tar.zst
+        log "Creating binaryDependencies.tar.zst for pelf"
+        tar -C binaryDependencies -c . | zstd -T0 -19 -fo binaryDependencies.tar.zst
 
         rm -f ./pelf
         export CGO_ENABLED=0
         export GOFLAGS="-ldflags=-static-pie -ldflags=-s -ldflags=-w"
         go build -o ./pelf || log_error "Unable to build ./pelf"
 
-	available "upx" || log_warning "upx not available. The resulting binary will be unnecessarily large"
-        available "upx" && {
+        if available "upx"; then
             log "Compressing ./pelf tool"
             upx ./pelf || log_error "unable to compress ./pelf"
             rm -f ./pelf.upx
-        }
+        else
+            log_warning "upx not available. The resulting binary will be unnecessarily large"
+        fi
     else
         log_error "./pelf.go not found."
     fi
 }
 
+build_pelfCreator() {
+    log "Building pelfCreator"
+    log "Creating empty binaryDependencies.tar.zst"
+    if [ -d "./binaryDependencies" ] && [ ! -d "./.binaryDependencies.bak" ]; then
+        mv ./binaryDependencies ./.binaryDependencies.bak
+        mkdir ./binaryDependencies
+        tar -C ./binaryDependencies -c . | zstd -T0 -19 -fo binaryDependencies.tar.zst
+    fi
+    if [ -d "./.binaryDependencies.bak" ]; then
+        rm -rf ./binaryDependencies
+        mv ./.binaryDependencies.bak ./binaryDependencies
+    fi
+
+    log "Building pelf"
+    go build
+    log "Moving pelf into ./binaryDependencies"
+    mv ./pelf "$DBIN_INSTALL_DIR"
+
+    log "Installing dependencies"
+    handle_dependencies
+    curl -OsLl "https://github.com/xplshn/filesystems/releases/latest/download/AlpineLinux_edge-$(uname -m).tar.zst"
+
+    log "Creating binaryDependencies.tar.zst for pelfCreator"
+    tar -C binaryDependencies -c . | zstd -T0 -19 -fo binaryDependencies.tar.zst
+
+    log "Moving binaryDependencies.tar.zst into ./cmd/pelfCreator"
+    mv binaryDependencies.tar.zst ./cmd/pelfCreator
+
+    log "Building pelfCreator"
+    cd ./cmd/pelfCreator || log_error "Unable to change directory to ./cmd/pelfCreator"
+    go build || log_error "Unable to build pelfCreator"
+    cd "$BASE" || log_error "Unable to go back to $BASE"
+}
+
 clean_project() {
     log "Starting clean process"
-    rm -rf ./pelf ./pelf.upx ./binaryDependencies ./binaryDependencies.tar.zst
+    rm -rf ./pelf ./pelf.upx ./binaryDependencies ./binaryDependencies.tar.zst ./cmd/pelfCreator/binaryDependencies.tar.zst
     log "Clean process completed"
 }
 
@@ -99,12 +114,13 @@ retrieve_executable() {
 
 handle_dependencies() {
     mkdir -p "$DBIN_INSTALL_DIR"
-	DEPS="dwarfs/dwarfs-tools
-		  unionfs-fuse3/unionfs
-		  squashfs-tools/unsquashfs
-		  squashfs-tools/mksquashfs
-		  squashfuse/squashfuse_ll
-		  bintools/objcopy#nixpkgs.bintools"
+    DEPS="dwarfs/dwarfs-tools
+          unionfs-fuse3/unionfs
+          squashfs-tools/unsquashfs
+          squashfs-tools/mksquashfs
+          squashfuse/squashfuse_ll
+          bintools/objcopy#nixpkgs.bintools
+          bwrap#github.com.containers.bubblewrap"
 
     if [ -n "$(ls -A "$DBIN_INSTALL_DIR" 2>/dev/null)" ]; then
         log "Updating dependencies..."
@@ -117,17 +133,23 @@ handle_dependencies() {
 
     cd "$DBIN_INSTALL_DIR" && {
         log "Linking dependencies"
-        [ -f ./dwarfs-tools ]  && [ ! -h ./dwarfs-tools ]  && mv ./dwarfs-tools     ./dwarfs
-        ln -sfT                            dwarfs                                     mkdwarfs
-        ln -sfT                            dwarfs                                     dwarfsextract
-        upx                                dwarfs
-        upx                                mksquashfs
-        upx                                objcopy
-        [ -f ./squashfuse_ll ] && [ ! -h ./squashfuse_ll ] && mv ./squashfuse_ll    ./squashfuse
-        ln -sfT                            squashfuse                                 squashfuse_ll
-        ln -sfT                            /usr/bin/fusermount                        fusermount
-        ln -sfT                            /usr/bin/fusermount3                       fusermount3
+        [ -f ./dwarfs-tools ] && [ ! -h ./dwarfs-tools ] && mv ./dwarfs-tools ./dwarfs
+        ln -sfT dwarfs mkdwarfs
+        ln -sfT dwarfs dwarfsextract
+        upx dwarfs
+        upx mksquashfs
+        upx objcopy
+        [ -f ./squashfuse_ll ] && [ ! -h ./squashfuse_ll ] && mv ./squashfuse_ll ./squashfuse
+        ln -sfT squashfuse squashfuse_ll
+        ln -sfT /usr/bin/fusermount fusermount
+        ln -sfT /usr/bin/fusermount3 fusermount3
+
+        # Handle rootfs and copy ./assets/AppRun* to ./binaryDependencies
+        if [ -d "./assets" ]; then
+            cp ./assets/AppRun* "$DBIN_INSTALL_DIR"
+        fi
     }
+    unnappear rm ./*.upx
     cd "$BASE" || log_error "Unable to go back to $BASE"
 }
 
@@ -139,8 +161,13 @@ update_dependencies() {
 case "$1" in
     "" | "build")
         require go
-        log "Starting build process"
-        build_project
+        log "Starting build process for pelf"
+        build_pelf
+        ;;
+    "pelfCreator")
+        require go
+        log "Starting build process for pelfCreator"
+        build_pelfCreator
         ;;
     "clean")
         clean_project
@@ -152,7 +179,7 @@ case "$1" in
         update_dependencies
         ;;
     *)
-        log_warning "Usage: $0 {build|clean|retrieve|update-deps}"
+        log_warning "Usage: $0 {build|pelfCreator|clean|retrieve|update-deps}"
         exit 1
         ;;
 esac
