@@ -50,8 +50,6 @@ type RuntimeConfig struct {
 	pelfHost             string
 	pelfVersion          string
 	appBundleFS          string
-	updateInfo           string
-	signature            string
 	hash                 string
 	elfFileSize          uint64
 	archiveOffset        uint64
