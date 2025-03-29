@@ -114,13 +114,21 @@ retrieve_executable() {
 
 handle_dependencies() {
     mkdir -p "$DBIN_INSTALL_DIR"
-    DEPS="dwarfs/dwarfs-tools
-          unionfs-fuse3/unionfs
+    DEPS="unionfs-fuse3/unionfs
           squashfs-tools/unsquashfs
           squashfs-tools/mksquashfs
           squashfuse/squashfuse_ll
-          bintools/objcopy#nixpkgs.bintools
-          bwrap#github.com.containers.bubblewrap"
+          bintools/objcopy
+          bwrap"
+
+	if [ "$_RELEASE" = "1" ]; then
+		unnappear rm "$DBIN_INSTALL_DIR/dwarfs-tools"
+		curl -sLl "https://github.com/VHSgunzo/dwarfs/releases/latest/download/dwarfs-universal-$(uname -m)-upx" -o "$DBIN_INSTALL_DIR/dwarfs-tools"
+		chmod +x "$DBIN_INSTALL_DIR/dwarfs-tools"
+	else
+		DEPS="dwarfs/dwarfs-tools
+			  $DEPS"
+	fi
 
     if [ -n "$(ls -A "$DBIN_INSTALL_DIR" 2>/dev/null)" ]; then
         log "Updating dependencies..."
