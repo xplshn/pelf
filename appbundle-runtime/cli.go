@@ -31,15 +31,17 @@ func handleRuntimeFlags(fh *fileHandler, args *[]string, cfg *RuntimeConfig) err
   --pbundle_desktop: Same as --pbundle_pngIcon but it uses the first .desktop file it encounters on the top level of the AppDir
   --pbundle_portableHome: Creates a directory in the same place as the AppBundle, which will be used as $HOME during subsequent runs
   --pbundle_portableConfig: Creates a directory in the same place as the AppBundle, which will be used as $XDG_CONFIG_HOME during subsequent runs
-  --pbundle_updateinfo: Print update info embedded in the AppBundle
-  --pbundle_signature: Print digital signature embedded in the AppBundle
+  --pbundle_cleanup: Unmounts, removes, and tides up the AppBundle's workdir and mount pool. Does not affect other running AppBundles
+                     Only affects other instances of this same AppBundle.
 `)
+
 	    if cfg.appBundleFS != "dwarfs" {
 	    	fmt.Printf("  --pbundle_extract <[]globs>: Extracts the AppBundle's filesystem to ./%s\n", cfg.rExeName + "_" + cfg.appBundleFS)
 	    	fmt.Println(`  If globs are provided, it will extract the matching files`)
 	    } else {
 	    	fmt.Printf("  --pbundle_extract: Extracts the AppBundle's filesystem to ./%s\n", cfg.rExeName + "_" + cfg.appBundleFS)
 	    }
+
 		fmt.Printf(`
   Compatibilty flags:
   --appimage-extract: Same as --pbundle_extract but hardcodes the output directory to ./squashfs-root
@@ -164,20 +166,10 @@ func handleRuntimeFlags(fh *fileHandler, args *[]string, cfg *RuntimeConfig) err
 		fmt.Println(cfg.archiveOffset)
 		return fmt.Errorf("!no_return")
 
-	case "--pbundle_updateinfo":
-		if cfg.updateInfo != "" {
-			fmt.Println(cfg.updateInfo)
-		} else {
-			logError("Update info not found", nil, cfg)
-		}
-		return fmt.Errorf("!no_return")
-
-	case "--pbundle_signature":
-		if cfg.signature != "" {
-			fmt.Println(cfg.signature)
-		} else {
-			logError("Signature not found", nil, cfg)
-		}
+	case "--pbundle_cleanup":
+		fmt.Println("A cleanup job has been requested...")
+		cfg.noCleanup = false
+		cleanup(cfg)
 		return fmt.Errorf("!no_return")
 
 	default:

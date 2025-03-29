@@ -610,9 +610,7 @@ func cleanup(cfg *RuntimeConfig) {
 	cmd.Stdin = nil
 	cmd.Stdout = nil
 	cmd.Stderr = nil
-	if err := cmd.Start(); err != nil {
-		panic(err)
-	}
+	cmd.Start()
 }
 
 func isMounted(dir string) bool {
