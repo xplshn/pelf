@@ -46,6 +46,7 @@ jobs:
         run: |
           cd "$GITHUB_WORKSPACE"
           export CGO_ENABLED=0 GOFLAGS="-ldflags=-static-pie -ldflags=-s -ldflags=-w" GO_LDFLAGS="-buildmode=static-pie -s -w"
+          export _RELEASE="1"
           ./cbuild.sh
           B3SUM_CHECKSUM="$(b3sum ./pelf | awk '{print $1}')"
           mv ./pelf "$GITHUB_WORKSPACE/dist/pelf_$(uname -m)"
