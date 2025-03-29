@@ -111,14 +111,14 @@ var Filesystems = []*Filesystem{
 				logError("dwarfs not found in PATH", err, cfg)
 			}
 			return exec.Command(executable,
-				"-o", fmt.Sprintf("offset=%d", cfg.archiveOffset),
 				"-o", "ro,nodev,noatime,auto_unmount",
 				"-o", "cache_files,no_cache_image,clone_fd",
+				"-o", "tidy_strategy=time,tidy_interval=500ms,tidy_max_age=1s",
+				"-o", "debuglevel=error",
 				"-o", "cachesize="+getEnvWithDefault("DWARFS_CACHESIZE", DWARFS_CACHESIZE),
 				"-o", "readahead="+getEnvWithDefault("DWARFS_READAHEAD", DWARFS_READAHEAD),
 				"-o", "blocksize="+getEnvWithDefault("DWARFS_BLOCKSIZE", DWARFS_BLOCKSIZE),
-				"-o", fmt.Sprintf("workers=%d", getEnvWithDefault("DWARFS_WORKERS", runtime.NumCPU())),
-				"-o", "debuglevel=error",
+				"-o", fmt.Sprintf("offset=%d -o workers=%d", cfg.archiveOffset, getEnvWithDefault("DWARFS_WORKERS", runtime.NumCPU())),
 				cfg.selfPath,
 				cfg.mountDir,
 			)
@@ -608,7 +608,9 @@ func cleanup(cfg *RuntimeConfig) {
 	cmd.Stdin = nil
 	cmd.Stdout = nil
 	cmd.Stderr = nil
-	cmd.Start()
+	if err := cmd.Start(); err != nil {
+ 		panic(err)
+ 	}
 }
 
 func isMounted(dir string) bool {
