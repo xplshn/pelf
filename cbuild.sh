@@ -117,7 +117,6 @@ handle_dependencies() {
     DEPS="unionfs-fuse3/unionfs
           squashfs-tools/unsquashfs
           squashfs-tools/mksquashfs
-          squashfuse/squashfuse_ll
           bintools/objcopy
           bwrap"
 
@@ -125,8 +124,13 @@ handle_dependencies() {
 		unnappear rm "$DBIN_INSTALL_DIR/dwarfs-tools"
 		curl -sLl "https://github.com/VHSgunzo/dwarfs/releases/latest/download/dwarfs-universal-$(uname -m)-upx" -o "$DBIN_INSTALL_DIR/dwarfs-tools"
 		chmod +x "$DBIN_INSTALL_DIR/dwarfs-tools"
+
+		unnappear rm "$DBIN_INSTALL_DIR/squashfuse_ll"
+		curl -sLl "https://github.com/VHSgunzo/squashfuse-static/releases/latest/download/squashfuse_ll-musl-mimalloc-$(uname -m)" -o "$DBIN_INSTALL_DIR/squashfuse_ll"
+		chmod +x "$DBIN_INSTALL_DIR/squashfuse_ll"
 	else
-		DEPS="dwarfs/dwarfs-tools
+		DEPS="squashfuse/squashfuse_ll
+			  dwarfs/dwarfs-tools
 			  $DEPS"
 	fi
 
