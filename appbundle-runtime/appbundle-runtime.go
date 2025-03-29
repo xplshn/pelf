@@ -118,7 +118,8 @@ var Filesystems = []*Filesystem{
 				"-o", "cachesize="+getEnvWithDefault("DWARFS_CACHESIZE", DWARFS_CACHESIZE),
 				"-o", "readahead="+getEnvWithDefault("DWARFS_READAHEAD", DWARFS_READAHEAD),
 				"-o", "blocksize="+getEnvWithDefault("DWARFS_BLOCKSIZE", DWARFS_BLOCKSIZE),
-				"-o", fmt.Sprintf("offset=%d -o workers=%d", cfg.archiveOffset, getEnvWithDefault("DWARFS_WORKERS", runtime.NumCPU())),
+				"-o", fmt.Sprintf("workers=%d", getEnvWithDefault("DWARFS_WORKERS", runtime.NumCPU())),
+				"-o", fmt.Sprintf("offset=%d", cfg.archiveOffset),
 				cfg.selfPath,
 				cfg.mountDir,
 			)
