@@ -139,6 +139,7 @@ clean_project() {
 
 retrieve_executable() {
     readlink -f ./pelf
+    readlink -f ./cmd/pelfCreator/pelfCreator
 }
 
 handle_dependencies() {
