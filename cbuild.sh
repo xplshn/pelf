@@ -98,6 +98,9 @@ apk -U \
 	--allow-untrusted \
 	--no-interactive \
 	--no-cache add \
+	-X "https://dl-cdn.alpinelinux.org/alpine/edge/main" \
+	-X "https://dl-cdn.alpinelinux.org/alpine/edge/community" \
+	-X "https://dl-cdn.alpinelinux.org/alpine/edge/testing" \
 	$@
 EOF
 	chmod +x "$TEMP_DIR/binaryDependencies/pkgadd.sh"
