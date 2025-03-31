@@ -15,6 +15,7 @@ import (
 
 	"github.com/mholt/archives"
 	"github.com/urfave/cli/v3"
+	"github.com/zeebo/blake3"
 	"golang.org/x/sys/unix"
 )
 
@@ -30,6 +31,7 @@ const (
 type Config struct {
 	Maintainer    string
 	Name          string
+	AppBundleID   string
 	PkgAdd        string
 	Entrypoint    string
 	DontPack      bool
@@ -43,6 +45,7 @@ type Config struct {
 	LocalPath     string
 	AppDir        string
 	Date          string
+	TempDir       string
 }
 
 func main() {
@@ -129,11 +132,25 @@ func main() {
 			},
 		},
 		Action: func(ctx context.Context, c *cli.Command) error {
+			config.Date = time.Now().Format("02_01_2006")
+			config.AppBundleID = fmt.Sprintf("%s-%s-%s", config.Name, config.Date, config.Maintainer)
+			config.AppDir = fmt.Sprintf("%s.AppDir", config.AppBundleID)
 			if config.Lib4binArgs != "" {
 				config.Sharun = true
+				parts := strings.Fields(config.Lib4binArgs)
+				for i, part := range parts {
+					parts[i] = filepath.Join(config.AppDir, "proto", part)
+				}
+				config.Lib4binArgs = strings.Join(parts, " ")
 			}
-			config.Date = time.Now().Format("02_01_2006")
-			config.AppDir = fmt.Sprintf("%s-%s.AppDir", config.Name, config.Date)
+
+			var err error
+			config.TempDir, err = os.MkdirTemp("", "pelfCreator-deps")
+			if err != nil {
+				return fmt.Errorf("failed to create temp dir: %v", err)
+			}
+			defer os.RemoveAll(config.TempDir)
+
 			return runPelfCreator(config)
 		},
 	}
@@ -149,17 +166,17 @@ func runPelfCreator(config Config) error {
 		return fmt.Errorf("failed to create proto directory: %v", err)
 	}
 
-	tempDir, err := os.MkdirTemp("", "pelfCreator-deps")
-	if err != nil {
-		return fmt.Errorf("failed to create temp dir: %v", err)
+	genStepsPath := filepath.Join(config.AppDir, ".genSteps")
+	genStepsContent := fmt.Sprintf("pelfCreator %s", strings.Join(os.Args[1:], " "))
+	if err := os.WriteFile(genStepsPath, []byte(genStepsContent), 0755); err != nil {
+		return fmt.Errorf("failed to create .genSteps: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
 
-	if err := setupDependencies(tempDir); err != nil {
+	if err := setupDependencies(config); err != nil {
 		return err
 	}
 
-	rootfsPath, err := findRootfs(tempDir, config.LocalPath)
+	rootfsPath, err := findRootfs(config)
 	if err != nil {
 		return err
 	}
@@ -168,11 +185,7 @@ func runPelfCreator(config Config) error {
 		return fmt.Errorf("failed to extract rootfs: %v", err)
 	}
 
-	if err := copyFromTemp(tempDir, config.LocalPath, "bwrap", filepath.Join(config.AppDir, "usr/bin/bwrap"), 0755); err != nil {
-		return fmt.Errorf("bwrap setup failed: %v", err)
-	}
-
-	if err := setupAppRunAndPackages(config, tempDir); err != nil {
+	if err := setupAppRunAndPackages(config); err != nil {
 		return err
 	}
 
@@ -188,8 +201,20 @@ func runPelfCreator(config Config) error {
 		}
 	}
 
-	if !config.Sandbox {
-		if err := setupNonSandboxEnv(config, tempDir); err != nil {
+	// Handle the three structures based on configuration
+	if config.Sandbox {
+		// Sandbox mode - uses AppRun.rootfs-based
+		if err := setupSandboxMode(config); err != nil {
+			return err
+		}
+	} else if config.Sharun {
+		// Sharun or Hybrid mode
+		if err := setupSharunMode(config); err != nil {
+			return err
+		}
+	} else {
+		// Default mode (similar to Hybrid but without Sharun)
+		if err := setupDefaultMode(config); err != nil {
 			return err
 		}
 	}
@@ -199,7 +224,7 @@ func runPelfCreator(config Config) error {
 	}
 
 	if !config.DontPack {
-		if err := createBundle(config, tempDir); err != nil {
+		if err := createBundle(config); err != nil {
 			return fmt.Errorf("bundle creation failed: %v", err)
 		}
 	}
@@ -208,28 +233,102 @@ func runPelfCreator(config Config) error {
 	return nil
 }
 
-func setupDependencies(tempDir string) error {
-	tempArchive := filepath.Join(tempDir, "binaryDependencies.tar.zst")
+func setupSandboxMode(config Config) error {
+	// Copy sandbox-specific files
+	if err := copyFromTemp(config, "bwrap", filepath.Join(config.AppDir, "usr/bin/bwrap"), 0755); err != nil {
+		return fmt.Errorf("bwrap setup failed: %v", err)
+	}
+
+	// Setup sandbox-specific files
+	protoDir := filepath.Join(config.AppDir, "proto")
+	if err := setupSandboxFiles(protoDir); err != nil {
+		return err
+	}
+
+	// Use AppRun.rootfs-based
+	return copyFromTemp(config, "AppRun.rootfs-based", filepath.Join(config.AppDir, "AppRun"), 0755)
+}
+
+func setupSharunMode(config Config) error {
+	// Process binaries with lib4bin
+	if err := setupLib4bin(config); err != nil {
+		return err
+	}
+
+	// Handle proto directory based on keep/getrid flags
+	if config.ToBeKeptFiles != "" || config.GetridFiles != "" {
+		// Hybrid mode - keep specified files
+		if err := trimProtoDir(config); err != nil {
+			return err
+		}
+		// Use AppRun.sharun.ovfsProto
+		if err := copyFromTemp(config, "AppRun.sharun.ovfsProto", filepath.Join(config.AppDir, "AppRun"), 0755); err != nil {
+			return err
+		}
+	} else {
+		// Pure Sharun mode - remove proto dir completely
+		if err := os.RemoveAll(filepath.Join(config.AppDir, "proto")); err != nil {
+			return err
+		}
+		// Use AppRun.sharun
+		if err := copyFromTemp(config, "AppRun.sharun", filepath.Join(config.AppDir, "AppRun"), 0755); err != nil {
+			return err
+		}
+	}
+
+	// Copy unionfs for hybrid mode
+	if config.ToBeKeptFiles != "" || config.GetridFiles != "" {
+		if err := copyFromTemp(config, "unionfs", filepath.Join(config.AppDir, "usr", "bin", "unionfs"), 0755); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func setupDefaultMode(config Config) error {
+	// Handle proto directory based on keep/getrid flags
+	if config.ToBeKeptFiles != "" || config.GetridFiles != "" {
+		if err := trimProtoDir(config); err != nil {
+			return err
+		}
+	}
+
+	// Use AppRun.sharun.ovfsProto for default mode
+	if err := copyFromTemp(config, "AppRun.sharun.ovfsProto", filepath.Join(config.AppDir, "AppRun"), 0755); err != nil {
+		return err
+	}
+
+	// Copy unionfs
+	if err := copyFromTemp(config, "unionfs", filepath.Join(config.AppDir, "usr", "bin", "unionfs"), 0755); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func setupDependencies(config Config) error {
+	tempArchive := filepath.Join(config.TempDir, "binaryDependencies.tar.zst")
 	if err := os.WriteFile(tempArchive, binaryDependencies, 0644); err != nil {
 		return fmt.Errorf("failed to write temp archive: %v", err)
 	}
 
-	if err := extractToDirectory(tempArchive, tempDir); err != nil {
+	if err := extractToDirectory(tempArchive, config.TempDir); err != nil {
 		return fmt.Errorf("failed to extract binaryDependencies: %v", err)
 	}
 
 	return nil
 }
 
-func findRootfs(tempDir, localPath string) (string, error) {
-	if localPath != "" {
-		localRootfs, err := findFirstMatch(localPath, "rootfs.tar*")
+func findRootfs(config Config) (string, error) {
+	if config.LocalPath != "" {
+		localRootfs, err := findFirstMatch(config.LocalPath, "rootfs.tar*")
 		if err == nil {
 			return localRootfs, nil
 		}
 	}
 
-	return findFirstMatch(tempDir, "rootfs.tar*")
+	return findFirstMatch(config.TempDir, "rootfs.tar*")
 }
 
 func findFirstMatch(dir, pattern string) (string, error) {
@@ -246,10 +345,10 @@ func findFirstMatch(dir, pattern string) (string, error) {
 	return matches[0], nil
 }
 
-func copyFromTemp(tempDir, localDir, srcRelPath, dest string, mode os.FileMode) error {
-	srcPath := filepath.Join(tempDir, srcRelPath)
-	if localDir != "" {
-		localSrcPath := filepath.Join(localDir, srcRelPath)
+func copyFromTemp(config Config, srcRelPath, dest string, mode os.FileMode) error {
+	srcPath := filepath.Join(config.TempDir, srcRelPath)
+	if config.LocalPath != "" {
+		localSrcPath := filepath.Join(config.LocalPath, srcRelPath)
 		if _, err := os.Stat(localSrcPath); err == nil {
 			srcPath = localSrcPath
 		}
@@ -270,10 +369,15 @@ func copyFromTemp(tempDir, localDir, srcRelPath, dest string, mode os.FileMode) 
 	return nil
 }
 
-func setupAppRunAndPackages(config Config, tempDir string) error {
+func setupAppRunAndPackages(config Config) error {
+	entrypointPath := filepath.Join(config.AppDir, "entrypoint")
+	if err := os.WriteFile(entrypointPath, []byte("sh"), 0755); err != nil {
+		return err
+	}
+
 	if config.Sandbox {
-		appRunPath := filepath.Join(config.AppDir, "AppRun.sharun.ovfsProto")
-		if err := copyFromTemp(tempDir, config.LocalPath, "AppRun.rootfs-based", appRunPath, 0755); err != nil {
+		appRunPath := filepath.Join(config.AppDir, "AppRun.rootfs-based")
+		if err := copyFromTemp(config, "AppRun.rootfs-based", appRunPath, 0755); err != nil {
 			return err
 		}
 	}
@@ -282,12 +386,12 @@ func setupAppRunAndPackages(config Config, tempDir string) error {
 		return err
 	}
 
-	if err := copyFromTemp(tempDir, config.LocalPath, "AppRun.rootfs-based", filepath.Join(config.AppDir, "AppRun"), 0755); err != nil {
+	if err := copyFromTemp(config, "AppRun.rootfs-based", filepath.Join(config.AppDir, "AppRun"), 0755); err != nil {
 		return err
 	}
 
 	pkgAddPath := filepath.Join(config.AppDir, "pkgadd.sh")
-	if err := copyFromTemp(tempDir, config.LocalPath, "pkgadd.sh", pkgAddPath, 0755); err != nil {
+	if err := copyFromTemp(config, "pkgadd.sh", pkgAddPath, 0755); err != nil {
 		return err
 	}
 
@@ -310,7 +414,7 @@ func setupAppRunAndPackages(config Config, tempDir string) error {
 		}
 
 		launchPath := filepath.Join(protoLocalBinDir, "LAUNCH")
-		return copyFromTemp(tempDir, config.LocalPath, "LAUNCH-multicall.rootfs.entrypoint", launchPath, 0755)
+		return copyFromTemp(config, "LAUNCH-multicall.rootfs.entrypoint", launchPath, 0755)
 	}
 
 	return nil
@@ -327,8 +431,11 @@ func handleDesktopFile(config Config) error {
 	}
 
 	appDirDesktopPath := filepath.Join(config.AppDir, config.Entrypoint)
-	if err := copyFile(desktopFilePath, appDirDesktopPath); err != nil {
-		return err
+	if err := os.Symlink(desktopFilePath, appDirDesktopPath); err != nil {
+		// Fallback to copy if symlink fails
+		if err := copyFile(desktopFilePath, appDirDesktopPath); err != nil {
+			return fmt.Errorf("failed to link/copy desktop file: %v", err)
+		}
 	}
 
 	desktopContent, err := os.ReadFile(appDirDesktopPath)
@@ -422,65 +529,24 @@ func findAndCopyIcon(appDir, iconName string) error {
 	return nil
 }
 
-func setupNonSandboxEnv(config Config, tempDir string) error {
-	sharunPath := filepath.Join(config.AppDir, "sharun")
-	if err := copyFromTemp(tempDir, config.LocalPath, "sharun", sharunPath, 0755); err != nil {
-		return err
-	}
-
-	entrypointPath := filepath.Join(config.AppDir, "entrypoint")
-	execContents, err := os.ReadFile(entrypointPath)
-	if err != nil {
-		return fmt.Errorf("failed to read entrypoint: %v", err)
-	}
-	execPath := strings.TrimSpace(string(execContents))
-
-	if config.Sharun {
-		if err := setupLib4bin(config, execPath); err != nil {
-			return err
-		}
-	}
-
-	if config.ToBeKeptFiles != "" {
-		if err := trimProtoDir(config); err != nil {
-			return err
-		}
-	}
-
-	if err := copyFromTemp(tempDir, config.LocalPath, "unionfs", filepath.Join(config.AppDir, "usr", "bin", "unionfs"), 0755); err != nil {
-		return err
-	}
-
-	return copyFromTemp(tempDir, config.LocalPath, "AppRun.sharun.ovfsProto", filepath.Join(config.AppDir, "AppRun"), 0755)
-}
-
-func setupLib4bin(config Config, execPath string) error {
+func setupLib4bin(config Config) error {
 	l4bCmdPath := filepath.Join(config.AppDir, ".l4bCmd")
 	script := fmt.Sprintf(`#!/bin/sh
-./sharun l -w --dst-dir "%s" "%s" "%s"
-`, config.AppDir, config.AppDir, execPath)
+export PATH="%s:%s"
+export LD_LIBRARY_PATH="%s/proto/lib:%s/proto/usr/lib:%s/proto/lib64:%s/proto/usr/lib64:%s/proto/lib32:%s/proto/usr/lib32"
+sharun l -w --dst-dir "%s" "%s"
+`, config.TempDir, os.Getenv("PATH"),
+		config.AppDir, config.AppDir, config.AppDir, config.AppDir, config.AppDir, config.AppDir,
+		config.AppDir, config.Lib4binArgs,
+	)
 	if err := os.WriteFile(l4bCmdPath, []byte(script), 0755); err != nil {
 		return err
 	}
 
 	cmd := exec.Command(l4bCmdPath)
-	cmd.Dir = config.AppDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("sharun lib4bin command failed: %v", err)
-	}
-
-	sharunPath := filepath.Join(config.AppDir, "sharun")
-	if err := os.Remove(sharunPath); err != nil {
-		return fmt.Errorf("failed to remove sharun: %v", err)
-	}
-
-	if err := copyFromTemp(filepath.Dir(sharunPath), config.LocalPath, fmt.Sprintf("sharun-%s", unixMachine()), sharunPath, 0755); err != nil {
-		return err
-	}
-
-	return copyFromTemp(filepath.Dir(sharunPath), config.LocalPath, "AppRun.sharun", execPath, 0755)
+	return cmd.Run()
 }
 
 func trimProtoDir(config Config) error {
@@ -589,16 +655,14 @@ func setupSandboxFiles(protoDir string) error {
 	return nil
 }
 
-func createBundle(config Config, tempDir string) error {
-	appBundleID := fmt.Sprintf("%s-%s-%s", config.Name, config.Date, config.Maintainer)
-
+func createBundle(config Config) error {
 	if config.OutputTo == "" {
-		config.OutputTo = fmt.Sprintf("%s.%s.AppBundle", appBundleID, config.AppBundleFS)
+		config.OutputTo = fmt.Sprintf("%s.%s.AppBundle", config.AppBundleID, config.AppBundleFS)
 	}
 
-	cmd := exec.Command(filepath.Join(tempDir, "pelf"),
+	cmd := exec.Command(filepath.Join(config.TempDir, "pelf"),
 		"--add-appdir", config.AppDir,
-		"--appbundle-id", appBundleID,
+		"--appbundle-id", config.AppBundleID,
 		"--output-to", config.OutputTo)
 
 	cmd.Stdout = os.Stdout
@@ -650,6 +714,15 @@ func securePath(basePath, relativePath string) (string, error) {
 	return dstPath, nil
 }
 
+func calculateB3Sum(filePath string) (string, error) {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return "", err
+	}
+	hash := blake3.Sum256(data)
+	return string(hash[:]), nil
+}
+
 func handleFile(f archives.FileInfo, dst string) error {
 	dstPath, pathErr := securePath(dst, f.NameInArchive)
 	if pathErr != nil {
@@ -661,38 +734,77 @@ func handleFile(f archives.FileInfo, dst string) error {
 		return dirErr
 	}
 
-	switch {
-	case f.IsDir():
+	if f.IsDir() {
 		return os.MkdirAll(dstPath, f.Mode())
+	}
 
-	case f.LinkTarget != "":
+	if f.LinkTarget != "" {
 		return os.Symlink(f.LinkTarget, dstPath)
+	}
 
-	case f.Mode()&os.ModeNamedPipe != 0:
+	if f.Mode()&os.ModeNamedPipe != 0 {
 		return syscall.Mkfifo(dstPath, uint32(f.Mode().Perm()))
+	}
 
-	case f.Mode()&os.ModeSocket != 0:
+	if f.Mode()&os.ModeSocket != 0 {
 		return syscall.Mknod(dstPath, syscall.S_IFSOCK|0600, 0)
+	}
 
-	default:
+	if _, err := os.Stat(dstPath); err == nil {
+		// File exists, compare hashes
+		existingHash, err := calculateB3Sum(dstPath)
+		if err != nil {
+			return fmt.Errorf("failed to calculate hash for existing file: %v", err)
+		}
+
 		reader, err := f.Open()
 		if err != nil {
 			return fmt.Errorf("open file: %w", err)
 		}
 		defer reader.Close()
 
-		dstFile, err := os.OpenFile(dstPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, f.Mode())
+		tempFile, err := os.CreateTemp("", "tempfile")
 		if err != nil {
-			return fmt.Errorf("create file: %w", err)
+			return fmt.Errorf("create temp file: %w", err)
 		}
-		defer dstFile.Close()
+		defer os.Remove(tempFile.Name())
+		defer tempFile.Close()
 
-		buf := make([]byte, 32*1024) // 32KB buffer
-		_, err = io.CopyBuffer(dstFile, reader, buf)
+		_, err = io.Copy(tempFile, reader)
 		if err != nil {
-			return fmt.Errorf("copy: %w", err)
+			return fmt.Errorf("copy to temp file: %w", err)
+		}
+
+		newHash, err := calculateB3Sum(tempFile.Name())
+		if err != nil {
+			return fmt.Errorf("failed to calculate hash for new file: %v", err)
+		}
+
+		if existingHash == newHash {
+			// Hashes match, skip the file
+			return nil
 		}
 	}
+
+	// Hashes do not match or file does not exist, overwrite the file
+	reader, err := f.Open()
+	if err != nil {
+		return fmt.Errorf("open file: %w", err)
+	}
+	defer reader.Close()
+
+	dstFile, err := os.OpenFile(dstPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, f.Mode())
+	if err != nil {
+		return fmt.Errorf("create file: %w", err)
+	}
+	defer dstFile.Close()
+
+	buf := make([]byte, 32*1024) // 32KB buffer
+	_, err = io.CopyBuffer(dstFile, reader, buf)
+	if err != nil {
+		return fmt.Errorf("copy: %w", err)
+	}
+
 	return nil
 }
 
