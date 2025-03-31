@@ -4,7 +4,7 @@ go 1.24
 
 require (
 	fyne.io/fyne/v2 v2.5.5
-	github.com/emmansun/base64 v0.6.2
+	github.com/emmansun/base64 v0.7.0
 	github.com/fxamacker/cbor/v2 v2.8.0
 	github.com/goccy/go-json v0.10.5
 	github.com/klauspost/compress v1.18.0

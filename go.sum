@@ -80,6 +80,8 @@ github.com/dsnet/compress v0.0.2-0.20230904184137-39efe44ab707/go.mod h1:qssHWj6
 github.com/dsnet/golib v0.0.0-20171103203638-1ea166775780/go.mod h1:Lj+Z9rebOhdfkVLjJ8T6VcRQv3SXugXy999NBtR9aFY=
 github.com/emmansun/base64 v0.6.2 h1:Qd/W1hAs9kzcWmBozAOhlxFrjnZQR2dBN4og7WMInFs=
 github.com/emmansun/base64 v0.6.2/go.mod h1:EjgM1HylRQjG1oaIMsF6+CzHsBCrTBm36890foTOELY=
+github.com/emmansun/base64 v0.7.0 h1:fMZZM1oLD8gw7LvgWDNag1o/lOzCGZJLpC+41qNJo+o=
+github.com/emmansun/base64 v0.7.0/go.mod h1:Czh5fnzzJRyZdo/1kFcNa92BGYW/IZ1T5JGeJvl74kk=
 github.com/envoyproxy/go-control-plane v0.9.0/go.mod h1:YTl/9mNaCwkRvm6d1a2C3ymFceY/DCBVvsKhRF0iEA4=
 github.com/envoyproxy/go-control-plane v0.9.1-0.20191026205805-5f8ba28d4473/go.mod h1:YTl/9mNaCwkRvm6d1a2C3ymFceY/DCBVvsKhRF0iEA4=
 github.com/envoyproxy/go-control-plane v0.9.4/go.mod h1:6rpuAdCZL397s3pYoYcLgu1mIlRU8Am5FuJP05cCM98=
