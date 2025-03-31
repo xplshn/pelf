@@ -72,19 +72,19 @@ build_pelf() {
 
 build_pelfCreator() {
     log "Building pelfCreator"
-    
+
     # Create temporary build directory
     mkdir -p "$TEMP_DIR/binaryDependencies"
-    
+
     # Copy only the necessary dependencies to temp dir
     log "Preparing dependencies for pelfCreator"
     cp "$BASE/pelf" "$TEMP_DIR/binaryDependencies/pelf" || log_error "Unable to move pelf to the binaryDependencies of pelfCreator"
-    
+
     # Get the unionfs and bwrap binaries
     mkdir -p "$TEMP_DIR/binaryDependencies"
     cp "$DBIN_INSTALL_DIR/unionfs" "$TEMP_DIR/binaryDependencies/" 2>/dev/null || log_error "unionfs binary not found"
     cp "$DBIN_INSTALL_DIR/bwrap" "$TEMP_DIR/binaryDependencies/" 2>/dev/null || log_error "bwrap binary not found"
-    
+
     # Copy AppRun assets
     if [ -d "$BASE/assets" ]; then
         cp "$BASE/assets/AppRun"* "$BASE/assets/LAUNCH"* "$TEMP_DIR/binaryDependencies/" 2>/dev/null || log_warning "AppRun assets not found"
@@ -101,7 +101,7 @@ apk -U \
 	$@
 EOF
 	chmod +x "$TEMP_DIR/binaryDependencies/pkgadd.sh"
-    
+
     if [ ! -f "$TEMP_DIR/binaryDependencies/rootfs.tar.zst" ]; then
         log "Downloading rootfs"
         curl -sLl "https://github.com/xplshn/filesystems/releases/latest/download/AlpineLinux_edge-$(uname -m).tar.zst" -o "$TEMP_DIR/binaryDependencies/AlpineLinux_edge-$(uname -m).tar.zst"
@@ -114,7 +114,7 @@ EOF
         curl -sLl "https://github.com/VHSgunzo/sharun/releases/latest/download/sharun-$(uname -m)-aio" -o "$TEMP_DIR/binaryDependencies/sharun"
         chmod +x "$TEMP_DIR/binaryDependencies/sharun"
     fi
-    
+
     unnappear rm -rf "$BASE/cmd/pelfCreator/binaryDependencies"
     mv "$TEMP_DIR/binaryDependencies" "$BASE/cmd/pelfCreator/binaryDependencies" || log_error "Unable to move binaryDependencies from temp to pelfCreator"
 
@@ -125,8 +125,15 @@ EOF
     log "Building pelfCreator"
     cd "$BASE/cmd/pelfCreator" || log_error "Unable to change directory to ./cmd/pelfCreator"
     go build || log_error "Unable to build pelfCreator"
+    if available "upx"; then
+        log "Compressing ./pelfCreator tool"
+        upx ./pelfCreator || log_error "unable to compress ./pelfCreator"
+        rm -f ./pelfCreator.upx
+    else
+        log_warning "upx not available. The resulting binary will be unnecessarily large"
+    fi
     cd "$BASE" || log_error "Unable to go back to $BASE"
-    
+
     # Clean up temporary directory
     rm -rf "$TEMP_DIR"
 }
