@@ -431,12 +431,12 @@ func handleDesktopFile(config Config) error {
 	}
 
 	appDirDesktopPath := filepath.Join(config.AppDir, config.Entrypoint)
-	if err := os.Symlink(desktopFilePath, appDirDesktopPath); err != nil {
-		// Fallback to copy if symlink fails
+	//if err := os.Symlink(filepath.Join("proto", "usr", "share", "applications", config.Entrypoint), appDirDesktopPath); err != nil {
+	//	// Fallback to copy if symlink fails
 		if err := copyFile(desktopFilePath, appDirDesktopPath); err != nil {
 			return fmt.Errorf("failed to link/copy desktop file: %v", err)
 		}
-	}
+	//}
 
 	desktopContent, err := os.ReadFile(appDirDesktopPath)
 	if err != nil {
@@ -534,7 +534,7 @@ func setupLib4bin(config Config) error {
 	script := fmt.Sprintf(`#!/bin/sh
 export PATH="%s:%s"
 export LD_LIBRARY_PATH="%s/proto/lib:%s/proto/usr/lib:%s/proto/lib64:%s/proto/usr/lib64:%s/proto/lib32:%s/proto/usr/lib32"
-sharun l -w --dst-dir "%s" "%s"
+sharun l --with-sharun --gen-lib-path --with-hooks --dst-dir "%s" %s
 `, config.TempDir, os.Getenv("PATH"),
 		config.AppDir, config.AppDir, config.AppDir, config.AppDir, config.AppDir, config.AppDir,
 		config.AppDir, config.Lib4binArgs,
