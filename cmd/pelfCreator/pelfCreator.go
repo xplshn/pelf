@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"github.com/mholt/archives"
-	"golang.org/x/sys/unix"
 	"github.com/urfave/cli/v3"
+	"golang.org/x/sys/unix"
 )
 
 //go:embed binaryDependencies.tar.zst
@@ -217,7 +217,7 @@ func setupDependencies(tempDir string) error {
 	if err := extractToDirectory(tempArchive, tempDir); err != nil {
 		return fmt.Errorf("failed to extract binaryDependencies: %v", err)
 	}
-	
+
 	return nil
 }
 
@@ -228,7 +228,7 @@ func findRootfs(tempDir, localPath string) (string, error) {
 			return localRootfs, nil
 		}
 	}
-	
+
 	return findFirstMatch(tempDir, "rootfs.tar*")
 }
 
@@ -475,7 +475,7 @@ func setupLib4bin(config Config, execPath string) error {
 	if err := os.Remove(sharunPath); err != nil {
 		return fmt.Errorf("failed to remove sharun: %v", err)
 	}
-	
+
 	if err := copyFromTemp(filepath.Dir(sharunPath), config.LocalPath, fmt.Sprintf("sharun-%s", unixMachine()), sharunPath, 0755); err != nil {
 		return err
 	}
@@ -498,7 +498,7 @@ func trimProtoDir(config Config) error {
 				break
 			}
 		}
-		
+
 		if keep {
 			sourcePath := filepath.Join(config.AppDir, "proto", item)
 			destPath := filepath.Join(protoTrimmedDir, item)
@@ -516,7 +516,7 @@ func trimProtoDir(config Config) error {
 	if err := os.RemoveAll(filepath.Join(config.AppDir, "proto")); err != nil {
 		return err
 	}
-	
+
 	return os.Rename(protoTrimmedDir, filepath.Join(config.AppDir, "proto"))
 }
 
@@ -573,7 +573,7 @@ func setupSandboxFiles(protoDir string) error {
 	if err := os.MkdirAll(filepath.Join(protoDir, "usr", "share", "fontconfig"), 0755); err != nil {
 		return err
 	}
-	
+
 	// Touch required files
 	filesToTouch := []string{
 		"etc/machine-id", "etc/hostname", "etc/localtime", "etc/passwd", "etc/group",
@@ -585,22 +585,22 @@ func setupSandboxFiles(protoDir string) error {
 			return err
 		}
 	}
-	
+
 	return nil
 }
 
 func createBundle(config Config, tempDir string) error {
 	appBundleID := fmt.Sprintf("%s-%s-%s", config.Name, config.Date, config.Maintainer)
-	
+
 	if config.OutputTo == "" {
 		config.OutputTo = fmt.Sprintf("%s.%s.AppBundle", appBundleID, config.AppBundleFS)
 	}
-	
-	cmd := exec.Command(filepath.Join(tempDir, "pelf"), 
-		"--add-appdir", config.AppDir, 
-		"--appbundle-id", appBundleID, 
+
+	cmd := exec.Command(filepath.Join(tempDir, "pelf"),
+		"--add-appdir", config.AppDir,
+		"--appbundle-id", appBundleID,
 		"--output-to", config.OutputTo)
-		
+
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
