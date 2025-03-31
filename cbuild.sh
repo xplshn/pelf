@@ -164,14 +164,14 @@ handle_dependencies() {
               $DEPS"
     fi
 
-    if [ -n "$(ls -A "$DBIN_INSTALL_DIR" 2>/dev/null)" ]; then
-        log "Updating dependencies..."
-        dbin update
-    else
+    #if [ -n "$(ls -A "$DBIN_INSTALL_DIR" 2>/dev/null)" ]; then
+    #    log "Updating dependencies..."
+    #    dbin update
+    #else
         log "Installing dependencies..."
         # shellcheck disable=SC2086
         dbin add $DEPS
-    fi
+    #fi
 
     cd "$DBIN_INSTALL_DIR" && {
         log "Linking dependencies"
