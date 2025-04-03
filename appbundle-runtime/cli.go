@@ -152,6 +152,18 @@ func handleRuntimeFlags(fh *fileHandler, args *[]string, cfg *RuntimeConfig) err
 
 	case "--pbundle_mount", "--appimage-mount":
 		cfg.doNotMount = false
+		cfg.noCleanup = false
+		cfg.disableRandomWorkDir = false
+
+		if len(os.Args) > 1 && os.Args[1] != "" {
+			mountPoint := os.Args[1]
+			if info, err := os.Stat(mountPoint); err == nil && info.IsDir() {
+				cfg.mountDir = mountPoint
+			} else {
+				return fmt.Errorf("error: invalid argument. The specified mount point is not a valid directory.")
+			}
+		}
+
 		if err := mountImage(cfg, fh); err != nil {
 			return err
 		}
