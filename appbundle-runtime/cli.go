@@ -155,10 +155,9 @@ func handleRuntimeFlags(fh *fileHandler, args *[]string, cfg *RuntimeConfig) err
 		cfg.noCleanup = false
 		cfg.disableRandomWorkDir = false
 
-		if len(os.Args) > 1 && os.Args[1] != "" {
-			mountPoint := os.Args[1]
-			if info, err := os.Stat(mountPoint); err == nil && info.IsDir() {
-				cfg.mountDir = mountPoint
+		if len(*args) == 2 && (*args)[1] != "" {
+			if info, err := os.Stat((*args)[1]); err == nil && info.IsDir() {
+				cfg.mountDir = (*args)[1]
 			} else {
 				return fmt.Errorf("error: invalid argument. The specified mount point is not a valid directory.")
 			}
