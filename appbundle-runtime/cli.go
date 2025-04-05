@@ -33,6 +33,7 @@ func handleRuntimeFlags(fh *fileHandler, args *[]string, cfg *RuntimeConfig) err
   --pbundle_portableConfig: Creates a directory in the same place as the AppBundle, which will be used as $XDG_CONFIG_HOME during subsequent runs
   --pbundle_cleanup: Unmounts, removes, and tides up the AppBundle's workdir and mount pool. Does not affect other running AppBundles
                      Only affects other instances of this same AppBundle.
+  --pbundle_mount: Mounts the AppBundle's filesystem to the specified directory or the default mount directory.
 `)
 
 	    if cfg.appBundleFS != "dwarfs" {
@@ -123,7 +124,11 @@ func handleRuntimeFlags(fh *fileHandler, args *[]string, cfg *RuntimeConfig) err
 			query = strings.Join((*args)[1:], " ")
 		}
 		cfg.mountDir = cfg.rExeName + "_" + cfg.appBundleFS
-		if err := extractImage(cfg, fh, query); err != nil {
+		fs, err := checkDeps(cfg, fh)
+		if err != nil {
+			return err
+		}
+		if err := extractImage(cfg, fh, fs, query); err != nil {
 			return err
 		}
 		fmt.Println("./" + cfg.mountDir)
@@ -135,7 +140,11 @@ func handleRuntimeFlags(fh *fileHandler, args *[]string, cfg *RuntimeConfig) err
 			query = strings.Join((*args)[1:], " ")
 		}
 		cfg.mountDir = "squashfs-root"
-		if err := extractImage(cfg, fh, query); err != nil {
+		fs, err := checkDeps(cfg, fh)
+		if err != nil {
+			return err
+		}
+		if err := extractImage(cfg, fh, fs, query); err != nil {
 			return err
 		}
 		fmt.Println("./" + cfg.mountDir)
@@ -143,7 +152,11 @@ func handleRuntimeFlags(fh *fileHandler, args *[]string, cfg *RuntimeConfig) err
 
 	case "--pbundle_extract_and_run", "--appimage-extract-and-run":
 		cfg.doNotMount = true
-		if err := extractImage(cfg, fh, ""); err != nil {
+		fs, err := checkDeps(cfg, fh)
+		if err != nil {
+			return err
+		}
+		if err := extractImage(cfg, fh, fs, ""); err != nil {
 			return err
 		}
 		*args = (*args)[1:]
@@ -153,7 +166,6 @@ func handleRuntimeFlags(fh *fileHandler, args *[]string, cfg *RuntimeConfig) err
 	case "--pbundle_mount", "--appimage-mount":
 		cfg.doNotMount = false
 		cfg.noCleanup = false
-		cfg.disableRandomWorkDir = false
 
 		if len(*args) == 2 && (*args)[1] != "" {
 			if info, err := os.Stat((*args)[1]); err == nil && info.IsDir() {
@@ -163,7 +175,11 @@ func handleRuntimeFlags(fh *fileHandler, args *[]string, cfg *RuntimeConfig) err
 			}
 		}
 
-		if err := mountImage(cfg, fh); err != nil {
+		fs, err := checkDeps(cfg, fh)
+		if err != nil {
+			return err
+		}
+		if err := mountImage(cfg, fh, fs); err != nil {
 			return err
 		}
 		fmt.Println(cfg.mountDir)
@@ -190,3 +206,4 @@ func handleRuntimeFlags(fh *fileHandler, args *[]string, cfg *RuntimeConfig) err
 
 	return nil
 }
+

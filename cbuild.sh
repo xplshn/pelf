@@ -48,7 +48,7 @@ build_pelf() {
     if [ -f "./pelf.go" ]; then
         mkdir -p "$DBIN_INSTALL_DIR"
         echo ./appbundle-runtime/*.go | xargs go build -o "$DBIN_INSTALL_DIR/appbundle-runtime"
-        handle_dependencies
+        [ "$NO_REMOTE" != "1" ] && handle_dependencies
 
         log "Creating binaryDependencies.tar.zst for pelf"
         tar -C binaryDependencies -c . | zstd -T0 -19 -fo binaryDependencies.tar.zst
@@ -82,8 +82,7 @@ build_pelfCreator() {
 
     # Get the unionfs and bwrap binaries
     mkdir -p "$TEMP_DIR/binaryDependencies"
-    cp "$DBIN_INSTALL_DIR/unionfs" "$TEMP_DIR/binaryDependencies/" 2>/dev/null || log_error "unionfs binary not found"
-    cp "$DBIN_INSTALL_DIR/bwrap" "$TEMP_DIR/binaryDependencies/" 2>/dev/null || log_error "bwrap binary not found"
+    DBIN_INSTALL_DIR="$TEMP_DIR/binaryDependencies" dbin add unionfs-fuse3/unionfs bwrap
 
     # Copy AppRun assets
     if [ -d "$BASE/assets" ]; then
@@ -154,15 +153,13 @@ retrieve_executable() {
 
 handle_dependencies() {
     mkdir -p "$DBIN_INSTALL_DIR"
-    DEPS="unionfs-fuse3/unionfs
-          squashfs-tools/unsquashfs
+    DEPS="squashfs-tools/unsquashfs
           squashfs-tools/mksquashfs
-          bintools/objcopy
-          bwrap"
+          bintools/objcopy"
 
     if [ "$_RELEASE" = "1" ]; then
         unnappear rm "$DBIN_INSTALL_DIR/dwarfs-tools"
-        curl -sLl "https://github.com/VHSgunzo/dwarfs/releases/latest/download/dwarfs-universal-$(uname -m)-upx" -o "$DBIN_INSTALL_DIR/dwarfs-tools"
+        #curl -sLl "https://github.com/VHSgunzo/dwarfs/releases/latest/download/dwarfs-universal-$(uname -m)-upx" -o "$DBIN_INSTALL_DIR/dwarfs-tools"
         chmod +x "$DBIN_INSTALL_DIR/dwarfs-tools"
 
         unnappear rm "$DBIN_INSTALL_DIR/squashfuse_ll"
@@ -193,13 +190,6 @@ handle_dependencies() {
         upx objcopy
         [ -f ./squashfuse_ll ] && [ ! -h ./squashfuse_ll ] && mv ./squashfuse_ll ./squashfuse
         ln -sfT squashfuse squashfuse_ll
-        ln -sfT /usr/bin/fusermount fusermount
-        ln -sfT /usr/bin/fusermount3 fusermount3
-
-        # Handle rootfs and copy ./assets/AppRun* to ./binaryDependencies
-        if [ -d "$BASE/assets" ]; then
-            cp "$BASE/assets/AppRun"* "$DBIN_INSTALL_DIR"
-        fi
     }
     unnappear rm ./*.upx
     cd "$BASE" || log_error "Unable to go back to $BASE"

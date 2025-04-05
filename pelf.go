@@ -23,7 +23,6 @@ import (
 )
 
 const pelFVersion = "3.0"
-
 var globalPath = os.Getenv("PATH")
 
 //go:embed binaryDependencies.tar.zst
@@ -38,7 +37,7 @@ type Filesystem struct {
 var Filesystems = []Filesystem{
 	{
 		Type:     map[string]string{"squashfs": "sqfs"},
-		Commands: []string{"mksquashfs", "squashfuse"},
+		Commands: []string{"mksquashfs", "squashfuse", "unsquashfs"},
 		CmdBuilder: func(config *Config) *exec.Cmd {
 			args := []string{"mksquashfs", config.AppDir, config.ArchivePath}
 			compressionArgs := strings.Split(config.CompressionArgs, " ")
@@ -56,7 +55,7 @@ var Filesystems = []Filesystem{
 	},
 	{
 		Type:     map[string]string{"dwarfs": "dwfs"},
-		Commands: []string{"dwarfs", "mkdwarfs"},
+		Commands: []string{"dwarfs", "mkdwarfs", "dwarfsextract"},
 		CmdBuilder: func(config *Config) *exec.Cmd {
 			compressionArgs := strings.Split(config.CompressionArgs, " ")
 			args := []string{"mkdwarfs", "--input", config.AppDir, "--progress=ascii", "--set-owner", "0", "--set-group", "0", "--no-create-timestamp", "--no-history"}
@@ -81,12 +80,12 @@ type BuildInfo struct {
 }
 
 type RuntimeInfo struct {
-	AppBundleID          string `json:"appBundleID"`
-	PelfVersion          string `json:"pelfVersion"`
-	HostInfo             string `json:"hostInfo"`
-	FilesystemType       string `json:"filesystemType"`
-	Hash                 string `json:"hash"`
-	DisableRandomWorkDir bool   `json:"disableRandomWorkDir"`
+	AppBundleID          string `cbor:"appBundleID"`
+	PelfVersion          string `cbor:"pelfVersion"`
+	HostInfo             string `cbor:"hostInfo"`
+	FilesystemType       string `cbor:"filesystemType"`
+	Hash                 string `cbor:"hash"`
+	DisableRandomWorkDir bool   `cbor:"disableRandomWorkDir"`
 }
 
 type Config struct {
@@ -104,6 +103,7 @@ type Config struct {
 	PreferToolsInPath     bool
 	BinDepDir             string
 	DisableRandomWorkDir  bool
+	AppImageCompat        bool
 }
 
 func lookPath(file string) (string, error) {
@@ -257,6 +257,7 @@ func main() {
 			&cli.BoolFlag{Name: "prefer-tools-in-path", Usage: "Prefer tools in PATH over embedded binary dependencies"},
 			&cli.BoolFlag{Name: "list-static-tools", Usage: "List all binary dependencies with their B3SUMs"},
 			&cli.BoolFlag{Name: "disable-use-random-workdir", Aliases: []string{"d"}, Usage: "Disable the use of a random working directory"},
+			&cli.BoolFlag{Name: "appimage-compat", Aliases: []string{"A"}, Usage: "Use AI as magic bytes for AppImage compatibility"},
 		},
 		Action: func(ctx context.Context, c *cli.Command) error {
 			config := &Config{
@@ -270,6 +271,7 @@ func main() {
 				UseUPX:                c.Bool("upx"),
 				PreferToolsInPath:     c.Bool("prefer-tools-in-path"),
 				DisableRandomWorkDir:  c.Bool("disable-use-random-workdir"),
+				AppImageCompat:        c.Bool("appimage-compat"),
 			}
 
 			var err error
@@ -396,6 +398,33 @@ func run(config *Config) error {
 	}
 
 	if err := createSelfExtractingArchive(config, workDir, buildInfo); err != nil {
+		return err
+	}
+
+	magic := "AB"
+	if config.AppImageCompat {
+		magic = "AI"
+	}
+	if err := addMagic(config.OutputFile, magic); err != nil {
+		return fmt.Errorf("failed to add magic bytes: %w", err)
+	}
+
+	return nil
+}
+
+func addMagic(path, magic string) error {
+	magicBytes := fmt.Sprintf("%s\x02", magic)
+	file, err := os.OpenFile(path, os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	if _, err := file.Seek(8, io.SeekStart); err != nil {
+		return err
+	}
+
+	if _, err := file.Write([]byte(magicBytes[:3])); err != nil {
 		return err
 	}
 
@@ -587,14 +616,14 @@ func createSelfExtractingArchive(config *Config, workDir string, buildInfo Build
 	}
 
 	if err := copyFile(runtimePath, config.OutputFile); err != nil {
-		return err
+		return fmt.Errorf("failed to copy runtime to output file: %w", err)
 	}
 
 	// Ensure DisableRandomWorkDir is set correctly in RuntimeInfo
 	config.RuntimeInfo.DisableRandomWorkDir = config.DisableRandomWorkDir
 
 	var err error
-	config.RuntimeInfo.Hash, err = calculateB3Sum(filepath.Join(workDir, "archive."+config.FilesystemType))
+	config.RuntimeInfo.Hash, err = calculateB3Sum(config.ArchivePath)
 	if err != nil {
 		return fmt.Errorf("failed to calculate hash of filesystem image: %w", err)
 	}
@@ -631,23 +660,56 @@ func createSelfExtractingArchive(config *Config, workDir string, buildInfo Build
 		return fmt.Errorf("failed to add ELF sections: %s", string(out))
 	}
 
+	// Get the size of the archive file to be appended
+	archiveInfo, err := os.Stat(config.ArchivePath)
+	if err != nil {
+		return fmt.Errorf("failed to get archive file info: %w", err)
+	}
+	expectedSize := archiveInfo.Size()
+	fmt.Printf("Appending archive file (%d bytes) to output file...\n", expectedSize)
+
+	// Open the output file for appending
 	outFile, err := os.OpenFile(config.OutputFile, os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to open output file for appending: %w", err)
 	}
 	defer outFile.Close()
 
-	fsFile, err := os.Open(filepath.Join(workDir, "archive."+config.FilesystemType))
+	// Open the filesystem image
+	fsFile, err := os.Open(config.ArchivePath)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to open archive file: %w", err)
 	}
 	defer fsFile.Close()
 
-	if _, err := io.Copy(outFile, fsFile); err != nil {
-		return err
+	// Use a buffered copy for large files
+	buf := make([]byte, 4*1024*1024) // 4MB buffer
+	written, err := io.CopyBuffer(outFile, fsFile, buf)
+	if err != nil {
+		return fmt.Errorf("failed to append archive to output file: %w", err)
 	}
 
+	// Ensure all data is flushed to disk
+	if err := outFile.Sync(); err != nil {
+		return fmt.Errorf("failed to sync output file: %w", err)
+	}
+
+	// Verify the correct amount of data was written
+	if written != expectedSize {
+		return fmt.Errorf("failed to append entire archive: expected %d bytes, wrote %d bytes", expectedSize, written)
+	}
+
+	fmt.Printf("Successfully appended %d bytes to output file\n", written)
+
+	// Remove xattr if it exists
 	xattr.FRemove(outFile, "user.RuntimeConfig")
+
+	// Verify the final file exists and has the expected size
+	outputInfo, err := os.Stat(config.OutputFile)
+	if err != nil {
+		return fmt.Errorf("failed to stat output file after creation: %w", err)
+	}
+	fmt.Printf("Final output file size: %d bytes\n", outputInfo.Size())
 
 	return nil
 }

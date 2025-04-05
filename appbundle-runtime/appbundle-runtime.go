@@ -73,25 +73,30 @@ type Filesystem struct {
 var Filesystems = []*Filesystem{
 	{
 		Type:     "squashfs",
-		Commands: []string{"squashfuse", "fusermount"},
+		Commands: []string{"fusermount", "squashfuse", "unsquashfs"},
 		MountCmd: func(cfg *RuntimeConfig) *exec.Cmd {
 			executable, err := lookPath("squashfuse", globalPath)
 			if err != nil {
 				println(globalPath)
-				logError("squashfuse not found in PATH", err, cfg)
+				logError("squashfuse not available", err, cfg)
 			}
-			return exec.Command(executable,
+			args := []string{
 				"-o", "ro,nodev,noatime",
 				"-o", "uid=0,gid=0",
 				"-o", fmt.Sprintf("offset=%d", cfg.archiveOffset),
 				cfg.selfPath,
 				cfg.mountDir,
-			)
+			}
+			if os.Getenv("ENABLE_FUSE_DEBUG") != "" {
+				logWarning("squashfuse's debug mode implies foreground. The AppRun won't be called.")
+				args = append(args, "-o", "debug")
+			}
+			return exec.Command(executable, args...)
 		},
 		ExtractCmd: func(cfg *RuntimeConfig, query string) *exec.Cmd {
 			executable, err := lookPath("unsquashfs", globalPath)
 			if err != nil {
-				logError("unsquashfs not found in PATH", err, cfg)
+				logError("unsquashfs not available", err, cfg)
 			}
 			args := []string{"-d", cfg.mountDir, "-o", fmt.Sprintf("%d", cfg.archiveOffset), cfg.selfPath}
 			if query != "" {
@@ -104,17 +109,17 @@ var Filesystems = []*Filesystem{
 	},
 	{
 		Type:     "dwarfs",
-		Commands: []string{"dwarfs", "fusermount3"},
+		Commands: []string{"fusermount3", "dwarfs", "dwarfsextract"},
 		MountCmd: func(cfg *RuntimeConfig) *exec.Cmd {
-			executable, err := exec.LookPath("dwarfs")
+			executable, err := lookPath("dwarfs", globalPath)
 			if err != nil {
-				logError("dwarfs not found in PATH", err, cfg)
+				logError("dwarfs not available", err, cfg)
 			}
 			return exec.Command(executable,
 				"-o", "ro,nodev,noatime,auto_unmount",
 				"-o", "cache_files,no_cache_image,clone_fd",
-				"-o", "tidy_strategy=time,tidy_interval=500ms,tidy_max_age=1s",
-				"-o", "debuglevel=error",
+				"-o", "tidy_strategy=time,tidy_interval=1s,tidy_max_age=2s,seq_detector=1",
+				"-o", "debuglevel="+T(os.Getenv("ENABLE_FUSE_DEBUG") != "", "debug", "error"),
 				"-o", "cachesize="+getEnvWithDefault("DWARFS_CACHESIZE", DWARFS_CACHESIZE),
 				"-o", "readahead="+getEnvWithDefault("DWARFS_READAHEAD", DWARFS_READAHEAD),
 				"-o", "blocksize="+getEnvWithDefault("DWARFS_BLOCKSIZE", DWARFS_BLOCKSIZE),
@@ -125,65 +130,61 @@ var Filesystems = []*Filesystem{
 			)
 		},
 		ExtractCmd: func(cfg *RuntimeConfig, query string) *exec.Cmd {
-			executable, err := exec.LookPath("dwarfsextract")
+			executable, err := lookPath("dwarfsextract", globalPath)
 			if err != nil {
-				logError("dwarfsextract not found in PATH", err, cfg)
+				logError("dwarfsextract not available", err, cfg)
+			}
+			args := []string{
+				"--input", cfg.selfPath,
+				"--image-offset", fmt.Sprintf("%d", cfg.archiveOffset),
+				"--output", cfg.mountDir,
 			}
 			if query != "" {
-				logWarning(fmt.Sprintf("dwarfsextract cannot do a partial extraction. The following arguments will be ignored: %s", query))
+				for _, pattern := range strings.Split(query, " ") {
+					args = append(args, "--pattern", pattern)
+				}
 			}
-			return exec.Command(executable,
-				"-o", cfg.mountDir,
-				"-O", fmt.Sprintf("%d", cfg.archiveOffset),
-				cfg.selfPath,
-			)
+			return exec.Command(executable, args...)
 		},
 	},
 }
 
-func mountImage(cfg *RuntimeConfig, fh *fileHandler) error {
-	if cfg.doNotMount {
-		return nil
-	}
-	if err := checkFuse(cfg, fh); err != nil {
-		return err
-	}
+func mountImage(cfg *RuntimeConfig, fh *fileHandler, fs *Filesystem) error {
+	pidFile := filepath.Join(cfg.workDir, ".pid")
 
-	logFile := filepath.Join(cfg.workDir, "."+cfg.appBundleFS+".log")
+	if _, err := os.Stat(pidFile); os.IsNotExist(err) {
+		if err := os.MkdirAll(cfg.mountDir, 0755); err != nil {
+			return fmt.Errorf("failed to create mount directory %s: %v", cfg.mountDir, err)
+		}
 
-	if err := os.MkdirAll(cfg.mountDir, 0755); err != nil {
-		return fmt.Errorf("failed to create mount directory %s: %v", cfg.mountDir, err)
-	}
-
-	if _, err := os.Stat(logFile); os.IsNotExist(err) {
-		if err := os.WriteFile(filepath.Join(cfg.workDir, ".pid"), []byte(fmt.Sprintf("%d", os.Getpid())), 0644); err != nil {
+		if err := os.WriteFile(pidFile, []byte(fmt.Sprintf("%d", os.Getpid())), 0644); err != nil {
 			logError("Failed to write PID file", err, cfg)
 		}
 
-		fs, ok := getFilesystem(cfg.appBundleFS)
-		if !ok {
-			return fmt.Errorf("unsupported filesystem: %s", cfg.appBundleFS)
-		}
-
 		cmd := fs.MountCmd(cfg)
-		output, err := cmd.CombinedOutput()
-		if err != nil {
+
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+
+		if err := cmd.Run(); err != nil {
 			logWarning(fmt.Sprintf("Failed to mount %s archive: %v", cfg.appBundleFS, err))
-			logWarning(string(output))
 			return err
 		}
-
-		return os.WriteFile(logFile, output, 0644)
+	} else {
+		if cfg.noCleanup {
+			if _, err := os.Stat(filepath.Join(cfg.mountDir, "AppRun")); os.IsNotExist(err) {
+				os.Remove(pidFile)
+				logError(".pid file present in workdir, but AppRun is not", err, cfg)
+			}
+		}
 	}
 	return nil
 }
 
-func extractImage(cfg *RuntimeConfig, fh *fileHandler, query string) error {
-	fs, ok := getFilesystem(cfg.appBundleFS)
-	if !ok {
-		return fmt.Errorf("unsupported filesystem for extraction: %s", cfg.appBundleFS)
+func extractImage(cfg *RuntimeConfig, fh *fileHandler, fs *Filesystem, query string) error {
+	if err := os.MkdirAll(cfg.mountDir, 0755); err != nil {
+		return fmt.Errorf("failed to create mount directory %s: %v", cfg.mountDir, err)
 	}
-
 	cmd := fs.ExtractCmd(cfg, query)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -465,43 +466,58 @@ func (f *fileHandler) extractStaticTools(cfg *RuntimeConfig) error {
 			return fmt.Errorf("failed to get relative path: %w", err)
 		}
 
-		if size, exists := sizeCache[relPath]; exists && size == hdr.Size {
+		if _, exists := sizeCache[relPath]; exists {
 			continue
 		}
 
 		switch hdr.Typeflag {
 		case tar.TypeDir:
-			if err := os.MkdirAll(fpath, 0755); err != nil {
-				return fmt.Errorf("mkdir %s: %w", fpath, err)
-			}
+		    if err := os.MkdirAll(fpath, 0755); err != nil {
+		        return fmt.Errorf("mkdir %s: %w", fpath, err)
+		    }
 		case tar.TypeReg:
-			if err := os.MkdirAll(filepath.Dir(fpath), 0755); err != nil {
-				return fmt.Errorf("mkdir parent: %w", err)
-			}
-			f, err := os.OpenFile(fpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.FileMode(hdr.Mode))
-			if err != nil {
-				return fmt.Errorf("create: %w", err)
-			}
-			_, err = io.Copy(f, tr)
-			f.Close()
-			if err != nil {
-				return fmt.Errorf("write: %w", err)
-			}
+		    if err := os.MkdirAll(filepath.Dir(fpath), 0755); err != nil {
+		        return fmt.Errorf("mkdir parent: %w", err)
+		    }
+		    f, err := os.OpenFile(fpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.FileMode(hdr.Mode))
+		    if err != nil {
+		        return fmt.Errorf("create: %w", err)
+		    }
+		    _, err = io.Copy(f, tr)
+		    f.Close()
+		    if err != nil {
+		        return fmt.Errorf("write: %w", err)
+		    }
+		case tar.TypeSymlink:
+		    if err := os.MkdirAll(filepath.Dir(fpath), 0755); err != nil {
+		        return fmt.Errorf("mkdir parent: %w", err)
+		    }
+		    if err := os.Symlink(hdr.Linkname, fpath); err != nil {
+		        return fmt.Errorf("symlink: %w", err)
+		    }
+		case tar.TypeLink:
+		    if err := os.MkdirAll(filepath.Dir(fpath), 0755); err != nil {
+		        return fmt.Errorf("mkdir parent: %w", err)
+		    }
+		    if err := os.Link(hdr.Linkname, fpath); err != nil {
+		        return fmt.Errorf("hardlink: %w", err)
+		    }
 		}
 	}
 
 	return nil
 }
 
-func checkFuse(cfg *RuntimeConfig, fh *fileHandler) error {
+func checkDeps(cfg *RuntimeConfig, fh *fileHandler) (*Filesystem, error) {
 	fs, ok := getFilesystem(cfg.appBundleFS)
 	if !ok {
-		return fmt.Errorf("unsupported filesystem: %s", cfg.appBundleFS)
+		return nil, fmt.Errorf("unsupported filesystem: %s", cfg.appBundleFS)
 	}
 
+	updatePath("PATH", cfg.staticToolsDir)
 	var missingCmd bool
 	for _, cmd := range fs.Commands {
-		if _, err := exec.LookPath(cmd); err != nil {
+		if _, err := lookPath(cmd, globalPath); err != nil {
 			missingCmd = true
 			break
 		}
@@ -509,17 +525,15 @@ func checkFuse(cfg *RuntimeConfig, fh *fileHandler) error {
 
 	if missingCmd {
 		if err := os.MkdirAll(cfg.staticToolsDir, 0755); err != nil {
-			return fmt.Errorf("failed to create static tools directory: %v", err)
+			return nil, fmt.Errorf("failed to create static tools directory: %v", err)
 		}
 
 		if err := fh.extractStaticTools(cfg); err != nil {
-			return fmt.Errorf("failed to extract static tools: %v", err)
+			return nil, fmt.Errorf("failed to extract static tools: %v", err)
 		}
-
-		updatePath("PATH", cfg.staticToolsDir)
 	}
 
-	return nil
+	return fs, nil
 }
 
 func determineHome(cfg *RuntimeConfig) string {
@@ -566,13 +580,13 @@ func executeFile(args []string, cfg *RuntimeConfig) error {
 	os.Setenv(cfg.rExeName+"_mountDir", cfg.mountDir)
 
 	updatePath("PATH", binDirs)
-	if os.Getenv("PELF_LD_VAR") == "1" {
-		updatePath("LD_LIBRARY_PATH", binDirs)
-	}
 
-	os.Setenv("SELF_TEMPDIR", cfg.mountDir)
+	os.Setenv("APPDIR", cfg.mountDir)
 	os.Setenv("SELF", cfg.selfPath)
 	os.Setenv("ARGV0", filepath.Base(os.Args[0]))
+
+	// COMPAT
+	os.Setenv("APPIMAGE", cfg.selfPath)
 
 	executableFile, err := lookPath(cfg.entrypoint, globalPath)
 	if err != nil {
@@ -738,11 +752,21 @@ func main() {
 			}
 		}
 	} else {
-		mountOrExtract(cfg, fh)
+		fs, err := checkDeps(cfg, fh)
+		if err != nil {
+			logError("Unexpected failure when checking the availability of the AppBundle's dependencies", err, cfg)
+		}
+		if cfg.doNotMount {
+			if err := extractImage(cfg, fh, fs, ""); err != nil {
+				logError("Failed to mount image", err, cfg)
+			}
+		}
+		if err := mountImage(cfg, fh, fs); err != nil {
+			logError("Failed to mount image", err, cfg)
+		}
 		_ = executeFile(args, cfg)
 		cleanup(cfg)
 	}
-
 }
 
 func generateRandomString(length int) string {
@@ -789,12 +813,16 @@ func isExecutableFile(file string) error {
 }
 
 func mountOrExtract(cfg *RuntimeConfig, fh *fileHandler) {
+	fs, err := checkDeps(cfg, fh)
+	if err != nil {
+		logError("Unexpected failure when checking the availability of the AppBundle's dependencies", err, cfg)
+	}
 	if cfg.doNotMount {
-		if err := extractImage(cfg, fh, ""); err != nil {
+		if err := extractImage(cfg, fh, fs, ""); err != nil {
 			logError("Failed to mount image", err, cfg)
 		}
 	}
-	if err := mountImage(cfg, fh); err != nil {
+	if err := mountImage(cfg, fh, fs); err != nil {
 		logError("Failed to mount image", err, cfg)
 	}
 }
@@ -805,3 +833,4 @@ func T[T any](cond bool, vtrue, vfalse T) T {
 	}
 	return vfalse
 }
+
