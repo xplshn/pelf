@@ -93,22 +93,23 @@ build_pelfCreator() {
 
 	cat <<'EOF' > "$TEMP_DIR/binaryDependencies/pkgadd.sh"
 #!/bin/sh
+# The AlpineLinux Package Keeper has a very annoying error which can't be disabled!
+# Track https://gitlab.alpinelinux.org/alpine/apk-tools/-/issues/11099
 apk -U \
-	--allow-untrusted \
-	--no-interactive \
-	--no-cache add \
-	-X "https://dl-cdn.alpinelinux.org/alpine/edge/main" \
-	-X "https://dl-cdn.alpinelinux.org/alpine/edge/community" \
-	-X "https://dl-cdn.alpinelinux.org/alpine/edge/testing" \
-	$@
+    --allow-untrusted \
+    --no-interactive \
+    --no-cache \
+    --initdb add \
+    $@ || true # Because of the aforementioned!
 EOF
 	chmod +x "$TEMP_DIR/binaryDependencies/pkgadd.sh"
 
     if [ ! -f "$TEMP_DIR/binaryDependencies/rootfs.tar.zst" ]; then
         log "Downloading rootfs"
-        curl -sLl "https://github.com/xplshn/filesystems/releases/latest/download/AlpineLinux_edge-$(uname -m).tar.zst" -o "$TEMP_DIR/binaryDependencies/AlpineLinux_edge-$(uname -m).tar.zst"
+        RELEASE_NAME="AlpineLinux_latest-stable-$(uname -m).tar.xz"
+        curl -sLl "https://github.com/xplshn/filesystems/releases/latest/download/$RELEASE_NAME" -o "$TEMP_DIR/binaryDependencies/$RELEASE_NAME"
         cd "$TEMP_DIR/binaryDependencies" || log_error "Failed to change to temp directory"
-        ln -sfT "AlpineLinux_edge-$(uname -m).tar.zst" "rootfs.tar.zst"
+        ln -sfT "$RELEASE_NAME" "rootfs.tar.${RELEASE_NAME##*.}"
     fi
 
     if [ ! -f "$TEMP_DIR/binaryDependencies/sharun" ]; then

@@ -1,9 +1,9 @@
 #!/bin/sh
 
-# DATE OF LAST REVISION: 02-12-2024
+# DATE OF LAST REVISION: 10-04-2025
 
-[ "$DEBUG" = "1" ] && set -x
-[ "$DEBUG2" = "1" ] && set -v
+# shellcheck disable=SC2086
+[ -n "$DEBUG" ] && set -$DEBUG
 
 # Let people use an external AppRun
 [ "$EXT_APPRUN" = "1" ] || {
@@ -207,5 +207,4 @@ build_bwrap_options() {
 # Build and execute the bwrap options
 BWRAP_OPTIONS="$(build_bwrap_options "$@")"
 
-[ "$DEBUG0" = "1" ] && echo "$BWRAP_BIN $BWRAP_OPTIONS $SELF_ARGS"
 eval "exec $BWRAP_BIN $BWRAP_OPTIONS $SELF_ARGS"

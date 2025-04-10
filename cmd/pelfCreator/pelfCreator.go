@@ -395,7 +395,10 @@ func setupAppRunAndPackages(config Config) error {
 		return err
 	}
 
-	cmd := exec.Command(filepath.Join(config.AppDir, "AppRun"), "--Xbwrap", "--uid", "0", "--gid", "0", "--", pkgAddPath, config.PkgAdd)
+	// The Alpine package manager (apk) calls `chroot` when running package
+	// triggers so we need to enable CAP_SYS_CHROOT. We also have to fake
+	// UID 0 (root) inside the container to avoid permissions errors.
+	cmd := exec.Command(filepath.Join(config.AppDir, "AppRun"), "--Xbwrap", "--uid", "0", "--gid", "0", "--cap-add CAP_SYS_CHROOT", "--", pkgAddPath, config.PkgAdd)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
@@ -646,9 +649,11 @@ func setupSandboxFiles(protoDir string) error {
 		"etc/hosts", "etc/nsswitch.conf", "etc/resolv.conf", "etc/asound.conf",
 	}
 
+	// TODO: Do not create the file if it already exists
 	for _, file := range filesToTouch {
 		if err := os.WriteFile(filepath.Join(protoDir, file), []byte{}, 0644); err != nil {
-			return err
+			log.Printf("Unable to create empty file: %v\n", err)
+			//return err
 		}
 	}
 

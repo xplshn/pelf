@@ -1,6 +1,7 @@
 #!/bin/sh
 
-[ "$DEBUG" = "1" ] && set -x
+# shellcheck disable=SC2086
+[ -n "$DEBUG" ] && set -$DEBUG
 
 # Determine the path to the script itself
 SELF=$(readlink -f "$0")

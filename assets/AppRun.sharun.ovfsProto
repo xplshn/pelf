@@ -1,6 +1,7 @@
 #!/bin/sh
 
-[ "$DEBUG" = "1" ] && set -x
+# shellcheck disable=SC2086
+[ -n "$DEBUG" ] && set -$DEBUG
 
 # Let people use an external AppRun
 [ "$EXT_APPRUN" = "1" ] || {
@@ -173,4 +174,4 @@ bwrap_cmd="$bwrap_cmd --dev-bind /dev /dev --ro-bind-try /sys /sys"
 bwrap_cmd="$bwrap_cmd --cap-add CAP_SYS_ADMIN"
 bwrap_cmd="$bwrap_cmd --share-net"
 
-eval "$bwrap_cmd" -- "$_cmd" "$*"
+eval "$bwrap_cmd" -- "$_cmd" $@

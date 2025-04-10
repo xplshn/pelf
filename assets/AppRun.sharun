@@ -1,6 +1,7 @@
 #!/bin/sh
 
-[ "$DEBUG" = "1" ] && set -x
+# shellcheck disable=SC2086
+[ -n "$DEBUG" ] && set -$DEBUG
 
 SELF="$(readlink -f "$0")" && export SELF
 SELF_TEMPDIR="${SELF%/*}" && export SELF_TEMPDIR
@@ -38,4 +39,4 @@ else
     exit 1
 fi
 
-exec "$_cmd" "$*"
+exec "$_cmd" "$@"
