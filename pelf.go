@@ -60,7 +60,7 @@ var Filesystems = []Filesystem{
 			compressionArgs := strings.Split(config.CompressionArgs, " ")
 			args := []string{"mkdwarfs", "--input", config.AppDir, "--progress=ascii", "--set-owner", "0", "--set-group", "0", "--no-create-timestamp", "--no-history"}
 			if len(compressionArgs) == 1 && compressionArgs[0] == "" {
-				compressionArgs = strings.Split("-l7 --metadata-compression null", " ")
+				compressionArgs = strings.Split("-l7", " ")
 			}
 			args = append(args, compressionArgs...)
 			args = append(args, "--output", config.ArchivePath)
@@ -439,13 +439,16 @@ func checkAppDir(appDir string) error {
 }
 
 func createArchive(config *Config, fs *Filesystem, archivePath string) error {
-	cmd := fs.CmdBuilder(config)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to create image filesystem: %w", err)
-	}
-	return nil
+    cmd := fs.CmdBuilder(config)
+    cmd.Stdout = os.Stdout
+    cmd.Stderr = os.Stderr
+
+    if err := cmd.Run(); err != nil {
+        if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() != 2 {
+            return fmt.Errorf("failed to create image filesystem: %w", err)
+        }
+    }
+    return nil
 }
 
 func embedStaticTools(config *Config, workDir string, fs *Filesystem) error {
