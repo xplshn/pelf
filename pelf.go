@@ -655,7 +655,12 @@ func createSelfExtractingArchive(config *Config, workDir string, buildInfo Build
 		return fmt.Errorf("failed to close RuntimeInfo CBOR tempfile: %w", err)
 	}
 
-	objcopyCmd := exec.Command("objcopy",
+	objcopyPath, err := lookPath("objcopy")
+	if err != nil {
+		return fmt.Errorf("No objcopy binary in $PATH: %w", err)
+	}
+
+	objcopyCmd := exec.Command(objcopyPath,
 		"--add-section", ".static_tools="+filepath.Join(workDir, "static.tar.zst"),
 		"--add-section", ".runtime_info="+runtimeInfoTempFile.Name(),
 		config.OutputFile,
