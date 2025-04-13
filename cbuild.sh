@@ -154,21 +154,25 @@ retrieve_executable() {
 
 handle_dependencies() {
     mkdir -p "$DBIN_INSTALL_DIR"
-    DEPS="squashfs-tools/unsquashfs
+    DEPS="squashfuse/squashfuse_ll
+          squashfs-tools/unsquashfs
           squashfs-tools/mksquashfs
           bintools/objcopy"
 
     if [ "$_RELEASE" = "1" ]; then
-        unnappear rm "$DBIN_INSTALL_DIR/dwarfs-tools"
-        #curl -sLl "https://github.com/VHSgunzo/dwarfs/releases/latest/download/dwarfs-universal-$(uname -m)-upx" -o "$DBIN_INSTALL_DIR/dwarfs-tools"
-        chmod +x "$DBIN_INSTALL_DIR/dwarfs-tools"
+        unnappear rm "$DBIN_INSTALL_DIR/mkdwarfs"
+        curl -sLl "https://github.com/mhx/dwarfs/releases/download/v0.12.1/dwarfs-universal-0.12.1-Linux-$(uname -m)" -o "$DBIN_INSTALL_DIR/mkdwarfs"
+        chmod +x "$DBIN_INSTALL_DIR/mkdwarfs"
+
+        unnappear rm "$DBIN_INSTALL_DIR/dwarfs" "$DBIN_INSTALL_DIR/dwarfsextract"
+        curl -sLl "https://github.com/mhx/dwarfs/releases/download/v0.12.1/dwarfs-fuse-extract-0.12.1-Linux-$(uname -m)" -o "$DBIN_INSTALL_DIR/dwarfs"
+        chmod +x "$DBIN_INSTALL_DIR/dwarfs" "$DBIN_INSTALL_DIR/dwarfsextract"
 
         unnappear rm "$DBIN_INSTALL_DIR/squashfuse_ll"
         curl -sLl "https://github.com/VHSgunzo/squashfuse-static/releases/latest/download/squashfuse_ll-musl-mimalloc-$(uname -m)" -o "$DBIN_INSTALL_DIR/squashfuse_ll"
         chmod +x "$DBIN_INSTALL_DIR/squashfuse_ll"
     else
-        DEPS="squashfuse/squashfuse_ll
-              dwarfs/dwarfs-tools
+        DEPS="dwarfs/dwarfs-tools
               $DEPS"
     fi
 
@@ -183,10 +187,12 @@ handle_dependencies() {
 
     cd "$DBIN_INSTALL_DIR" && {
         log "Linking dependencies"
-        [ -f ./dwarfs-tools ] && [ ! -h ./dwarfs-tools ] && mv ./dwarfs-tools ./dwarfs
-        ln -sfT dwarfs mkdwarfs
+        [ -f ./dwarfs-tools ] && [ ! -h ./dwarfs-tools ] && {
+            mv ./dwarfs-tools ./dwarfs
+            ln -sfT dwarfs mkdwarfs
+            upx dwarfs
+        }
         ln -sfT dwarfs dwarfsextract
-        upx dwarfs
         upx mksquashfs
         upx objcopy
         [ -f ./squashfuse_ll ] && [ ! -h ./squashfuse_ll ] && mv ./squashfuse_ll ./squashfuse
