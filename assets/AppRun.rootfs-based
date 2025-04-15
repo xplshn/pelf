@@ -49,15 +49,13 @@ SHARE_XDG_RUNTIME_DIR="$(is_enabled "SHARE_XDG_RUNTIME_DIR" 1)"
 SHARE_OPT="$(is_enabled "SHARE_OPT" 1)"
 UID0_GID0="$(is_enabled "UID0_GID0" 0)"
 
+_sh_cat() {
+    while IFS= read -r line; do
+        echo "$line"
+    done < "$1"
+}
 # Set default cmd
-_cat() {
-    files="$*"
-    for file in $files; do
-        while IFS= read -r line || [ -n "$line" ]; do
-            printf '%s\n' "$line"
-        done <"$file"
-    done
-} ; SELF_ARGS="-- $(_cat "$SELF_TEMPDIR/entrypoint")"
+SELF_ARGS="-- $(_sh_cat "$SELF_TEMPDIR/entrypoint")"
 
 # Parse other arguments
 while [ "$#" -gt 0 ]; do

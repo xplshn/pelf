@@ -10,7 +10,13 @@
     SELF_TEMPDIR="${SELF%/*}"
 }
 
-FALLBACK="$(cat "$SELF_TEMPDIR/entrypoint")"
+_sh_cat() {
+    while IFS= read -r line; do
+        echo "$line"
+    done < "$1"
+}
+
+FALLBACK="$(_sh_cat "$SELF_TEMPDIR/entrypoint")"
 FALLBACK="${FALLBACK##*/}"
 [ -z "$ARGV0" ] && {
     ARGV0="${0##*/}"

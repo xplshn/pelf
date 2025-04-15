@@ -17,6 +17,7 @@ import (
 	"github.com/urfave/cli/v3"
 	"github.com/zeebo/blake3"
 	"golang.org/x/sys/unix"
+	"slices"
 )
 
 //go:embed binaryDependencies.tar.zst
@@ -439,9 +440,9 @@ func handleDesktopFile(config Config) error {
 	appDirDesktopPath := filepath.Join(config.AppDir, config.Entrypoint)
 	//if err := os.Symlink(filepath.Join("proto", "usr", "share", "applications", config.Entrypoint), appDirDesktopPath); err != nil {
 	//	// Fallback to copy if symlink fails
-		if err := copyFile(desktopFilePath, appDirDesktopPath); err != nil {
-			return fmt.Errorf("failed to link/copy desktop file: %v", err)
-		}
+	if err := copyFile(desktopFilePath, appDirDesktopPath); err != nil {
+		return fmt.Errorf("failed to link/copy desktop file: %v", err)
+	}
 	//}
 
 	desktopContent, err := os.ReadFile(appDirDesktopPath)
@@ -450,7 +451,7 @@ func handleDesktopFile(config Config) error {
 	}
 
 	var iconName, executable string
-	for _, line := range strings.Split(string(desktopContent), "\n") {
+	for line := range strings.SplitSeq(string(desktopContent), "\n") {
 		if strings.HasPrefix(line, "Icon=") {
 			iconName = strings.TrimPrefix(line, "Icon=")
 		} else if strings.HasPrefix(line, "Exec=") {
@@ -564,11 +565,8 @@ func trimProtoDir(config Config) error {
 	excludedFiles := strings.Fields(config.GetridFiles)
 	for _, item := range strings.Fields(config.ToBeKeptFiles) {
 		keep := true
-		for _, excluded := range excludedFiles {
-			if item == excluded {
-				keep = false
-				break
-			}
+		if slices.Contains(excludedFiles, item) {
+			keep = false
 		}
 
 		if keep {
