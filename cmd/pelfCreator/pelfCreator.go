@@ -276,9 +276,12 @@ func setupSharunMode(config Config) error {
 		}
 	}
 
-	// Copy unionfs for hybrid mode
+	// Copy unionfs & bwrap for hybrid mode
 	if config.ToBeKeptFiles != "" || config.GetridFiles != "" {
 		if err := copyFromTemp(config, "unionfs", filepath.Join(config.AppDir, "usr", "bin", "unionfs"), 0755); err != nil {
+			return err
+		}
+		if err := copyFromTemp(config, "bwrap", filepath.Join(config.AppDir, "usr", "bin", "bwrap"), 0755); err != nil {
 			return err
 		}
 	}

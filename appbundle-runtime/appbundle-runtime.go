@@ -34,6 +34,7 @@ const (
 	DWARFS_CACHESIZE = "256M"
 	DWARFS_BLOCKSIZE = "512K"
 	DWARFS_READAHEAD = "32M"
+	DWARFS_TIDY_STRATEGY  = "tidy_strategy=time,tidy_interval=2s,tidy_max_age=10s,seq_detector=1"
 )
 
 var globalPath = os.Getenv("PATH")
@@ -116,9 +117,10 @@ var Filesystems = []*Filesystem{
 				logError("dwarfs not available", err, cfg)
 			}
 			return exec.Command(executable,
-				"-o", "ro,nodev,noatime,auto_unmount",
+				"-o", "ro,nodev,noatime",
 				"-o", "cache_files,no_cache_image,clone_fd",
-				"-o", "tidy_strategy=time,tidy_interval=1s,tidy_max_age=2s,seq_detector=1",
+				"-o", "block_allocator=mmap",
+				"-o", getEnvWithDefault("DWARFS_TIDY_STRATEGY", DWARFS_TIDY_STRATEGY),
 				"-o", "debuglevel="+T(os.Getenv("ENABLE_FUSE_DEBUG") != "", "debug", "error"),
 				"-o", "cachesize="+getEnvWithDefault("DWARFS_CACHESIZE", DWARFS_CACHESIZE),
 				"-o", "readahead="+getEnvWithDefault("DWARFS_READAHEAD", DWARFS_READAHEAD),

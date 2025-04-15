@@ -14,23 +14,24 @@ import (
 	"runtime"
 	"strings"
 
-	"golang.org/x/sys/unix"
 	"github.com/fxamacker/cbor/v2"
 	"github.com/klauspost/compress/zstd"
+	"github.com/pkg/xattr"
 	"github.com/urfave/cli/v3"
 	"github.com/zeebo/blake3"
-	"github.com/pkg/xattr"
+	"golang.org/x/sys/unix"
 )
 
 const pelFVersion = "3.0"
+
 var globalPath = os.Getenv("PATH")
 
 //go:embed binaryDependencies.tar.zst
 var binaryDependencies []byte
 
 type Filesystem struct {
-	Type     map[string]string
-	Commands []string
+	Type       map[string]string
+	Commands   []string
 	CmdBuilder func(*Config) *exec.Cmd
 }
 
@@ -113,7 +114,7 @@ func lookPath(file string) (string, error) {
 		}
 		return "", fmt.Errorf("executable file not found in $PATH")
 	}
-	for _, dir := range strings.Split(globalPath, ":") {
+	for dir := range strings.SplitSeq(globalPath, ":") {
 		if dir == "" {
 			dir = "."
 		}
@@ -324,11 +325,11 @@ func initRuntimeInfo(runtimeInfo *RuntimeInfo, filesystemType, appBundleID strin
 	)
 
 	*runtimeInfo = RuntimeInfo{
-		AppBundleID:    appBundleID,
-		PelfVersion:    pelFVersion,
-		HostInfo:       hostInfo,
-		FilesystemType: filesystemType,
-		Hash:           "",
+		AppBundleID:          appBundleID,
+		PelfVersion:          pelFVersion,
+		HostInfo:             hostInfo,
+		FilesystemType:       filesystemType,
+		Hash:                 "",
 		DisableRandomWorkDir: disableRandomWorkDir,
 	}
 
@@ -439,16 +440,16 @@ func checkAppDir(appDir string) error {
 }
 
 func createArchive(config *Config, fs *Filesystem, archivePath string) error {
-    cmd := fs.CmdBuilder(config)
-    cmd.Stdout = os.Stdout
-    cmd.Stderr = os.Stderr
+	cmd := fs.CmdBuilder(config)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
 
-    if err := cmd.Run(); err != nil {
-        if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() != 2 {
-            return fmt.Errorf("failed to create image filesystem: %w", err)
-        }
-    }
-    return nil
+	if err := cmd.Run(); err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() != 2 {
+			return fmt.Errorf("failed to create image filesystem: %w", err)
+		}
+	}
+	return nil
 }
 
 func embedStaticTools(config *Config, workDir string, fs *Filesystem) error {
