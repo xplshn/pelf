@@ -161,11 +161,11 @@ handle_dependencies() {
 
     if [ "$_RELEASE" = "1" ]; then
         unnappear rm "$DBIN_INSTALL_DIR/mkdwarfs"
-        curl -sLl "https://github.com/mhx/dwarfs/releases/download/v0.12.1/dwarfs-universal-0.12.1-Linux-$(uname -m)" -o "$DBIN_INSTALL_DIR/mkdwarfs"
+        curl -sLl "https://github.com/mhx/dwarfs/releases/download/v0.12.2/dwarfs-universal-0.12.2-Linux-$(uname -m)" -o "$DBIN_INSTALL_DIR/mkdwarfs"
         chmod +x "$DBIN_INSTALL_DIR/mkdwarfs"
 
         unnappear rm "$DBIN_INSTALL_DIR/dwarfs" "$DBIN_INSTALL_DIR/dwarfsextract"
-        curl -sLl "https://github.com/mhx/dwarfs/releases/download/v0.12.1/dwarfs-fuse-extract-0.12.1-Linux-$(uname -m)" -o "$DBIN_INSTALL_DIR/dwarfs"
+        curl -sLl "https://github.com/mhx/dwarfs/releases/download/v0.12.2/dwarfs-fuse-extract-0.12.2-Linux-$(uname -m)" -o "$DBIN_INSTALL_DIR/dwarfs"
         chmod +x "$DBIN_INSTALL_DIR/dwarfs" "$DBIN_INSTALL_DIR/dwarfsextract"
 
         unnappear rm "$DBIN_INSTALL_DIR/squashfuse_ll"
