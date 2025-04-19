@@ -2,7 +2,6 @@
 
 [ "$DEBUG" = "1" ] && set -x
 
-SELF="$(readlink -f "$0")"
 OPWD="$PWD"
 BASE="$(dirname "$(realpath "$0")")"
 TEMP_DIR="/tmp/pelf_build_$(date +%s)"
@@ -141,15 +140,30 @@ EOF
     rm -rf "$TEMP_DIR"
 }
 
+build_appstream_helper() {
+    log "Building appstream-helper"
+    cd "$BASE/cmd/misc/appstream-helper" || log_error "Unable to change directory to ./cmd/misc/appstream-helper"
+    go build || log_error "Unable to build appstream-helper"
+    if available "upx"; then
+        log "Compressing ./appstream-helper tool"
+        upx ./appstream-helper || log_error "unable to compress ./appstream-helper"
+        rm -f ./appstream-helper.upx
+    else
+        log_warning "upx not available. The resulting binary will be unnecessarily large"
+    fi
+    cd "$BASE" || log_error "Unable to go back to $BASE"
+}
+
 clean_project() {
     log "Starting clean process"
-    rm -rf ./pelf ./pelf.upx ./binaryDependencies ./binaryDependencies.tar.zst ./cmd/pelfCreator/dependencies
+    rm -rf ./pelf ./pelf.upx ./binaryDependencies ./binaryDependencies.tar.zst ./cmd/pelfCreator/pelfCreator ./cmd/pelfCreator/binaryDependencies* ./cmd/misc/appstream-helper/appstream-helper
     log "Clean process completed"
 }
 
 retrieve_executable() {
     readlink -f ./pelf
     readlink -f ./cmd/pelfCreator/pelfCreator
+    readlink -f ./cmd/misc/appstream-helper/appstream-helper
 }
 
 handle_dependencies() {
@@ -210,9 +224,10 @@ update_dependencies() {
 case "$1" in
     "" | "build")
         require go
-        log "Starting build process for targets: pelf, pelfCreator"
+        log "Starting build process for targets: pelf, pelfCreator, appstream-helper"
         build_pelf
         build_pelfCreator
+        build_appstream_helper
         ;;
     "pelf")
         require go
@@ -225,6 +240,11 @@ case "$1" in
         build_pelf
         build_pelfCreator
         ;;
+    "appstream-helper")
+        require go
+        log "Starting build process for target: appstream-helper"
+        build_appstream_helper
+        ;;
     "clean")
         clean_project
         ;;
@@ -235,7 +255,7 @@ case "$1" in
         update_dependencies
         ;;
     *)
-        log_warning "Usage: $0 {build|pelfCreator|clean|retrieve|update-deps}"
+        log_warning "Usage: $0 {build|pelfCreator|appstream-helper|clean|retrieve|update-deps}"
         exit 1
         ;;
 esac
