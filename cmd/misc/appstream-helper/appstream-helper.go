@@ -282,7 +282,6 @@ func main() {
 			if appData != nil {
 				// Use the name, icon, screenshots, description fields from appstream_metadata
 				if appData.Name != "" {
-					fmt.Println(appData.Name)
 					item.Name = appData.Name
 				}
 
