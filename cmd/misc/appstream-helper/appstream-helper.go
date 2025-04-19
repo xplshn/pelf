@@ -74,14 +74,6 @@ var appStreamMetadataLoaded bool
 
 type RuntimeInfo struct {
 	AppBundleID  string   `json:"appBundleID"`
-	Version      string   `json:"version"`
-	BuildDate    string   `json:"buildDate"`
-	License      []string `json:"license"`
-	Provides     []string `json:"provides"`
-	Homepage     string   `json:"homepage"`
-	SourceRepo   string   `json:"sourceRepo"`
-	Description  string   `json:"description"`
-	Notes        []string `json:"notes"`
 }
 
 func loadAppStreamMetadata() error {
@@ -260,12 +252,6 @@ func main() {
 				return nil
 			}
 
-			// Generate PkgId
-			tag := ""
-			if len(runtimeInfo.Provides) > 0 {
-				tag = runtimeInfo.Provides[0]
-			}
-			pkgId := generatePkgId(runtimeInfo.SourceRepo, tag)
 
 			// Extract the base filename without date and author
 			baseFilename := filepath.Base(path)
@@ -275,16 +261,15 @@ func main() {
 				baseFilename = matches[1] + "." + matches[3]
 			}
 
+			// Generate PkgId
+			pkgId := generatePkgId(*downloadPrefix, baseFilename)
+
 			// Create base item with info from the AppBundle
 			item := binaryEntry{
 				Pkg:            baseFilename,
 				Name:           strings.Title(strings.ReplaceAll(runtimeInfo.AppBundleID, "-", " ")),
 				PkgId:          pkgId,
-				Version:        runtimeInfo.Version,
 				BuildDate:      buildDate,
-				License:        runtimeInfo.License,
-				Description:    runtimeInfo.Description,
-				Notes:          runtimeInfo.Notes,
 				Size:           getFileSize(path),
 				Bsum:           b3sum,
 				Shasum:         shasum,
@@ -292,26 +277,12 @@ func main() {
 				RepoName:       *repoName,
 			}
 
-			// Add provides if available
-			if len(runtimeInfo.Provides) > 0 {
-				item.Provides = strings.Join(runtimeInfo.Provides, ",")
-			}
-
-			// Add source URLs if available
-			if runtimeInfo.SourceRepo != "" {
-				item.SrcURLs = []string{runtimeInfo.SourceRepo}
-			}
-
-			// Add homepage if available
-			if runtimeInfo.Homepage != "" {
-				item.WebURLs = []string{runtimeInfo.Homepage}
-			}
-
 			// Look for matching AppStream metadata and use it to enhance our entry
 			appData := findAppStreamMetadataForAppId(runtimeInfo.AppBundleID)
 			if appData != nil {
 				// Use the name, icon, screenshots, description fields from appstream_metadata
 				if appData.Name != "" {
+					fmt.Println(appData.Name)
 					item.Name = appData.Name
 				}
 
