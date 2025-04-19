@@ -266,6 +266,13 @@ func setupSharunMode(config Config) error {
 		if err := copyFromTemp(config, "AppRun.sharun.ovfsProto", filepath.Join(config.AppDir, "AppRun"), 0755); err != nil {
 			return err
 		}
+		// Copy unionfs & bwrap for hybrid mode
+		if err := copyFromTemp(config, "unionfs", filepath.Join(config.AppDir, "usr", "bin", "unionfs"), 0755); err != nil {
+			return err
+		}
+		if err := copyFromTemp(config, "bwrap", filepath.Join(config.AppDir, "usr", "bin", "bwrap"), 0755); err != nil {
+			return err
+		}
 	} else {
 		// Pure Sharun mode - remove proto dir completely
 		if err := os.RemoveAll(filepath.Join(config.AppDir, "proto")); err != nil {
@@ -273,16 +280,6 @@ func setupSharunMode(config Config) error {
 		}
 		// Use AppRun.sharun
 		if err := copyFromTemp(config, "AppRun.sharun", filepath.Join(config.AppDir, "AppRun"), 0755); err != nil {
-			return err
-		}
-	}
-
-	// Copy unionfs & bwrap for hybrid mode
-	if config.ToBeKeptFiles != "" || config.GetridFiles != "" {
-		if err := copyFromTemp(config, "unionfs", filepath.Join(config.AppDir, "usr", "bin", "unionfs"), 0755); err != nil {
-			return err
-		}
-		if err := copyFromTemp(config, "bwrap", filepath.Join(config.AppDir, "usr", "bin", "bwrap"), 0755); err != nil {
 			return err
 		}
 	}
@@ -428,7 +425,7 @@ func setupAppRunAndPackages(config Config) error {
 }
 
 func createEntrypoint(config Config) error {
-	return os.WriteFile(filepath.Join(config.AppDir, "entrypoint"), []byte(config.Entrypoint), 0755)
+	return os.WriteFile(filepath.Join(config.AppDir, "entrypoint"), []byte(config.Entrypoint+"\n"), 0755)
 }
 
 func handleDesktopFile(config Config) error {
@@ -451,7 +448,7 @@ func handleDesktopFile(config Config) error {
 	}
 
 	var iconName, executable string
-	for line := range strings.SplitSeq(string(desktopContent), "\n") {
+	for _, line := range strings.Split(string(desktopContent), "\n") {
 		if strings.HasPrefix(line, "Icon=") {
 			iconName = strings.TrimPrefix(line, "Icon=")
 		} else if strings.HasPrefix(line, "Exec=") {
@@ -555,6 +552,22 @@ sharun l --with-sharun --gen-lib-path --with-hooks --dst-dir "%s" %s
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
 }
+
+/* BROKEN
+func setupLib4bin(config Config) error {
+	l4bCmdPath := filepath.Join(config.AppDir, ".l4bCmd")
+	script := fmt.Sprintf(`sharun l --with-sharun --gen-lib-path --with-hooks --verbose --dst-dir "%s" --verbose %s`, config.AppDir, config.Lib4binArgs)
+	if err := os.WriteFile(l4bCmdPath+"\n", []byte(script), 0755); err != nil {
+		return err
+	}
+	args := append([]string{"--Xbwrap", "--"}, strings.Fields(script)...)
+	args[2] = filepath.Join(config.TempDir, "sharun") // [2] is the first argument in the script variable
+	cmd := exec.Command(filepath.Join(config.AppDir, "AppRun"), args...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+*/
 
 func trimProtoDir(config Config) error {
 	protoTrimmedDir := filepath.Join(config.AppDir, "proto_trimmed")
@@ -669,7 +682,9 @@ func createBundle(config Config) error {
 	cmd := exec.Command(filepath.Join(config.TempDir, "pelf"),
 		"--add-appdir", config.AppDir,
 		"--appbundle-id", config.AppBundleID,
-		"--output-to", config.OutputTo)
+		"--output-to", config.OutputTo,
+//		"--add-runtime-info-section", fmt.Sprintf(`'.build_date:%s'`, config.Date),
+	)
 
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
