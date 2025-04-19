@@ -13,6 +13,7 @@ import (
 	"strings"
 	"crypto/sha256"
 	"net/http"
+	"net/url"
 
 	"github.com/zeebo/blake3"
 	"github.com/fxamacker/cbor/v2"
@@ -21,34 +22,34 @@ import (
 )
 
 type binaryEntry struct {
-	Pkg         string     `json:"pkg,omitempty"`
-	Name        string     `json:"pkg_name,omitempty"`
-	PkgId       string     `json:"pkg_id,omitempty"`
-	AppstreamId string     `json:"app_id,omitempty"`
-	Icon        string     `json:"icon,omitempty"`
-	Description string     `json:"description,omitempty"`
-	LongDescription string `json:"description_long,omitempty"`
-	Screenshots []string   `json:"screenshots,omitempty"`
-	Version     string     `json:"version,omitempty"`
-	DownloadURL string     `json:"download_url,omitempty"`
-	Size        string     `json:"size,omitempty"`
-	Bsum        string     `json:"bsum,omitempty"`
-	Shasum      string     `json:"shasum,omitempty"`
-	BuildDate   string     `json:"build_date,omitempty"`
-	SrcURLs     []string   `json:"src_urls,omitempty"`
-	WebURLs     []string   `json:"web_urls,omitempty"`
-	BuildScript string     `json:"build_script,omitempty"`
-	BuildLog    string     `json:"build_log,omitempty"`
-	Categories  string     `json:"categories,omitempty"`
-	Snapshots   []snapshot `json:"snapshots,omitempty"`
-	Provides    string     `json:"provides,omitempty"`
-	License     []string   `json:"license,omitempty"`
-	Notes       []string   `json:"notes,omitempty"`
-	Appstream   string     `json:"appstream,omitempty"`
-	Rank        uint       `json:"rank,omitempty"`
-	RepoURL     string     `json:"-"`
-	RepoGroup   string     `json:"-"`
-	RepoName    string     `json:"-"`
+	Pkg            string     `json:"pkg,omitempty"`
+	Name           string     `json:"pkg_name,omitempty"`
+	PkgId          string     `json:"pkg_id,omitempty"`
+	AppstreamId    string     `json:"app_id,omitempty"`
+	Icon           string     `json:"icon,omitempty"`
+	Description    string     `json:"description,omitempty"`
+	LongDescription string    `json:"description_long,omitempty"`
+	Screenshots    []string   `json:"screenshots,omitempty"`
+	Version        string     `json:"version,omitempty"`
+	DownloadURL    string     `json:"download_url,omitempty"`
+	Size           string     `json:"size,omitempty"`
+	Bsum           string     `json:"bsum,omitempty"`
+	Shasum         string     `json:"shasum,omitempty"`
+	BuildDate      string     `json:"build_date,omitempty"`
+	SrcURLs        []string   `json:"src_urls,omitempty"`
+	WebURLs        []string   `json:"web_urls,omitempty"`
+	BuildScript    string     `json:"build_script,omitempty"`
+	BuildLog       string     `json:"build_log,omitempty"`
+	Categories     string     `json:"categories,omitempty"`
+	Snapshots      []snapshot `json:"snapshots,omitempty"`
+	Provides       string     `json:"provides,omitempty"`
+	License        []string   `json:"license,omitempty"`
+	Notes          []string   `json:"notes,omitempty"`
+	Appstream      string     `json:"appstream,omitempty"`
+	Rank           uint       `json:"rank,omitempty"`
+	RepoURL        string     `json:"-"`
+	RepoGroup      string     `json:"-"`
+	RepoName       string     `json:"-"`
 }
 
 type snapshot struct {
@@ -208,6 +209,19 @@ func computeHashes(path string) (string, string, error) {
 	return b3Sum, shaSum, nil
 }
 
+func generatePkgId(srcUrl string, tag string) string {
+	// Remove http|https schema and replace special characters
+	u, err := url.Parse(srcUrl)
+	if err != nil {
+		return ""
+	}
+	baseUrl := strings.ReplaceAll(u.Host+u.Path, "/", ".")
+	if tag != "" {
+		baseUrl += "." + tag
+	}
+	return baseUrl
+}
+
 func main() {
 	inputDir := flag.String("input-dir", "", "Path to the input directory containing .AppBundle files")
 	outputJSON := flag.String("output-file", "", "Path to the output JSON file")
@@ -246,21 +260,36 @@ func main() {
 				return nil
 			}
 
+			// Generate PkgId
+			tag := ""
+			if len(runtimeInfo.Provides) > 0 {
+				tag = runtimeInfo.Provides[0]
+			}
+			pkgId := generatePkgId(runtimeInfo.SourceRepo, tag)
+
+			// Extract the base filename without date and author
+			baseFilename := filepath.Base(path)
+			re := regexp.MustCompile(`^(.+)-(\d{2}_\d{2}_\d{4})-(.+)$`)
+			matches := re.FindStringSubmatch(baseFilename)
+			if len(matches) == 4 {
+				baseFilename = matches[1] + "." + matches[3]
+			}
+
 			// Create base item with info from the AppBundle
 			item := binaryEntry{
-				Pkg:         filepath.Base(path),
-				Name:        strings.Title(strings.ReplaceAll(runtimeInfo.AppBundleID, "-", " ")),
-				AppstreamId: runtimeInfo.AppBundleID,
-				Version:     runtimeInfo.Version,
-				BuildDate:   buildDate,
-				License:     runtimeInfo.License,
-				Description: runtimeInfo.Description,
-				Notes:       runtimeInfo.Notes,
-				Size:        getFileSize(path),
-				Bsum:        b3sum,
-				Shasum:      shasum,
-				DownloadURL: *downloadPrefix + filepath.Base(path),
-				RepoName:    *repoName,
+				Pkg:            baseFilename,
+				Name:           strings.Title(strings.ReplaceAll(runtimeInfo.AppBundleID, "-", " ")),
+				PkgId:          pkgId,
+				Version:        runtimeInfo.Version,
+				BuildDate:      buildDate,
+				License:        runtimeInfo.License,
+				Description:    runtimeInfo.Description,
+				Notes:          runtimeInfo.Notes,
+				Size:           getFileSize(path),
+				Bsum:           b3sum,
+				Shasum:         shasum,
+				DownloadURL:    *downloadPrefix + filepath.Base(path),
+				RepoName:       *repoName,
 			}
 
 			// Add provides if available
@@ -281,7 +310,11 @@ func main() {
 			// Look for matching AppStream metadata and use it to enhance our entry
 			appData := findAppStreamMetadataForAppId(runtimeInfo.AppBundleID)
 			if appData != nil {
-				// Use the icon, screenshots, description fields from appstream_metadata
+				// Use the name, icon, screenshots, description fields from appstream_metadata
+				if appData.Name != "" {
+					item.Name = appData.Name
+				}
+
 				if len(appData.Icons) > 0 {
 					item.Icon = appData.Icons[0]
 				}
@@ -301,6 +334,9 @@ func main() {
 				if appData.Categories != "" {
 					item.Categories = appData.Categories
 				}
+
+				// Set app_id because AppStream data is available
+				item.AppstreamId = runtimeInfo.AppBundleID
 
 				fmt.Printf("Enhanced entry with AppStream data: %s\n", runtimeInfo.AppBundleID)
 			}
