@@ -21,34 +21,34 @@ import (
 )
 
 type binaryEntry struct {
-	Pkg             string     `json:"pkg,omitempty"`
-	Name            string     `json:"pkg_name,omitempty"`
-	PkgId           string     `json:"pkg_id,omitempty"`
-	AppstreamId     string     `json:"app_id,omitempty"`
-	Icon            string     `json:"icon,omitempty"`
-	Description     string     `json:"description,omitempty"`
-	LongDescription string     `json:"description_long,omitempty"`
-	Screenshots     []string   `json:"screenshots,omitempty"`
-	Version         string     `json:"version,omitempty"`
-	DownloadURL     string     `json:"download_url,omitempty"`
-	Size            string     `json:"size,omitempty"`
-	Bsum            string     `json:"bsum,omitempty"`
-	Shasum          string     `json:"shasum,omitempty"`
-	BuildDate       string     `json:"build_date,omitempty"`
-	SrcURLs         []string   `json:"src_urls,omitempty"`
-	WebURLs         []string   `json:"web_urls,omitempty"`
-	BuildScript     string     `json:"build_script,omitempty"`
-	BuildLog        string     `json:"build_log,omitempty"`
-	Categories      string     `json:"categories,omitempty"`
-	Snapshots       []snapshot `json:"snapshots,omitempty"`
-	Provides        string     `json:"provides,omitempty"`
-	License         []string   `json:"license,omitempty"`
-	Notes           []string   `json:"notes,omitempty"`
-	Appstream       string     `json:"appstream,omitempty"`
-	Rank            uint       `json:"rank,omitempty"`
-	RepoURL         string     `json:"-"`
-	RepoGroup       string     `json:"-"`
-	RepoName        string     `json:"-"`
+	Pkg         string     `json:"pkg,omitempty"`
+	Name        string     `json:"pkg_name,omitempty"`
+	PkgId       string     `json:"pkg_id,omitempty"`
+	AppstreamId string     `json:"app_id,omitempty"`
+	Icon        string     `json:"icon,omitempty"`
+	Description string     `json:"description,omitempty"`
+	LongDescription string `json:"description_long,omitempty"`
+	Screenshots []string   `json:"screenshots,omitempty"`
+	Version     string     `json:"version,omitempty"`
+	DownloadURL string     `json:"download_url,omitempty"`
+	Size        string     `json:"size,omitempty"`
+	Bsum        string     `json:"bsum,omitempty"`
+	Shasum      string     `json:"shasum,omitempty"`
+	BuildDate   string     `json:"build_date,omitempty"`
+	SrcURLs     []string   `json:"src_urls,omitempty"`
+	WebURLs     []string   `json:"web_urls,omitempty"`
+	BuildScript string     `json:"build_script,omitempty"`
+	BuildLog    string     `json:"build_log,omitempty"`
+	Categories  string     `json:"categories,omitempty"`
+	Snapshots   []snapshot `json:"snapshots,omitempty"`
+	Provides    string     `json:"provides,omitempty"`
+	License     []string   `json:"license,omitempty"`
+	Notes       []string   `json:"notes,omitempty"`
+	Appstream   string     `json:"appstream,omitempty"`
+	Rank        uint       `json:"rank,omitempty"`
+	RepoURL     string     `json:"-"`
+	RepoGroup   string     `json:"-"`
+	RepoName    string     `json:"-"`
 }
 
 type snapshot struct {
@@ -153,13 +153,13 @@ func extractAppBundleInfo(filename string) (RuntimeInfo, string, error) {
 	// Parse build date from AppBundleID (format: appstreamId-DD_MM_YYYY-maintainer)
 	parts := strings.Split(runtimeInfo.AppBundleID, "-")
 	if len(parts) < 3 {
-		return runtimeInfo, "", fmt.Errorf("invalid appBundleID format")
+		return RuntimeInfo{}, "", fmt.Errorf("invalid appBundleID format")
 	}
 	buildDate := parts[len(parts)-2]
 	re := regexp.MustCompile(`^(\d{2})_(\d{2})_(\d{4})$`)
 	matches := re.FindStringSubmatch(buildDate)
 	if len(matches) != 4 {
-		return runtimeInfo, "", fmt.Errorf("invalid build date format")
+		return RuntimeInfo{}, "", fmt.Errorf("invalid build date format")
 	}
 	formattedBuildDate := fmt.Sprintf("%s-%s-%s", matches[3], matches[2], matches[1])
 
@@ -212,10 +212,11 @@ func main() {
 	inputDir := flag.String("input-dir", "", "Path to the input directory containing .AppBundle files")
 	outputJSON := flag.String("output-file", "", "Path to the output JSON file")
 	downloadPrefix := flag.String("download-prefix", "https://example.com/downloads/", "Prefix for download URLs")
+	repoName := flag.String("repo-name", "", "Name of the repository")
 	flag.Parse()
 
-	if *inputDir == "" || *outputJSON == "" {
-		fmt.Println("Usage: --input-dir <input_directory> --output-dir <output_directory> --output-file <output_file.json> --download-prefix <url>")
+	if *inputDir == "" || *outputJSON == "" || *repoName == "" {
+		fmt.Println("Usage: --input-dir <input_directory> --output-dir <output_directory> --output-file <output_file.json> --download-prefix <url> --repo-name <repo_name>")
 		return
 	}
 
@@ -259,6 +260,7 @@ func main() {
 				Bsum:        b3sum,
 				Shasum:      shasum,
 				DownloadURL: *downloadPrefix + filepath.Base(path),
+				RepoName:    *repoName,
 			}
 
 			// Add provides if available
@@ -304,7 +306,7 @@ func main() {
 			}
 
 			// Add to metadata
-			dbinMetadata[item.AppstreamId] = append(dbinMetadata[item.AppstreamId], item)
+			dbinMetadata[*repoName] = append(dbinMetadata[*repoName], item)
 		}
 		return nil
 	})
