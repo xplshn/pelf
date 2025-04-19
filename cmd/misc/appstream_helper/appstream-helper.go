@@ -1,308 +1,310 @@
-// TODO: Use screenshots of type "source"
 package main
 
 import (
 	"bytes"
-	"crypto/sha256"
-	"encoding/base64"
+	"debug/elf"
 	"encoding/hex"
-	"encoding/json"
-	"encoding/xml"
 	"flag"
 	"fmt"
 	"io"
-	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"crypto/sha256"
+	"net/http"
 
-	"github.com/tdewolff/minify/v2"
-	"github.com/tdewolff/minify/v2/html"
 	"github.com/zeebo/blake3"
+	"github.com/fxamacker/cbor/v2"
+	"github.com/goccy/go-json"
+	"github.com/klauspost/compress/zstd"
 )
 
-type Item struct {
-	Pkg             string   `json:"pkg"`
-	PkgName         string   `json:"pkg_name,omitempty"`
-	PkgId           string   `json:"pkg_id,omitempty"`
-	Icon            string   `json:"icon,omitempty"`
-	Description     string   `json:"description,omitempty"`
-	LongDescription string   `json:"long_description,omitempty"`
-	Desktop         string   `json:"desktop,omitempty"`
-	Screenshots     []string `json:"screenshots,omitempty"`
-	Version         string   `json:"version,omitempty"`
-	DownloadURL     string   `json:"download_url,omitempty"`
-	Size            string   `json:"size,omitempty"`
-	Bsum            string   `json:"bsum,omitempty"`
-	Shasum          string   `json:"shasum,omitempty"`
-	BuildDate       string   `json:"build_date,omitempty"`
-	SrcURLs         []string `json:"src_urls,omitempty"`
-	WebURLs         []string `json:"web_urls,omitempty"`
-	BuildScript     string   `json:"build_script,omitempty"`
-	BuildLog        string   `json:"build_log,omitempty"`
-	Category        string   `json:"category,omitempty"`
-	Keywords        string   `json:"keywords,omitempty"`
-	Notes           []string `json:"notes,omitempty"`
-	Appstream       string   `json:"appstream,omitempty"`
+type binaryEntry struct {
+	Pkg             string     `json:"pkg,omitempty"`
+	Name            string     `json:"pkg_name,omitempty"`
+	PkgId           string     `json:"pkg_id,omitempty"`
+	AppstreamId     string     `json:"app_id,omitempty"`
+	Icon            string     `json:"icon,omitempty"`
+	Description     string     `json:"description,omitempty"`
+	LongDescription string     `json:"description_long,omitempty"`
+	Screenshots     []string   `json:"screenshots,omitempty"`
+	Version         string     `json:"version,omitempty"`
+	DownloadURL     string     `json:"download_url,omitempty"`
+	Size            string     `json:"size,omitempty"`
+	Bsum            string     `json:"bsum,omitempty"`
+	Shasum          string     `json:"shasum,omitempty"`
+	BuildDate       string     `json:"build_date,omitempty"`
+	SrcURLs         []string   `json:"src_urls,omitempty"`
+	WebURLs         []string   `json:"web_urls,omitempty"`
+	BuildScript     string     `json:"build_script,omitempty"`
+	BuildLog        string     `json:"build_log,omitempty"`
+	Categories      string     `json:"categories,omitempty"`
+	Snapshots       []snapshot `json:"snapshots,omitempty"`
+	Provides        string     `json:"provides,omitempty"`
+	License         []string   `json:"license,omitempty"`
+	Notes           []string   `json:"notes,omitempty"`
+	Appstream       string     `json:"appstream,omitempty"`
+	Rank            uint       `json:"rank,omitempty"`
+	RepoURL         string     `json:"-"`
+	RepoGroup       string     `json:"-"`
+	RepoName        string     `json:"-"`
 }
 
-type PackageList struct {
-	Pkg []Item `json:"appbundlehub"`
+type snapshot struct {
+	Commit  string `json:"commit,omitempty"`
+	Version string `json:"version,omitempty"`
 }
 
-type Provides struct {
-	Id string `xml:"id"`
+type DbinMetadata map[string][]binaryEntry
+
+type AppStreamMetadata struct {
+	AppId           string   `json:"app_id"`
+	Name            string   `json:"name,omitempty"`
+	Summary         string   `json:"summary,omitempty"`
+	Categories      string   `json:"categories"`
+	RichDescription string   `json:"rich_description"`
+	Icons           []string `json:"icons"`
+	Screenshots     []string `json:"screenshots"`
 }
 
-type Url struct {
-	Url  string `xml:",innerxml"`
-	Type string `xml:"type,attr"`
+var appStreamMetadata []AppStreamMetadata
+var appStreamMetadataLoaded bool
+
+type RuntimeInfo struct {
+	AppBundleID  string   `json:"appBundleID"`
+	Version      string   `json:"version"`
+	BuildDate    string   `json:"buildDate"`
+	License      []string `json:"license"`
+	Provides     []string `json:"provides"`
+	Homepage     string   `json:"homepage"`
+	SourceRepo   string   `json:"sourceRepo"`
+	Description  string   `json:"description"`
+	Notes        []string `json:"notes"`
 }
 
-type ContentRatingContentAttribute struct {
-	Id   string `xml:"id,attr"`
-	Type string `xml:",innerxml"`
+func loadAppStreamMetadata() error {
+	if appStreamMetadataLoaded {
+		return nil
+	}
+
+	resp, err := http.Get("https://github.com/xplshn/dbin-metadata/raw/refs/heads/master/misc/cmd/flatpakAppStreamScrapper/appstream_metadata.cbor.zst")
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	// Decompress zstd content
+	zstdReader, err := zstd.NewReader(bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("error creating zstd reader: %v", err)
+	}
+	defer zstdReader.Close()
+
+	decompressed, err := io.ReadAll(zstdReader)
+	if err != nil {
+		return fmt.Errorf("error decompressing data: %v", err)
+	}
+
+	err = cbor.Unmarshal(decompressed, &appStreamMetadata)
+	if err != nil {
+		return err
+	}
+
+	appStreamMetadataLoaded = true
+	return nil
 }
 
-type ContentRating struct {
-	Type             string                          `xml:"type,attr"`
-	ContentAttribute []ContentRatingContentAttribute `xml:"content_attribute"`
-}
-
-type Release struct {
-	Version string `xml:"version,attr"`
-	Date    string `xml:"date,attr"`
-}
-
-type Releases struct {
-	Release []Release `xml:"release"`
-}
-
-type Screenshot struct {
-	Type    string          `xml:"type,attr"`
-	Caption string          `xml:"caption"`
-	Image   ScreenshotImage `xml:"image"`
-}
-
-type ScreenshotImage struct {
-	Type   string `xml:"type,attr"`
-	Width  string `xml:"width,attr"`
-	Height string `xml:"height,attr"`
-	Url    string `xml:",innerxml"`
-}
-
-type Tag struct {
-	XMLName xml.Name
-	Content string `xml:",innerxml"`
-	Lang    string `xml:"lang,attr"`
-}
-
-type Description struct {
-	Items []Tag `xml:",any"`
-}
-
-type Launchable struct {
-	Type      string `xml:"type,attr"`
-	DesktopId string `xml:",innerxml"`
-}
-
-type Component struct {
-	Type            string `xml:"type,attr"`
-	Id              string `xml:"id"`
-	Name            []Tag  `xml:"name"`
-	Summary         []Tag  `xml:"summary"` // -> Description
-	DevName         string `xml:"developer_name"`
-	MetadataLicense string `xml:"metadata_license"`
-	ProjectLicense  string `xml:"project_license"`
-
-	Provides struct {
-		Id string `xml:"id"`
-	} `xml:"provides"`
-
-	Launchable struct {
-		DesktopId string `xml:"desktop-id"`
-	} `xml:"launchable"`
-
-	Url []struct {
-		Type string `xml:"type,attr"`
-		Url  string `xml:",chardata"`
-	} `xml:"url"`
-
-	Description   []Tag         `xml:"description"` // -> LongDescription
-	Screenshots   []Screenshot  `xml:"screenshots>screenshot"`
-	Releases      Releases      `xml:"releases"`
-	ContentRating ContentRating `xml:"content_rating"`
-	Keywords      []Tag         `xml:"keywords>keyword"`
-	Categories    []Tag         `xml:"categories>category"`
-}
-
-type Components struct {
-	XMLName    xml.Name    `xml:"components"`
-	Version    string      `xml:"version,attr"`
-	Origin     string      `xml:"origin,attr"`
-	Components []Component `xml:"component"`
-}
-
-// extractAppstreamId extracts the potential appstream ID from the AppBundle filename
-func extractAppstreamId(filename, pelfEdition string) string {
-	// Remove .pelfEdition.AppBundle suffix
-	name := strings.TrimSuffix(filename, fmt.Sprintf(".%s.AppBundle", pelfEdition))
-
-	// Remove date pattern (expects -DD_MM_YYYY)
-	re := regexp.MustCompile(`-\d{2}_\d{2}_\d{4}$`)
-	name = re.ReplaceAllString(name, "")
-
-	return name
-}
-
-// findComponentById searches for a component with the given ID in the components list
-func findComponentById(components *Components, id string) *Component {
-	for i := range components.Components {
-		if components.Components[i].Id == id {
-			return &components.Components[i]
+func findAppStreamMetadataForAppId(appId string) *AppStreamMetadata {
+	for i := range appStreamMetadata {
+		if appStreamMetadata[i].AppId == appId {
+			return &appStreamMetadata[i]
 		}
 	}
 	return nil
 }
 
-// handlePBundleCommand executes a pbundle command and handles its output
-// Returns true if successful, false if command returned exit status 1 (not an error)
-func handlePBundleCommand(appBundlePath, flag, outputPath string) bool {
-	cmd := exec.Command(appBundlePath, flag)
-	output, err := cmd.Output()
-
+func extractAppBundleInfo(filename string) (RuntimeInfo, string, error) {
+	file, err := elf.Open(filename)
 	if err != nil {
-		if exitError, ok := err.(*exec.ExitError); ok && exitError.ExitCode() == 1 {
-			// Exit status 1 means file not found in bundle - not an error
-			return false
-		}
-		fmt.Printf("Error executing %s: %v\n", flag, err)
-		return false
+		return RuntimeInfo{}, "", err
 	}
-
-	decodedData, err := base64.StdEncoding.DecodeString(string(output))
+	defer file.Close()
+	section := file.Section(".pbundle_runtime_info")
+	if section == nil {
+		return RuntimeInfo{}, "", fmt.Errorf("section .pbundle_runtime_info not found")
+	}
+	data, err := section.Data()
 	if err != nil {
-		fmt.Printf("Error decoding base64 data: %v\n", err)
-		return false
+		return RuntimeInfo{}, "", err
 	}
+	var runtimeInfo RuntimeInfo
+	if err := cbor.Unmarshal(data, &runtimeInfo); err != nil {
+		return RuntimeInfo{}, "", err
+	}
+	if runtimeInfo.AppBundleID == "" {
+		return RuntimeInfo{}, "", fmt.Errorf("appBundleID not found")
+	}
+	// Parse build date from AppBundleID (format: appstreamId-DD_MM_YYYY-maintainer)
+	parts := strings.Split(runtimeInfo.AppBundleID, "-")
+	if len(parts) < 3 {
+		return runtimeInfo, "", fmt.Errorf("invalid appBundleID format")
+	}
+	buildDate := parts[len(parts)-2]
+	re := regexp.MustCompile(`^(\d{2})_(\d{2})_(\d{4})$`)
+	matches := re.FindStringSubmatch(buildDate)
+	if len(matches) != 4 {
+		return runtimeInfo, "", fmt.Errorf("invalid build date format")
+	}
+	formattedBuildDate := fmt.Sprintf("%s-%s-%s", matches[3], matches[2], matches[1])
 
-	err = os.WriteFile(outputPath, decodedData, 0644)
+	// Extract the actual appstreamId (everything before the date)
+	dateIndex := strings.LastIndex(runtimeInfo.AppBundleID, buildDate) - 1
+	actualAppStreamId := runtimeInfo.AppBundleID[:dateIndex]
+	runtimeInfo.AppBundleID = actualAppStreamId
+
+	return runtimeInfo, formattedBuildDate, nil
+}
+
+func getFileSize(path string) string {
+	fileInfo, err := os.Stat(path)
 	if err != nil {
-		fmt.Printf("Error writing to %s: %v\n", outputPath, err)
-		return false
+		return "0 MB"
 	}
+	sizeMB := float64(fileInfo.Size()) / (1024 * 1024)
+	return fmt.Sprintf("%.2f MB", sizeMB)
+}
 
-	return true
+func computeHashes(path string) (string, string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return "", "", err
+	}
+	defer file.Close()
+
+	// Compute SHA256
+	shaHasher := sha256.New()
+	if _, err := io.Copy(shaHasher, file); err != nil {
+		return "", "", err
+	}
+	shaSum := hex.EncodeToString(shaHasher.Sum(nil))
+
+	// Compute BLAKE3
+	_, err = file.Seek(0, 0)
+	if err != nil {
+		return "", "", err
+	}
+	b3Hasher := blake3.New()
+	if _, err := io.Copy(b3Hasher, file); err != nil {
+		return "", "", err
+	}
+	b3Sum := hex.EncodeToString(b3Hasher.Sum(nil))
+
+	return b3Sum, shaSum, nil
 }
 
 func main() {
-	// Define flags
 	inputDir := flag.String("input-dir", "", "Path to the input directory containing .AppBundle files")
-	outputDir := flag.String("output-dir", "", "Directory to save the output files")
 	outputJSON := flag.String("output-file", "", "Path to the output JSON file")
-	componentsXML := flag.String("components-xml", "", "Path to components XML file")
-	metadataPrefix := flag.String("metadata-prefix", "https://github.com/xplshn/AppBundleHUB/releases/download/latest_metadata/", "Prefix for metadata URLs")
-	downloadURLPrefix := flag.String("download-url-prefix", "https://github.com/xplshn/AppBundleHUB/releases/download/", "Prefix for download URLs")
-	pelfEdition := flag.String("pelf-edition", "dwfs", "The suffix used to detect the AppBundles")
+	downloadPrefix := flag.String("download-prefix", "https://example.com/downloads/", "Prefix for download URLs")
 	flag.Parse()
 
-	if *inputDir == "" || *outputDir == "" || *outputJSON == "" || *componentsXML == "" {
-		fmt.Println("Usage: --input-dir <input_directory> --output-dir <output_directory> --output-file <output_file.json> --components-xml <components_file.xml>")
+	if *inputDir == "" || *outputJSON == "" {
+		fmt.Println("Usage: --input-dir <input_directory> --output-dir <output_directory> --output-file <output_file.json> --download-prefix <url>")
 		return
 	}
 
-	// Read and parse components XML
-	xmlData, err := os.ReadFile(*componentsXML)
-	if err != nil {
-		fmt.Println("Error reading components XML:", err)
+	if err := loadAppStreamMetadata(); err != nil {
+		fmt.Printf("Error loading AppStream metadata: %v\n", err)
 		return
 	}
 
-	var components Components
-	err = xml.Unmarshal(xmlData, &components)
-	if err != nil {
-		fmt.Println("Error parsing components XML:", err)
-		return
-	}
+	dbinMetadata := make(DbinMetadata)
 
-	// Create output directory
-	err = os.MkdirAll(*outputDir, 0755)
-	if err != nil {
-		fmt.Println("Error creating output directory:", err)
-		return
-	}
-
-	var packageList PackageList
-
-	// Process each AppBundle file
-	err = filepath.Walk(*inputDir, func(path string, info os.FileInfo, err error) error {
+	err := filepath.Walk(*inputDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 
 		if !info.IsDir() && strings.HasSuffix(path, ".AppBundle") {
-			appBundleBasename := filepath.Base(path)
-			potentialId := extractAppstreamId(appBundleBasename, *pelfEdition)
-
-			// Look for matching component
-			matchingComponent := findComponentById(&components, potentialId)
-			if matchingComponent == nil {
-				fmt.Printf("No matching component found for %s\n", potentialId)
+			runtimeInfo, buildDate, err := extractAppBundleInfo(path)
+			if err != nil {
+				fmt.Printf("Error extracting runtime info from %s: %v\n", path, err)
 				return nil
 			}
 
-			// Handle pbundle commands independently of component matching
-			pbundleFlags := []string{"--pbundle_appstream", "--pbundle_pngIcon", "--pbundle_desktop"}
-			extensions := []string{".appstream.xml", ".png", ".desktop"}
+			// Compute hashes and size
+			b3sum, shasum, err := computeHashes(path)
+			if err != nil {
+				fmt.Printf("Error computing hashes for %s: %v\n", path, err)
+				return nil
+			}
 
-			for i, flag := range pbundleFlags {
-				outputPath := filepath.Join(*outputDir, potentialId+extensions[i])
-				if handlePBundleCommand(path, flag, outputPath) {
-					fmt.Printf("Successfully extracted %s\n", extensions[i])
-				} else {
-					fmt.Printf("Skipping %s (not found in bundle)\n", extensions[i])
+			// Create base item with info from the AppBundle
+			item := binaryEntry{
+				Pkg:         filepath.Base(path),
+				Name:        strings.Title(strings.ReplaceAll(runtimeInfo.AppBundleID, "-", " ")),
+				AppstreamId: runtimeInfo.AppBundleID,
+				Version:     runtimeInfo.Version,
+				BuildDate:   buildDate,
+				License:     runtimeInfo.License,
+				Description: runtimeInfo.Description,
+				Notes:       runtimeInfo.Notes,
+				Size:        getFileSize(path),
+				Bsum:        b3sum,
+				Shasum:      shasum,
+				DownloadURL: *downloadPrefix + filepath.Base(path),
+			}
+
+			// Add provides if available
+			if len(runtimeInfo.Provides) > 0 {
+				item.Provides = strings.Join(runtimeInfo.Provides, ",")
+			}
+
+			// Add source URLs if available
+			if runtimeInfo.SourceRepo != "" {
+				item.SrcURLs = []string{runtimeInfo.SourceRepo}
+			}
+
+			// Add homepage if available
+			if runtimeInfo.Homepage != "" {
+				item.WebURLs = []string{runtimeInfo.Homepage}
+			}
+
+			// Look for matching AppStream metadata and use it to enhance our entry
+			appData := findAppStreamMetadataForAppId(runtimeInfo.AppBundleID)
+			if appData != nil {
+				// Use the icon, screenshots, description fields from appstream_metadata
+				if len(appData.Icons) > 0 {
+					item.Icon = appData.Icons[0]
 				}
+
+				if len(appData.Screenshots) > 0 {
+					item.Screenshots = appData.Screenshots
+				}
+
+				if appData.Summary != "" {
+					item.Description = appData.Summary
+				}
+
+				if appData.RichDescription != "" {
+					item.LongDescription = appData.RichDescription
+				}
+
+				if appData.Categories != "" {
+					item.Categories = appData.Categories
+				}
+
+				fmt.Printf("Enhanced entry with AppStream data: %s\n", runtimeInfo.AppBundleID)
 			}
 
-			// Get the size of the AppBundle file
-			fileInfo, err := os.Stat(path)
-			if err != nil {
-				fmt.Printf("Error getting file info for %s: %v\n", path, err)
-				return nil
-			}
-			sizeInMegabytes := float64(fileInfo.Size()) / (1024 * 1024)
-
-			// Compute bsum and shasum
-			bsum, err := computeB3SUM(path)
-			if err != nil {
-				fmt.Printf("Error computing B3SUM for %s: %v\n", path, err)
-				return nil
-			}
-			shasum, err := computeSHA256(path)
-			if err != nil {
-				fmt.Printf("Error computing SHA256 for %s: %v\n", path, err)
-				return nil
-			}
-
-			// Convert matching component to JSON
-			item := ConvertComponentToItem(*matchingComponent)
-			item.Pkg = appBundleBasename
-			item.Icon = *metadataPrefix + potentialId + ".png"
-			item.Desktop = *metadataPrefix + potentialId + ".desktop"
-			item.Appstream = *metadataPrefix + potentialId + ".appstream.xml"
-			item.Size = fmt.Sprintf("%.2f MB", sizeInMegabytes)
-			item.DownloadURL = *downloadURLPrefix + appBundleBasename
-			item.Bsum = bsum
-			item.Shasum = shasum
-			packageList.Pkg = append(packageList.Pkg, item)
-
-			// Write individual component XML
-			outputFile := filepath.Join(*outputDir, potentialId+".xml")
-			if err := writeComponentToFile(*matchingComponent, outputFile); err != nil {
-				fmt.Printf("Error writing component file: %v\n", err)
-			}
+			// Add to metadata
+			dbinMetadata[item.AppstreamId] = append(dbinMetadata[item.AppstreamId], item)
 		}
 		return nil
 	})
@@ -312,213 +314,21 @@ func main() {
 		return
 	}
 
-	// Create an encoder that doesn't escape HTML/Unicode
+	// Generate the output JSON
 	buffer := &bytes.Buffer{}
 	encoder := json.NewEncoder(buffer)
 	encoder.SetEscapeHTML(false)
 	encoder.SetIndent("", "  ")
 
-	// Encode the package list
-	if err := encoder.Encode(packageList); err != nil {
+	if err := encoder.Encode(dbinMetadata); err != nil {
 		fmt.Println("Error creating JSON:", err)
 		return
 	}
 
-	// Write the buffer to file
 	if err := os.WriteFile(*outputJSON, buffer.Bytes(), 0644); err != nil {
 		fmt.Println("Error writing JSON file:", err)
 		return
 	}
 
 	fmt.Printf("Successfully processed AppBundles and wrote output to %s\n", *outputJSON)
-}
-
-func ConvertComponentToItem(c Component) Item {
-	var downloadURL string
-	var srcURLs, webURLs []string
-
-	// Extract URLs
-	for _, u := range c.Url {
-		switch u.Type {
-		case "source":
-			srcURLs = append(srcURLs, sanitizeURL(u.Url))
-		case "homepage":
-			webURLs = append(webURLs, sanitizeURL(u.Url))
-		}
-	}
-
-	// Extract screenshots of type "source"
-	var screenshots []string
-	for _, s := range c.Screenshots {
-		fmt.Println(s.Image.Type)
-		//if s.Image.Type == "source" {
-		screenshots = append(screenshots, sanitizeURL(s.Image.Url))
-		//}
-	}
-
-	// Get the latest release version
-	var version string
-	if len(c.Releases.Release) > 0 {
-		version = c.Releases.Release[0].Version
-		version += " (may be inaccurate)"
-	}
-
-	// Extract content for name, summary, description, and keywords based on missing xml:lang attribute
-	var name, summary, LongDescription string
-	var keywords []string
-
-	for _, item := range c.Name {
-		if item.Lang == "" { // Default to English if xml:lang attribute is missing
-			name = sanitizeString(item.Content)
-			break
-		}
-	}
-
-	for _, item := range c.Summary {
-		if item.Lang == "" {
-			summary = sanitizeString(item.Content)
-			break
-		}
-	}
-
-	for _, item := range c.Description {
-		if item.Lang == "" {
-			// Only escape quotes and backslashes for JSON validity
-			content := strings.ReplaceAll(item.Content, "\\", "\\\\")
-			content = strings.ReplaceAll(content, "\"", "\\\"")
-			LongDescription = content
-			break
-		}
-	}
-
-	for _, item := range c.Keywords {
-		if item.Lang == "" || item.Lang == "en" {
-			keywords = append(keywords, sanitizeString(item.Content))
-		}
-	}
-
-	// Extract categories and convert them to comma-separated list
-	var categories []string
-	for _, item := range c.Categories {
-		categories = append(categories, item.Content)
-	}
-	categoryList := strings.Join(categories, ", ")
-
-	// Extract keywords and convert them to lowercase, comma-separated list
-	for _, keyword := range keywords {
-		keywords = append(keywords, keyword)
-	}
-	keywordList := strings.Join(keywords, ", ")
-
-	// Minify HTML content
-	minifiedSummary, err := minifyHTML(summary)
-	if err != nil {
-		fmt.Printf("Error minifying summary: %v\n", err)
-	}
-	summary = minifiedSummary
-
-	minifiedLongDescription, err := minifyHTML(LongDescription)
-	if err != nil {
-		fmt.Printf("Error minifying long_description: %v\n", err)
-	}
-	LongDescription = minifiedLongDescription
-
-	return Item{
-		PkgName:         name,
-		PkgId:           c.Id,
-		Description:     summary,
-		LongDescription: LongDescription,
-		Screenshots:     screenshots,
-		Version:         version,
-		DownloadURL:     downloadURL,
-		SrcURLs:         srcURLs,
-		WebURLs:         webURLs,
-		Category:        categoryList,
-		Keywords:        keywordList,
-		Notes:            []string{"Courtesy of AppBundleHUB"},
-	}
-}
-
-func writeComponentToFile(component Component, outputFile string) error {
-	singleComponent := Components{
-		XMLName:    xml.Name{Local: "components"},
-		Version:    "0.8",
-		Origin:     "flatpak",
-		Components: []Component{component},
-	}
-
-	xmlData, err := xml.MarshalIndent(singleComponent, "", "  ")
-	if err != nil {
-		return fmt.Errorf("error marshalling component to XML: %v", err)
-	}
-
-	return os.WriteFile(outputFile, xmlData, 0644)
-}
-
-// sanitizeString filters out non-alphanumeric and non-emoji characters
-func sanitizeString(input string) string {
-	// Define a regex pattern to match alphanumeric characters and common emoji ranges
-	re := regexp.MustCompile(`[^[[:print:]]+`)
-	return re.ReplaceAllString(input, "")
-}
-
-// sanitizeURL ensures that the URL is properly formatted and escaped
-func sanitizeURL(input string) string {
-	u, err := url.Parse(input)
-	if err != nil {
-		return ""
-	}
-	return u.String()
-}
-
-func minifyHTML(input string) (string, error) {
-	m := minify.New()
-	minifier := &html.Minifier{
-		KeepComments:            false,
-		KeepConditionalComments: false,
-		KeepDefaultAttrVals:     false,
-		KeepDocumentTags:        false,
-		KeepEndTags:             false,
-		KeepQuotes:              false,
-		KeepWhitespace:          false,
-	}
-	m.AddFunc("text/html", minifier.Minify)
-
-	var buf bytes.Buffer
-	if err := m.Minify("text/html", &buf, strings.NewReader(input)); err != nil {
-		return "", err
-	}
-	return buf.String(), nil
-}
-
-// computeB3SUM computes the Blake3 hash of the file at the given path.
-func computeB3SUM(path string) (string, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return "", fmt.Errorf("failed to open file %s: %v", path, err)
-	}
-	defer file.Close()
-
-	hasher := blake3.New()
-	if _, err := io.Copy(hasher, file); err != nil {
-		return "", fmt.Errorf("failed to compute Blake3 hash of %s: %v", path, err)
-	}
-
-	return hex.EncodeToString(hasher.Sum(nil)), nil
-}
-
-// computeSHA256 computes the SHA256 hash of the file at the given path.
-func computeSHA256(path string) (string, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return "", fmt.Errorf("failed to open file %s: %v", path, err)
-	}
-	defer file.Close()
-
-	hasher := sha256.New()
-	if _, err := io.Copy(hasher, file); err != nil {
-		return "", fmt.Errorf("failed to compute SHA256 hash of %s: %v", path, err)
-	}
-
-	return hex.EncodeToString(hasher.Sum(nil)), nil
 }
