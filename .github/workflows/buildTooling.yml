@@ -51,6 +51,7 @@ jobs:
           B3SUM_CHECKSUM="$(b3sum ./pelf | awk '{print $1}')"
           mv ./pelf "$GITHUB_WORKSPACE/dist/pelf_$(uname -m)"
           mv ./cmd/pelfCreator/pelfCreator "$GITHUB_WORKSPACE/dist/pelfCreator_$(uname -m)"
+          mv ./cmd/misc/appstream-helper/appstream-helper "$GITHUB_WORKSPACE/dist/appstream-helper_$(uname -m)"
           echo "RELEASE_TAG=$(date +%d%m%Y)-$B3SUM_CHECKSUM" >> $GITHUB_ENV
 
       - name: Upload artifact
