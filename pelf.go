@@ -81,15 +81,20 @@ type BuildInfo struct {
 }
 
 type RuntimeInfo struct {
-	AppBundleID          string `cbor:"appBundleID"`
-	PelfVersion          string `cbor:"pelfVersion"`
-	HostInfo             string `cbor:"hostInfo"`
-	FilesystemType       string `cbor:"filesystemType"`
-	Hash                 string `cbor:"hash"`
-	DisableRandomWorkDir bool   `cbor:"disableRandomWorkDir"`
+	AppBundleID          string `json:"appBundleID"`
+	PelfVersion          string `json:"pelfVersion"`
+	HostInfo             string `json:"hostInfo"`
+	FilesystemType       string `json:"filesystemType"`
+	Hash                 string `json:"hash"`
+	DisableRandomWorkDir bool   `json:"disableRandomWorkDir"`
 }
 
 type Config struct {
+	DoNotEmbedStaticTools bool
+	UseUPX                bool
+	PreferToolsInPath     bool
+	DisableRandomWorkDir  bool
+	AppImageCompat        bool
 	AppDir                string
 	AppBundleID           string
 	OutputFile            string
@@ -98,13 +103,9 @@ type Config struct {
 	FilesystemType        string
 	ArchivePath           string
 	Runtime               string
-	DoNotEmbedStaticTools bool
-	UseUPX                bool
-	RuntimeInfo           RuntimeInfo
-	PreferToolsInPath     bool
 	BinDepDir             string
-	DisableRandomWorkDir  bool
-	AppImageCompat        bool
+	CustomSections        []string
+	RuntimeInfo           RuntimeInfo
 }
 
 func lookPath(file string) (string, error) {
@@ -259,6 +260,7 @@ func main() {
 			&cli.BoolFlag{Name: "list-static-tools", Usage: "List all binary dependencies with their B3SUMs"},
 			&cli.BoolFlag{Name: "disable-use-random-workdir", Aliases: []string{"d"}, Usage: "Disable the use of a random working directory"},
 			&cli.BoolFlag{Name: "appimage-compat", Aliases: []string{"A"}, Usage: "Use AI as magic bytes for AppImage compatibility"},
+			&cli.StringSliceFlag{Name: "add-runtime-info-section", Usage: "Add a custom section to runtime info in format '.sectionName:contentsOfSection'"},
 		},
 		Action: func(ctx context.Context, c *cli.Command) error {
 			config := &Config{
@@ -273,6 +275,7 @@ func main() {
 				PreferToolsInPath:     c.Bool("prefer-tools-in-path"),
 				DisableRandomWorkDir:  c.Bool("disable-use-random-workdir"),
 				AppImageCompat:        c.Bool("appimage-compat"),
+				CustomSections:        c.StringSlice("add-runtime-info-section"),
 			}
 
 			var err error
@@ -643,6 +646,32 @@ func createSelfExtractingArchive(config *Config, workDir string, buildInfo Build
 		return fmt.Errorf("failed to marshal RuntimeInfo to CBOR: %w", err)
 	}
 
+	// Handle custom sections
+	if len(config.CustomSections) > 0 {
+		var runtimeInfoMap map[string]interface{}
+		if err := cbor.Unmarshal(runtimeInfoCBOR, &runtimeInfoMap); err != nil {
+			return fmt.Errorf("failed to unmarshal RuntimeInfo for modification: %w", err)
+		}
+
+		for _, section := range config.CustomSections {
+			parts := strings.SplitN(section, ":", 2)
+			if len(parts) != 2 {
+				return fmt.Errorf("invalid section format, expected '.sectionName:contents', got: %s", section)
+			}
+			sectionName := strings.TrimSpace(parts[0])
+			if !strings.HasPrefix(sectionName, ".") {
+				return fmt.Errorf("section name must start with '.', got: %s", sectionName)
+			}
+			runtimeInfoMap[sectionName[1:]] = parts[1]
+		}
+
+		// Remarshal the modified data
+		runtimeInfoCBOR, err = cbor.Marshal(runtimeInfoMap)
+		if err != nil {
+			return fmt.Errorf("failed to remarshal modified RuntimeInfo: %w", err)
+		}
+	}
+
 	runtimeInfoTempFile, err := os.CreateTemp("", "runtime_info_*.cbor")
 	if err != nil {
 		return fmt.Errorf("failed to create tempfile for RuntimeInfo CBOR: %w", err)
@@ -662,8 +691,8 @@ func createSelfExtractingArchive(config *Config, workDir string, buildInfo Build
 	}
 
 	objcopyCmd := exec.Command(objcopyPath,
-		"--add-section", ".static_tools="+filepath.Join(workDir, "static.tar.zst"),
-		"--add-section", ".runtime_info="+runtimeInfoTempFile.Name(),
+		"--add-section", ".pbundle_static_tools="+filepath.Join(workDir, "static.tar.zst"),
+		"--add-section", ".pbundle_runtime_info="+runtimeInfoTempFile.Name(),
 		config.OutputFile,
 	)
 
@@ -693,35 +722,20 @@ func createSelfExtractingArchive(config *Config, workDir string, buildInfo Build
 	}
 	defer fsFile.Close()
 
-	// Use a buffered copy for large files
-	buf := make([]byte, 4*1024*1024) // 4MB buffer
+	buf := make([]byte, 4*1024*1024)
 	written, err := io.CopyBuffer(outFile, fsFile, buf)
 	if err != nil {
 		return fmt.Errorf("failed to append archive to output file: %w", err)
 	}
-
-	// Ensure all data is flushed to disk
 	if err := outFile.Sync(); err != nil {
 		return fmt.Errorf("failed to sync output file: %w", err)
 	}
-
-	// Verify the correct amount of data was written
 	if written != expectedSize {
 		return fmt.Errorf("failed to append entire archive: expected %d bytes, wrote %d bytes", expectedSize, written)
 	}
-
 	fmt.Printf("Successfully appended %d bytes to output file\n", written)
 
-	// Remove xattr if it exists
 	xattr.FRemove(outFile, "user.RuntimeConfig")
-
-	// Verify the final file exists and has the expected size
-	outputInfo, err := os.Stat(config.OutputFile)
-	if err != nil {
-		return fmt.Errorf("failed to stat output file after creation: %w", err)
-	}
-	fmt.Printf("Final output file size: %d bytes\n", outputInfo.Size())
-
 	return nil
 }
 

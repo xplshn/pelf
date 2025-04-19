@@ -4,6 +4,8 @@
 work/
 exp/
 appbundle-runtime/appbundle-runtime
+cmd/pelfCreator/pelfCreator
+cmd/misc/appstream-helper/appstream-helper
 binaryDependencies
 binaryDependencies.tar.zst
 runtime

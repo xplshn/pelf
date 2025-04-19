@@ -151,7 +151,7 @@ func handleRuntimeFlags(fh *fileHandler, args *[]string, cfg *RuntimeConfig) err
 		return fmt.Errorf("!no_return")
 
 	case "--pbundle_extract_and_run", "--appimage-extract-and-run":
-		cfg.doNotMount = true
+		cfg.mountOrExtract = 1
 		fs, err := checkDeps(cfg, fh)
 		if err != nil {
 			return err
@@ -164,7 +164,7 @@ func handleRuntimeFlags(fh *fileHandler, args *[]string, cfg *RuntimeConfig) err
 		return fmt.Errorf("!no_return")
 
 	case "--pbundle_mount", "--appimage-mount":
-		cfg.doNotMount = false
+		cfg.mountOrExtract = 0
 		cfg.noCleanup = false
 
 		if len(*args) == 2 && (*args)[1] != "" {

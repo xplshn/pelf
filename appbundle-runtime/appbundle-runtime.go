@@ -4,22 +4,22 @@ import (
 	"archive/tar"
 	"bytes"
 	"debug/elf"
-	"encoding/hex"
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
-	"strconv"
-	"runtime"
 
-	"github.com/fxamacker/cbor/v2"
 	"github.com/emmansun/base64"
+	"github.com/fxamacker/cbor/v2"
 	"github.com/klauspost/compress/zstd"
 	"github.com/pkg/xattr"
 	"pgregory.net/rand"
@@ -31,10 +31,10 @@ const (
 	blueColor    = "\x1b[0;34m"
 	resetColor   = "\x1b[0m"
 
-	DWARFS_CACHESIZE = "256M"
-	DWARFS_BLOCKSIZE = "512K"
-	DWARFS_READAHEAD = "32M"
-	DWARFS_TIDY_STRATEGY  = "tidy_strategy=time,tidy_interval=2s,tidy_max_age=10s,seq_detector=1"
+	DWARFS_CACHESIZE     = "256M"
+	DWARFS_BLOCKSIZE     = "512K"
+	DWARFS_READAHEAD     = "32M"
+	DWARFS_TIDY_STRATEGY = "tidy_strategy=time,tidy_interval=2s,tidy_max_age=10s,seq_detector=1"
 )
 
 var globalPath = os.Getenv("PATH")
@@ -54,7 +54,7 @@ type RuntimeConfig struct {
 	hash                 string
 	elfFileSize          uint64
 	archiveOffset        uint64
-	doNotMount           bool
+	mountOrExtract       uint8
 	noCleanup            bool
 	disableRandomWorkDir bool
 }
@@ -101,7 +101,7 @@ var Filesystems = []*Filesystem{
 			}
 			args := []string{"-d", cfg.mountDir, "-o", fmt.Sprintf("%d", cfg.archiveOffset), cfg.selfPath}
 			if query != "" {
-				for _, file := range strings.Split(query, " ") {
+				for file := range strings.SplitSeq(query, " ") {
 					args = append(args, "-e", file)
 				}
 			}
@@ -142,7 +142,7 @@ var Filesystems = []*Filesystem{
 				"--output", cfg.mountDir,
 			}
 			if query != "" {
-				for _, pattern := range strings.Split(query, " ") {
+				for pattern := range strings.SplitSeq(query, " ") {
 					args = append(args, "--pattern", pattern)
 				}
 			}
@@ -159,7 +159,7 @@ func mountImage(cfg *RuntimeConfig, fh *fileHandler, fs *Filesystem) error {
 			return fmt.Errorf("failed to create mount directory %s: %v", cfg.mountDir, err)
 		}
 
-		if err := os.WriteFile(pidFile, []byte(fmt.Sprintf("%d", os.Getpid())), 0644); err != nil {
+		if err := os.WriteFile(pidFile, fmt.Appendf(nil, "%d", os.Getpid()), 0644); err != nil {
 			logError("Failed to write PID file", err, cfg)
 		}
 
@@ -241,19 +241,19 @@ func (f *fileHandler) readPlaceholdersAndMarkers(cfg *RuntimeConfig) error {
 		return fmt.Errorf("parse ELF: %w", err)
 	}
 
-	runtimeInfoSection := elfFile.Section(".runtime_info")
+	runtimeInfoSection := elfFile.Section(".pbundle_runtime_info")
 	if runtimeInfoSection == nil {
-		return fmt.Errorf("runtime_info section not found")
+		return fmt.Errorf(".pbundle_runtime_info section not found")
 	}
 
 	runtimeInfoData, err := runtimeInfoSection.Data()
 	if err != nil {
-		return fmt.Errorf("failed to read runtime_info section: %w", err)
+		return fmt.Errorf("failed to read .pbundle_runtime_info section: %w", err)
 	}
 
-	var runtimeInfo map[string]interface{}
+	var runtimeInfo map[string]any
 	if err := cbor.Unmarshal(runtimeInfoData, &runtimeInfo); err != nil {
-		return fmt.Errorf("failed to parse runtime_info CBOR: %w", err)
+		return fmt.Errorf("failed to parse .pbundle_runtime_info CBOR: %w", err)
 	}
 
 	cfg.appBundleFS = runtimeInfo["filesystemType"].(string)
@@ -263,6 +263,12 @@ func (f *fileHandler) readPlaceholdersAndMarkers(cfg *RuntimeConfig) error {
 	cfg.hash = runtimeInfo["hash"].(string)
 	cfg.disableRandomWorkDir = runtimeInfo["disableRandomWorkDir"].(bool)
 	cfg.archiveOffset = cfg.elfFileSize
+
+	// Set mountOrExtract with default value 2 if not present in CBOR data
+	cfg.mountOrExtract = uint8(2)
+	if mountOrExtract, ok := runtimeInfo["mountOrExtract"].(uint8); ok {
+		cfg.mountOrExtract = mountOrExtract
+	}
 
 	xattrData := fmt.Sprintf("%s\n%d\n%s\n%s\n%s\n%s\n%s\n",
 		cfg.appBundleFS, cfg.archiveOffset, cfg.exeName, cfg.pelfVersion, cfg.pelfHost, cfg.hash, T(cfg.disableRandomWorkDir, "1", ""))
@@ -333,9 +339,9 @@ func initConfig() (*RuntimeConfig, *fileHandler, error) {
 		exeName:              "",
 		poolDir:              filepath.Join(os.TempDir(), ".pelfbundles"),
 		selfPath:             getSelfPath(),
-		doNotMount:           T(os.Getenv("APPIMAGE_EXTRACT_AND_RUN") == "1" || os.Getenv("PBUNDLE_EXTRACT_AND_RUN") == "1", true, false),
 		disableRandomWorkDir: T(os.Getenv("PBUNDLE_DISABLE_RANDOM_WORKDIR") == "1", true, false),
 		noCleanup:            false,
+		mountOrExtract:       2, // Default value for mountOrExtract
 	}
 
 	fh, err := newFileHandler(cfg.selfPath)
@@ -384,11 +390,13 @@ func getWorkDir(cfg *RuntimeConfig, fh *fileHandler) string {
 	envKey := cfg.rExeName + "_workDir"
 	workDir := os.Getenv(envKey)
 
-	if cfg.disableRandomWorkDir {
-		workDir = filepath.Join(cfg.poolDir, "pbundle_"+cfg.rExeName+"_"+cfg.hash[:8])
-		cfg.noCleanup = true
-	} else {
-		workDir = filepath.Join(cfg.poolDir, "pbundle_"+cfg.rExeName+"_"+generateRandomString(8))
+	if workDir == "" {
+		if cfg.disableRandomWorkDir {
+			workDir = filepath.Join(cfg.poolDir, "pbundle_"+cfg.rExeName+"_"+cfg.hash[:8])
+			cfg.noCleanup = true
+		} else {
+			workDir = filepath.Join(cfg.poolDir, "pbundle_"+cfg.rExeName+"_"+generateRandomString(8))
+		}
 	}
 
 	return workDir
@@ -418,7 +426,7 @@ func (f *fileHandler) extractStaticTools(cfg *RuntimeConfig) error {
 		return fmt.Errorf("parse ELF: %w", err)
 	}
 
-	staticToolsSection := elfFile.Section(".static_tools")
+	staticToolsSection := elfFile.Section(".pbundle_static_tools")
 	if staticToolsSection == nil {
 		return fmt.Errorf("static_tools section not found")
 	}
@@ -474,36 +482,36 @@ func (f *fileHandler) extractStaticTools(cfg *RuntimeConfig) error {
 
 		switch hdr.Typeflag {
 		case tar.TypeDir:
-		    if err := os.MkdirAll(fpath, 0755); err != nil {
-		        return fmt.Errorf("mkdir %s: %w", fpath, err)
-		    }
+			if err := os.MkdirAll(fpath, 0755); err != nil {
+				return fmt.Errorf("mkdir %s: %w", fpath, err)
+			}
 		case tar.TypeReg:
-		    if err := os.MkdirAll(filepath.Dir(fpath), 0755); err != nil {
-		        return fmt.Errorf("mkdir parent: %w", err)
-		    }
-		    f, err := os.OpenFile(fpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.FileMode(hdr.Mode))
-		    if err != nil {
-		        return fmt.Errorf("create: %w", err)
-		    }
-		    _, err = io.Copy(f, tr)
-		    f.Close()
-		    if err != nil {
-		        return fmt.Errorf("write: %w", err)
-		    }
+			if err := os.MkdirAll(filepath.Dir(fpath), 0755); err != nil {
+				return fmt.Errorf("mkdir parent: %w", err)
+			}
+			f, err := os.OpenFile(fpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.FileMode(hdr.Mode))
+			if err != nil {
+				return fmt.Errorf("create: %w", err)
+			}
+			_, err = io.Copy(f, tr)
+			f.Close()
+			if err != nil {
+				return fmt.Errorf("write: %w", err)
+			}
 		case tar.TypeSymlink:
-		    if err := os.MkdirAll(filepath.Dir(fpath), 0755); err != nil {
-		        return fmt.Errorf("mkdir parent: %w", err)
-		    }
-		    if err := os.Symlink(hdr.Linkname, fpath); err != nil {
-		        return fmt.Errorf("symlink: %w", err)
-		    }
+			if err := os.MkdirAll(filepath.Dir(fpath), 0755); err != nil {
+				return fmt.Errorf("mkdir parent: %w", err)
+			}
+			if err := os.Symlink(hdr.Linkname, fpath); err != nil {
+				return fmt.Errorf("symlink: %w", err)
+			}
 		case tar.TypeLink:
-		    if err := os.MkdirAll(filepath.Dir(fpath), 0755); err != nil {
-		        return fmt.Errorf("mkdir parent: %w", err)
-		    }
-		    if err := os.Link(hdr.Linkname, fpath); err != nil {
-		        return fmt.Errorf("hardlink: %w", err)
-		    }
+			if err := os.MkdirAll(filepath.Dir(fpath), 0755); err != nil {
+				return fmt.Errorf("mkdir parent: %w", err)
+			}
+			if err := os.Link(hdr.Linkname, fpath); err != nil {
+				return fmt.Errorf("hardlink: %w", err)
+			}
 		}
 	}
 
@@ -621,13 +629,13 @@ func cleanup(cfg *RuntimeConfig) {
 	if cfg.noCleanup {
 		return
 	}
-	cmd := exec.Command(os.Args[0], "--pbundle_internal_Cleanup", cfg.mountDir, cfg.poolDir, cfg.workDir, T(cfg.doNotMount == true, "true", ""))
+	cmd := exec.Command(os.Args[0], "--pbundle_internal_Cleanup", cfg.mountDir, cfg.poolDir, cfg.workDir, T(cfg.mountOrExtract == 1, "true", ""))
 	cmd.Stdin = nil
 	cmd.Stdout = nil
 	cmd.Stderr = nil
 	if err := cmd.Start(); err != nil {
- 		panic(err)
- 	}
+		panic(err)
+	}
 }
 
 func isMounted(dir string) bool {
@@ -695,7 +703,7 @@ func main() {
 		doNotMount := os.Args[5]
 
 		if doNotMount != "true" {
-			for i := 0; i < 5; i++ {
+			for range 5 {
 				if !isMounted(mountDir) {
 					break
 				}
@@ -758,14 +766,45 @@ func main() {
 		if err != nil {
 			logError("Unexpected failure when checking the availability of the AppBundle's dependencies", err, cfg)
 		}
-		if cfg.doNotMount {
-			if err := extractImage(cfg, fh, fs, ""); err != nil {
+
+		switch cfg.mountOrExtract {
+		case 0:
+			// FUSE mounting only
+			if err := mountImage(cfg, fh, fs); err != nil {
 				logError("Failed to mount image", err, cfg)
 			}
+		case 1:
+			// Do not use FUSE mounting, but extract and run
+			if err := extractImage(cfg, fh, fs, ""); err != nil {
+				logError("Failed to extract image", err, cfg)
+			}
+		case 2:
+			// Try to use FUSE mounting and if it is unavailable extract and run
+			if err := mountImage(cfg, fh, fs); err != nil {
+				logWarning("FUSE mounting failed, falling back to extraction")
+				if err := extractImage(cfg, fh, fs, ""); err != nil {
+					logError("Failed to extract image", err, cfg)
+				}
+			}
+		case 3:
+			// As above, but if the image size is less than 350 MB (default)
+			const defaultSizeLimit = 350 * 1024 * 1024
+			if cfg.elfFileSize < defaultSizeLimit {
+				if err := mountImage(cfg, fh, fs); err != nil {
+					logWarning("FUSE mounting failed, falling back to extraction")
+					if err := extractImage(cfg, fh, fs, ""); err != nil {
+						logError("Failed to extract image", err, cfg)
+					}
+				}
+			} else {
+				if err := extractImage(cfg, fh, fs, ""); err != nil {
+					logError("Failed to extract image", err, cfg)
+				}
+			}
+		default:
+			logError("Invalid value for mountOrExtract", nil, cfg)
 		}
-		if err := mountImage(cfg, fh, fs); err != nil {
-			logError("Failed to mount image", err, cfg)
-		}
+
 		_ = executeFile(args, cfg)
 		cleanup(cfg)
 	}
@@ -791,7 +830,7 @@ func lookPath(file string, pathenv string) (string, error) {
 	if pathenv == "" {
 		return "", errNotFound
 	}
-	for _, dir := range strings.Split(pathenv, ":") {
+	for dir := range strings.SplitSeq(pathenv, ":") {
 		if dir == "" {
 			dir = "."
 		}
@@ -819,13 +858,43 @@ func mountOrExtract(cfg *RuntimeConfig, fh *fileHandler) {
 	if err != nil {
 		logError("Unexpected failure when checking the availability of the AppBundle's dependencies", err, cfg)
 	}
-	if cfg.doNotMount {
-		if err := extractImage(cfg, fh, fs, ""); err != nil {
+
+	switch cfg.mountOrExtract {
+	case 0:
+		// FUSE mounting only
+		if err := mountImage(cfg, fh, fs); err != nil {
 			logError("Failed to mount image", err, cfg)
 		}
-	}
-	if err := mountImage(cfg, fh, fs); err != nil {
-		logError("Failed to mount image", err, cfg)
+	case 1:
+		// Do not use FUSE mounting, but extract and run
+		if err := extractImage(cfg, fh, fs, ""); err != nil {
+			logError("Failed to extract image", err, cfg)
+		}
+	case 2:
+		// Try to use FUSE mounting and if it is unavailable extract and run
+		if err := mountImage(cfg, fh, fs); err != nil {
+			logWarning("FUSE mounting failed, falling back to extraction")
+			if err := extractImage(cfg, fh, fs, ""); err != nil {
+				logError("Failed to extract image", err, cfg)
+			}
+		}
+	case 3:
+		// As above, but if the image size is less than 350 MB (default)
+		const defaultSizeLimit = 350 * 1024 * 1024
+		if cfg.elfFileSize < defaultSizeLimit {
+			if err := mountImage(cfg, fh, fs); err != nil {
+				logWarning("FUSE mounting failed, falling back to extraction")
+				if err := extractImage(cfg, fh, fs, ""); err != nil {
+					logError("Failed to extract image", err, cfg)
+				}
+			}
+		} else {
+			if err := extractImage(cfg, fh, fs, ""); err != nil {
+				logError("Failed to extract image", err, cfg)
+			}
+		}
+	default:
+		logError("Invalid value for mountOrExtract", nil, cfg)
 	}
 }
 
@@ -835,4 +904,3 @@ func T[T any](cond bool, vtrue, vfalse T) T {
 	}
 	return vfalse
 }
-
