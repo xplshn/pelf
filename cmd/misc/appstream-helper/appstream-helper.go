@@ -62,9 +62,10 @@ type DbinMetadata map[string][]binaryEntry
 type AppStreamMetadata struct {
 	AppId           string   `json:"app_id"`
 	Name            string   `json:"name,omitempty"`
-	Summary         string   `json:"summary,omitempty"`
 	Categories      string   `json:"categories"`
+	Summary         string   `json:"summary,omitempty"`
 	RichDescription string   `json:"rich_description"`
+	Version         string   `json:"version"`
 	Icons           []string `json:"icons"`
 	Screenshots     []string `json:"screenshots"`
 }
@@ -214,15 +215,41 @@ func generatePkgId(srcUrl string, tag string) string {
 	return baseUrl
 }
 
+func generateMarkdown(dbinMetadata DbinMetadata) (string, error) {
+	var mdBuffer bytes.Buffer
+	mdBuffer.WriteString("| appname | description | site | download | version |\n")
+	mdBuffer.WriteString("|---------|-------------|------|----------|---------|\n")
+
+	for _, entries := range dbinMetadata {
+		for _, entry := range entries {
+			siteURL := ""
+			if len(entry.SrcURLs) > 0 {
+				siteURL = entry.SrcURLs[0]
+			} else if len(entry.WebURLs) > 0 {
+				siteURL = entry.WebURLs[0]
+			}
+			mdBuffer.WriteString(fmt.Sprintf("| %s | %s | %s | %s | %s |\n",
+				entry.Pkg,
+				entry.Description,
+				siteURL,
+				entry.DownloadURL,
+				entry.Version,
+			))
+		}
+	}
+	return mdBuffer.String(), nil
+}
+
 func main() {
 	inputDir := flag.String("input-dir", "", "Path to the input directory containing .AppBundle files")
 	outputJSON := flag.String("output-file", "", "Path to the output JSON file")
+	outputMarkdown := flag.String("output-markdown", "", "Path to the output Markdown file")
 	downloadPrefix := flag.String("download-prefix", "https://example.com/downloads/", "Prefix for download URLs")
 	repoName := flag.String("repo-name", "", "Name of the repository")
 	flag.Parse()
 
-	if *inputDir == "" || *outputJSON == "" || *repoName == "" {
-		fmt.Println("Usage: --input-dir <input_directory> --output-dir <output_directory> --output-file <output_file.json> --download-prefix <url> --repo-name <repo_name>")
+	if *inputDir == "" || *repoName == "" {
+		fmt.Println("Usage: --input-dir <input_directory> --output-file <output_file.json> --download-prefix <url> --repo-name <repo_name> [--output-markdown <output_file.md>]")
 		return
 	}
 
@@ -251,7 +278,6 @@ func main() {
 				fmt.Printf("Error computing hashes for %s: %v\n", path, err)
 				return nil
 			}
-
 
 			// Extract the base filename without date and author
 			baseFilename := filepath.Base(path)
@@ -305,6 +331,11 @@ func main() {
 					item.Categories = appData.Categories
 				}
 
+				// TODO:
+				if appData.Version != "" {
+					item.Version = appData.Version
+				}
+
 				// Set app_id because AppStream data is available
 				item.AppstreamId = runtimeInfo.AppBundleID
 
@@ -323,20 +354,38 @@ func main() {
 	}
 
 	// Generate the output JSON
-	buffer := &bytes.Buffer{}
-	encoder := json.NewEncoder(buffer)
-	encoder.SetEscapeHTML(false)
-	encoder.SetIndent("", "  ")
+	if *outputJSON != "" {
+		buffer := &bytes.Buffer{}
+		encoder := json.NewEncoder(buffer)
+		encoder.SetEscapeHTML(false)
+		encoder.SetIndent("", "  ")
 
-	if err := encoder.Encode(dbinMetadata); err != nil {
-		fmt.Println("Error creating JSON:", err)
-		return
+		if err := encoder.Encode(dbinMetadata); err != nil {
+			fmt.Println("Error creating JSON:", err)
+			return
+		}
+
+		if err := os.WriteFile(*outputJSON, buffer.Bytes(), 0644); err != nil {
+			fmt.Println("Error writing JSON file:", err)
+			return
+		}
+
+		fmt.Printf("Successfully wrote JSON output to %s\n", *outputJSON)
 	}
 
-	if err := os.WriteFile(*outputJSON, buffer.Bytes(), 0644); err != nil {
-		fmt.Println("Error writing JSON file:", err)
-		return
-	}
+	// Generate the output Markdown
+	if *outputMarkdown != "" {
+		markdownContent, err := generateMarkdown(dbinMetadata)
+		if err != nil {
+			fmt.Println("Error generating Markdown:", err)
+			return
+		}
 
-	fmt.Printf("Successfully processed AppBundles and wrote output to %s\n", *outputJSON)
+		if err := os.WriteFile(*outputMarkdown, []byte(markdownContent), 0644); err != nil {
+			fmt.Println("Error writing Markdown file:", err)
+			return
+		}
+
+		fmt.Printf("Successfully wrote Markdown output to %s\n", *outputMarkdown)
+	}
 }
