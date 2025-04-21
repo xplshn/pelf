@@ -179,7 +179,7 @@ handle_dependencies() {
 
     unnappear rm "$DBIN_INSTALL_DIR/dwarfs" "$DBIN_INSTALL_DIR/dwarfsextract"
     curl -sLl "https://github.com/mhx/dwarfs/releases/download/v0.12.2/dwarfs-fuse-extract-0.12.2-Linux-$(uname -m)" -o "$DBIN_INSTALL_DIR/dwarfs"
-    chmod +x "$DBIN_INSTALL_DIR/dwarfs" "$DBIN_INSTALL_DIR/dwarfsextract"
+    chmod +x "$DBIN_INSTALL_DIR/dwarfs"
 
     unnappear rm "$DBIN_INSTALL_DIR/squashfuse_ll"
     curl -sLl "https://github.com/VHSgunzo/squashfuse-static/releases/latest/download/squashfuse_ll-musl-mimalloc-$(uname -m)" -o "$DBIN_INSTALL_DIR/squashfuse_ll"
@@ -199,8 +199,8 @@ handle_dependencies() {
         [ -f ./dwarfs-tools ] && [ ! -h ./dwarfs-tools ] && [ ! -f ./dwarfs ] && {
             mv ./dwarfs-tools ./dwarfs
             ln -sfT dwarfs mkdwarfs
-            upx dwarfs
         }
+        upx -d dwarfs
         ln -sfT dwarfs dwarfsextract
         upx mksquashfs
         upx objcopy
