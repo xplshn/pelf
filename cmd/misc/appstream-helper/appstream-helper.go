@@ -14,6 +14,7 @@ import (
 	"crypto/sha256"
 	"net/http"
 	"net/url"
+	"sort"
 
 	"github.com/zeebo/blake3"
 	"github.com/fxamacker/cbor/v2"
@@ -220,30 +221,39 @@ func generateMarkdown(dbinMetadata DbinMetadata) (string, error) {
 	mdBuffer.WriteString("| appname | description | site | download | version |\n")
 	mdBuffer.WriteString("|---------|-------------|------|----------|---------|\n")
 
+	var allEntries []binaryEntry
 	for _, entries := range dbinMetadata {
-		for _, entry := range entries {
-			siteURL := ""
-			if len(entry.SrcURLs) > 0 {
-				siteURL = entry.SrcURLs[0]
-			} else if len(entry.WebURLs) > 0 {
-				siteURL = entry.WebURLs[0]
-			} else {
-				siteURL = "https://github.com/xplshn/AppBundleHUB"
-			}
+		allEntries = append(allEntries, entries...)
+	}
 
-			version := entry.Version
-			if version == "" && entry.BuildDate != "" {
-				version = entry.BuildDate
-			}
+	// Sort entries by pkg_name (lowercased)
+	sort.Slice(allEntries, func(i, j int) bool {
+		return strings.ToLower(allEntries[i].Name) < strings.ToLower(allEntries[j].Name)
+	})
 
-			mdBuffer.WriteString(fmt.Sprintf("| %s | %s | %s | %s | %s |\n",
-				entry.Pkg,
-				ternary(entry.Description != "", entry.Description, "not_available"),
-				ternary(siteURL != "", siteURL, "not_available"),
-				entry.DownloadURL,
-				ternary(version != "", version, "not_available"),
-			))
+	// Generate markdown content
+	for _, entry := range allEntries {
+		siteURL := ""
+		if len(entry.SrcURLs) > 0 {
+			siteURL = entry.SrcURLs[0]
+		} else if len(entry.WebURLs) > 0 {
+			siteURL = entry.WebURLs[0]
+		} else {
+			siteURL = "https://github.com/xplshn/AppBundleHUB"
 		}
+
+		version := entry.Version
+		if version == "" && entry.BuildDate != "" {
+			version = entry.BuildDate
+		}
+
+		mdBuffer.WriteString(fmt.Sprintf("| %s | %s | %s | %s | %s |\n",
+			entry.Name,
+			ternary(entry.Description != "", entry.Description, "not_available"),
+			ternary(siteURL != "", siteURL, "not_available"),
+			entry.DownloadURL,
+			ternary(version != "", version, "not_available"),
+		))
 	}
 	return mdBuffer.String(), nil
 }
