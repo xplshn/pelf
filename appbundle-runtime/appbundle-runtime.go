@@ -262,13 +262,8 @@ func (f *fileHandler) readPlaceholdersAndMarkers(cfg *RuntimeConfig) error {
 	cfg.pelfHost = runtimeInfo["hostInfo"].(string)
 	cfg.hash = runtimeInfo["hash"].(string)
 	cfg.disableRandomWorkDir = runtimeInfo["disableRandomWorkDir"].(bool)
+	cfg.mountOrExtract = runtimeInfo["mountOrExtract"].(uint8)
 	cfg.archiveOffset = cfg.elfFileSize
-
-	// Set mountOrExtract with default value 2 if not present in CBOR data
-	cfg.mountOrExtract = uint8(2)
-	if mountOrExtract, ok := runtimeInfo["mountOrExtract"].(uint8); ok {
-		cfg.mountOrExtract = mountOrExtract
-	}
 
 	xattrData := fmt.Sprintf("%s\n%d\n%s\n%s\n%s\n%s\n%s\n",
 		cfg.appBundleFS, cfg.archiveOffset, cfg.exeName, cfg.pelfVersion, cfg.pelfHost, cfg.hash, T(cfg.disableRandomWorkDir, "1", ""))
@@ -789,17 +784,15 @@ func main() {
 		case 3:
 			// As above, but if the image size is less than 350 MB (default)
 			const defaultSizeLimit = 350 * 1024 * 1024
-			if cfg.elfFileSize < defaultSizeLimit {
-				if err := mountImage(cfg, fh, fs); err != nil {
-					logWarning("FUSE mounting failed, falling back to extraction")
-					if err := extractImage(cfg, fh, fs, ""); err != nil {
-						logError("Failed to extract image", err, cfg)
-					}
-				}
-			} else {
+			if err := mountImage(cfg, fh, fs); err != nil {
+				logWarning("FUSE mounting failed, falling back to extraction")
+			}
+			if cfg.elfFileSize <= defaultSizeLimit {
 				if err := extractImage(cfg, fh, fs, ""); err != nil {
 					logError("Failed to extract image", err, cfg)
 				}
+			} else {
+				logError("Refusing to fallback to Extract & Run mode.", fmt.Errorf("Size of AppBundle falls outside of allowed size threshold, %d", defaultSizeLimit), cfg)
 			}
 		default:
 			logError("Invalid value for mountOrExtract", nil, cfg)

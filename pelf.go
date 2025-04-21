@@ -87,6 +87,7 @@ type RuntimeInfo struct {
 	FilesystemType       string `json:"filesystemType"`
 	Hash                 string `json:"hash"`
 	DisableRandomWorkDir bool   `json:"disableRandomWorkDir"`
+	MountOrExtract       uint8  `json:"mountOrExtract"`
 }
 
 type Config struct {
@@ -94,6 +95,7 @@ type Config struct {
 	UseUPX                bool
 	PreferToolsInPath     bool
 	DisableRandomWorkDir  bool
+	MountOrExtract        bool
 	AppImageCompat        bool
 	AppDir                string
 	AppBundleID           string
@@ -106,6 +108,7 @@ type Config struct {
 	BinDepDir             string
 	CustomSections        []string
 	RuntimeInfo           RuntimeInfo
+	RunBehavior           uint8
 }
 
 func lookPath(file string) (string, error) {
@@ -242,6 +245,13 @@ func getFilesystemTypeFromOutputFile(outputFile string) string {
 	return "squashfs"
 }
 
+func validateRunBehavior(ctx context.Context, cmd *cli.Command, value uint64) error {
+	if value > 3 {
+		return fmt.Errorf("run-behavior must be one of 0, 1, 2, or 4")
+	}
+	return nil
+}
+
 func main() {
 	app := &cli.Command{
 		Name:  "pelf",
@@ -261,6 +271,7 @@ func main() {
 			&cli.BoolFlag{Name: "disable-use-random-workdir", Aliases: []string{"d"}, Usage: "Disable the use of a random working directory"},
 			&cli.BoolFlag{Name: "appimage-compat", Aliases: []string{"A"}, Usage: "Use AI as magic bytes for AppImage compatibility"},
 			&cli.StringSliceFlag{Name: "add-runtime-info-section", Usage: "Add a custom section to runtime info in format '.sectionName:contentsOfSection'"},
+			&cli.UintFlag{Name: "run-behavior", Aliases: []string{"b"}, Usage: "Specify the run behavior of the output AppBundle (0[Only FUSE mounting], 1[Only Extract & Run], 2[Try FUSE, fallback to Extract & Run], 3[2, but only if the file is <= 350MB])", Value: 3, Action: validateRunBehavior},
 		},
 		Action: func(ctx context.Context, c *cli.Command) error {
 			config := &Config{
@@ -276,6 +287,7 @@ func main() {
 				DisableRandomWorkDir:  c.Bool("disable-use-random-workdir"),
 				AppImageCompat:        c.Bool("appimage-compat"),
 				CustomSections:        c.StringSlice("add-runtime-info-section"),
+				RunBehavior:           uint8(c.Uint("run-behavior")),
 			}
 
 			var err error
@@ -299,7 +311,7 @@ func main() {
 				config.FilesystemType = c.String("filesystem")
 			}
 
-			if err := initRuntimeInfo(&config.RuntimeInfo, config.FilesystemType, config.AppBundleID, config.DisableRandomWorkDir); err != nil {
+			if err := initRuntimeInfo(&config.RuntimeInfo, config.FilesystemType, config.AppBundleID, config.DisableRandomWorkDir, config.RunBehavior); err != nil {
 				return err
 			}
 
@@ -314,7 +326,7 @@ func main() {
 	}
 }
 
-func initRuntimeInfo(runtimeInfo *RuntimeInfo, filesystemType, appBundleID string, disableRandomWorkDir bool) error {
+func initRuntimeInfo(runtimeInfo *RuntimeInfo, filesystemType, appBundleID string, disableRandomWorkDir bool, runBehavior uint8) error {
 	uname := unix.Utsname{}
 	if err := unix.Uname(&uname); err != nil {
 		return err
@@ -334,6 +346,7 @@ func initRuntimeInfo(runtimeInfo *RuntimeInfo, filesystemType, appBundleID strin
 		FilesystemType:       filesystemType,
 		Hash:                 "",
 		DisableRandomWorkDir: disableRandomWorkDir,
+		MountOrExtract:       runBehavior,
 	}
 
 	return nil
