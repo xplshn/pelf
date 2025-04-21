@@ -31,10 +31,11 @@ const (
 	blueColor    = "\x1b[0;34m"
 	resetColor   = "\x1b[0m"
 
-	DWARFS_CACHESIZE     = "256M"
-	DWARFS_BLOCKSIZE     = "512K"
-	DWARFS_READAHEAD     = "32M"
-	DWARFS_TIDY_STRATEGY = "tidy_strategy=time,tidy_interval=2s,tidy_max_age=10s,seq_detector=1"
+	DWARFS_CACHESIZE       = "256M"
+	DWARFS_BLOCKSIZE       = "512K"
+	DWARFS_READAHEAD       = "32M"
+	DWARFS_BLOCK_ALLOCATOR = "mmap"
+	DWARFS_TIDY_STRATEGY   = "tidy_strategy=time,tidy_interval=2s,tidy_max_age=10s,seq_detector=1"
 )
 
 var globalPath = os.Getenv("PATH")
@@ -119,7 +120,7 @@ var Filesystems = []*Filesystem{
 			args := []string{
 				"-o", "ro,nodev,noatime",
 				"-o", "cache_files,no_cache_image,clone_fd",
-				"-o", "block_allocator=mmap",
+				"-o", "block_allocator="+getEnvWithDefault("DWARFS_BLOCK_ALLOCATOR", DWARFS_BLOCK_ALLOCATOR),
 				"-o", getEnvWithDefault("DWARFS_TIDY_STRATEGY", DWARFS_TIDY_STRATEGY),
 				"-o", "debuglevel="+T(os.Getenv("ENABLE_FUSE_DEBUG") != "", "debug", "error"),
 				"-o", "cachesize="+getEnvWithDefault("DWARFS_CACHESIZE", DWARFS_CACHESIZE),
@@ -130,10 +131,10 @@ var Filesystems = []*Filesystem{
 				cfg.selfPath,
 				cfg.mountDir,
 			}
-			if e := os.Getenv("DWARFS_PRELOAD_ALL"); e != "" {
+			if e := os.Getenv("DWARFS_ANALYSIS_FILE"); e != "" {
 				args = append(args, "-o", "analysis_file="+e)
 			}
-			if e := os.Getenv("DWARFS_ANALYSIS_FILE"); e != "" {
+			if e := os.Getenv("DWARFS_PRELOAD_ALL"); e != "" {
 				args = append(args, "-o", "preload_all")
 			} else {
 				args = append(args, "-o", "preload_category=hotness")
