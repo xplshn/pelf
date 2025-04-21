@@ -173,22 +173,17 @@ handle_dependencies() {
           squashfs-tools/mksquashfs
           bintools/objcopy"
 
-    if [ "$_RELEASE" = "1" ]; then
-        unnappear rm "$DBIN_INSTALL_DIR/mkdwarfs"
-        curl -sLl "https://github.com/mhx/dwarfs/releases/download/v0.12.2/dwarfs-universal-0.12.2-Linux-$(uname -m)" -o "$DBIN_INSTALL_DIR/mkdwarfs"
-        chmod +x "$DBIN_INSTALL_DIR/mkdwarfs"
+    unnappear rm "$DBIN_INSTALL_DIR/mkdwarfs"
+    curl -sLl "https://github.com/mhx/dwarfs/releases/download/v0.12.2/dwarfs-universal-0.12.2-Linux-$(uname -m)" -o "$DBIN_INSTALL_DIR/mkdwarfs"
+    chmod +x "$DBIN_INSTALL_DIR/mkdwarfs"
 
-        unnappear rm "$DBIN_INSTALL_DIR/dwarfs" "$DBIN_INSTALL_DIR/dwarfsextract"
-        curl -sLl "https://github.com/mhx/dwarfs/releases/download/v0.12.2/dwarfs-fuse-extract-0.12.2-Linux-$(uname -m)" -o "$DBIN_INSTALL_DIR/dwarfs"
-        chmod +x "$DBIN_INSTALL_DIR/dwarfs" "$DBIN_INSTALL_DIR/dwarfsextract"
+    unnappear rm "$DBIN_INSTALL_DIR/dwarfs" "$DBIN_INSTALL_DIR/dwarfsextract"
+    curl -sLl "https://github.com/mhx/dwarfs/releases/download/v0.12.2/dwarfs-fuse-extract-0.12.2-Linux-$(uname -m)" -o "$DBIN_INSTALL_DIR/dwarfs"
+    chmod +x "$DBIN_INSTALL_DIR/dwarfs" "$DBIN_INSTALL_DIR/dwarfsextract"
 
-        unnappear rm "$DBIN_INSTALL_DIR/squashfuse_ll"
-        curl -sLl "https://github.com/VHSgunzo/squashfuse-static/releases/latest/download/squashfuse_ll-musl-mimalloc-$(uname -m)" -o "$DBIN_INSTALL_DIR/squashfuse_ll"
-        chmod +x "$DBIN_INSTALL_DIR/squashfuse_ll"
-    else
-        DEPS="dwarfs/dwarfs-tools
-              $DEPS"
-    fi
+    unnappear rm "$DBIN_INSTALL_DIR/squashfuse_ll"
+    curl -sLl "https://github.com/VHSgunzo/squashfuse-static/releases/latest/download/squashfuse_ll-musl-mimalloc-$(uname -m)" -o "$DBIN_INSTALL_DIR/squashfuse_ll"
+    chmod +x "$DBIN_INSTALL_DIR/squashfuse_ll"
 
     #if [ -n "$(ls -A "$DBIN_INSTALL_DIR" 2>/dev/null)" ]; then
     #    log "Updating dependencies..."
