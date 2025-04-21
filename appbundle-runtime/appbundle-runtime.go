@@ -116,7 +116,7 @@ var Filesystems = []*Filesystem{
 			if err != nil {
 				logError("dwarfs not available", err, cfg)
 			}
-			return exec.Command(executable,
+			args := []string{
 				"-o", "ro,nodev,noatime",
 				"-o", "cache_files,no_cache_image,clone_fd",
 				"-o", "block_allocator=mmap",
@@ -129,7 +129,16 @@ var Filesystems = []*Filesystem{
 				"-o", fmt.Sprintf("offset=%d", cfg.archiveOffset),
 				cfg.selfPath,
 				cfg.mountDir,
-			)
+			}
+			if e := os.Getenv("DWARFS_PRELOAD_ALL"); e != "" {
+				args = append(args, "-o", "analysis_file="+e)
+			}
+			if e := os.Getenv("DWARFS_ANALYSIS_FILE"); e != "" {
+				args = append(args, "-o", "preload_all")
+			} else {
+				args = append(args, "-o", "preload_category=hotness")
+			}
+			return exec.Command(executable, args...)
 		},
 		ExtractCmd: func(cfg *RuntimeConfig, query string) *exec.Cmd {
 			executable, err := lookPath("dwarfsextract", globalPath)
@@ -262,7 +271,7 @@ func (f *fileHandler) readPlaceholdersAndMarkers(cfg *RuntimeConfig) error {
 	cfg.pelfHost = runtimeInfo["hostInfo"].(string)
 	cfg.hash = runtimeInfo["hash"].(string)
 	cfg.disableRandomWorkDir = runtimeInfo["disableRandomWorkDir"].(bool)
-	cfg.mountOrExtract = runtimeInfo["mountOrExtract"].(uint8)
+	cfg.mountOrExtract = uint8(runtimeInfo["mountOrExtract"].(uint64))
 	cfg.archiveOffset = cfg.elfFileSize
 
 	xattrData := fmt.Sprintf("%s\n%d\n%s\n%s\n%s\n%s\n%s\n",

@@ -201,7 +201,7 @@ handle_dependencies() {
 
     cd "$DBIN_INSTALL_DIR" && {
         log "Linking dependencies"
-        [ -f ./dwarfs-tools ] && [ ! -h ./dwarfs-tools ] && {
+        [ -f ./dwarfs-tools ] && [ ! -h ./dwarfs-tools ] && [ ! -f ./dwarfs ] && {
             mv ./dwarfs-tools ./dwarfs
             ln -sfT dwarfs mkdwarfs
             upx dwarfs
