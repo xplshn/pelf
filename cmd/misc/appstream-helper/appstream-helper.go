@@ -227,13 +227,21 @@ func generateMarkdown(dbinMetadata DbinMetadata) (string, error) {
 				siteURL = entry.SrcURLs[0]
 			} else if len(entry.WebURLs) > 0 {
 				siteURL = entry.WebURLs[0]
+			} else {
+				siteURL = "https://github.com/xplshn/AppBundleHUB"
 			}
+
+			version := entry.Version
+			if version == "" && entry.BuildDate != "" {
+				version = entry.BuildDate
+			}
+
 			mdBuffer.WriteString(fmt.Sprintf("| %s | %s | %s | %s | %s |\n",
 				entry.Pkg,
-				entry.Description,
-				siteURL,
+				ternary(entry.Description != "", entry.Description, "not_available"),
+				ternary(siteURL != "", siteURL, "not_available"),
 				entry.DownloadURL,
-				entry.Version,
+				ternary(version != "", version, "not_available"),
 			))
 		}
 	}
@@ -388,4 +396,11 @@ func main() {
 
 		fmt.Printf("Successfully wrote Markdown output to %s\n", *outputMarkdown)
 	}
+}
+
+func ternary[T any](cond bool, vtrue, vfalse T) T {
+	if cond {
+		return vtrue
+	}
+	return vfalse
 }
