@@ -35,7 +35,7 @@ const (
 	DWARFS_BLOCKSIZE       = "512K"
 	DWARFS_READAHEAD       = "32M"
 	DWARFS_BLOCK_ALLOCATOR = "mmap"
-	DWARFS_TIDY_STRATEGY   = "tidy_strategy=time,tidy_interval=2s,tidy_max_age=10s,seq_detector=1"
+	DWARFS_TIDY_STRATEGY   = "tidy_strategy=time,tidy_interval=4s,tidy_max_age=10s,seq_detector=1"
 )
 
 var globalPath = os.Getenv("PATH")
@@ -229,7 +229,7 @@ func (f *fileHandler) readPlaceholdersAndMarkers(cfg *RuntimeConfig) error {
 	data, err := xattr.FGet(f.file, "user.RuntimeConfig")
 	if err == nil {
 		lines := strings.Split(string(data), "\n")
-		if len(lines) >= 6 {
+		if len(lines) >= 8 {
 			cfg.appBundleFS = lines[0]
 			cfg.archiveOffset = uint64(parseUint(lines[1]))
 			cfg.exeName = lines[2]
@@ -237,6 +237,9 @@ func (f *fileHandler) readPlaceholdersAndMarkers(cfg *RuntimeConfig) error {
 			cfg.pelfHost = lines[4]
 			cfg.hash = lines[5]
 			cfg.disableRandomWorkDir = T(lines[6] == "1", true, false)
+			if n, err := strconv.ParseUint(lines[7], 10, 8); err == nil {
+				cfg.mountOrExtract = uint8(n)
+			}
 			return nil
 		}
 	}
@@ -275,8 +278,8 @@ func (f *fileHandler) readPlaceholdersAndMarkers(cfg *RuntimeConfig) error {
 	cfg.mountOrExtract = uint8(runtimeInfo["mountOrExtract"].(uint64))
 	cfg.archiveOffset = cfg.elfFileSize
 
-	xattrData := fmt.Sprintf("%s\n%d\n%s\n%s\n%s\n%s\n%s\n",
-		cfg.appBundleFS, cfg.archiveOffset, cfg.exeName, cfg.pelfVersion, cfg.pelfHost, cfg.hash, T(cfg.disableRandomWorkDir, "1", ""))
+	xattrData := fmt.Sprintf("%s\n%d\n%s\n%s\n%s\n%s\n%s\n%d\n",
+		cfg.appBundleFS, cfg.archiveOffset, cfg.exeName, cfg.pelfVersion, cfg.pelfHost, cfg.hash, T(cfg.disableRandomWorkDir, "1", ""), cfg.mountOrExtract)
 	if err := xattr.FSet(f.file, "user.RuntimeConfig", []byte(xattrData)); err != nil {
 		return fmt.Errorf("failed to set xattr: %w", err)
 	}
@@ -796,13 +799,13 @@ func main() {
 			const defaultSizeLimit = 350 * 1024 * 1024
 			if err := mountImage(cfg, fh, fs); err != nil {
 				logWarning("FUSE mounting failed, falling back to extraction")
-			}
-			if cfg.elfFileSize <= defaultSizeLimit {
-				if err := extractImage(cfg, fh, fs, ""); err != nil {
-					logError("Failed to extract image", err, cfg)
+				if cfg.elfFileSize <= defaultSizeLimit {
+					if err := extractImage(cfg, fh, fs, ""); err != nil {
+						logError("Failed to extract image", err, cfg)
+					}
+				} else {
+					logError("Refusing to fallback to Extract & Run mode.", fmt.Errorf("Size of AppBundle falls outside of allowed size threshold, %d", defaultSizeLimit), cfg)
 				}
-			} else {
-				logError("Refusing to fallback to Extract & Run mode.", fmt.Errorf("Size of AppBundle falls outside of allowed size threshold, %d", defaultSizeLimit), cfg)
 			}
 		default:
 			logError("Invalid value for mountOrExtract", nil, cfg)
