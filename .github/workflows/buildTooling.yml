@@ -8,15 +8,12 @@ on:
   workflow_dispatch:
 jobs:
   build:
-    name: Build tooling
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        include:
-          - arch: x86_64
-            platform: linux/amd64
-          - arch: aarch64
-            platform: linux/arm64
+        platform:
+          - linux/arm64/v8
+          - linux/amd64
     container:
       image: "alpine:edge"
       options: --platform ${{ matrix.platform }} --privileged
