@@ -8,18 +8,18 @@ on:
   workflow_dispatch:
 jobs:
   build:
-    name: Build tooling
-    runs-on: ubuntu-latest
+    name: "${{ matrix.name }} (${{ matrix.arch }})"
+    runs-on: ${{ matrix.runs-on }}
     strategy:
       matrix:
         include:
-          - arch: x86_64
-            platform: linux/amd64
-          - arch: aarch64
-            platform: linux/arm64/v8
-    container:
-      image: "alpine:edge"
-      options: --platform ${{ matrix.platform }} --privileged
+          - runs-on: ubuntu-latest
+            name: "cbuild.sh (amd64)"
+            arch: x86_64
+          - runs-on: ubuntu-24.04-arm
+            name: "cbuild.sh (arm64)"
+            arch: aarch64
+    container: ghcr.io/pkgforge-dev/archlinux:latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
