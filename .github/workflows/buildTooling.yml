@@ -17,63 +17,46 @@ jobs:
             platform: linux/amd64
           - arch: aarch64
             platform: linux/arm64/v8
+    container:
+      image: "alpine:edge"
+      options: --platform ${{ matrix.platform }} --privileged
     steps:
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Setup Container
-        uses: docker/run-action@v3
-        with:
-          image: alpine:edge
-          options: --platform ${{ matrix.platform }} --privileged
-          shell: sh
       - name: Set up GOBIN and install lib4bin
-        uses: docker/run-action@v3
-        with:
-          image: alpine:edge
-          options: --platform ${{ matrix.platform }} --privileged
-          shell: sh
-          run: |
-            set -x
-            apk add zstd git bash file binutils patchelf findutils grep sed strace go fuse3 fuse curl yq-go b3sum
-            export GOBIN="$GITHUB_WORKSPACE/.local/bin" CGO_ENABLED=0 GO_LDFLAGS='-buildmode=static-pie' GOFLAGS='-ldflags=-static-pie -ldflags=-s -ldflags=-w'
-            export DBIN_INSTALL_DIR="$GOBIN" DBIN_NOCONFIG=1 PATH="$GOBIN:$PATH"
-            mkdir -p "$GOBIN"
-            wget -qO- "https://raw.githubusercontent.com/xplshn/dbin/master/stubdl" | sh -s -- --install "$DBIN_INSTALL_DIR/dbin" -v
-            "$DBIN_INSTALL_DIR/dbin" --silent add yq upx
-            echo "PATH=$PATH" >> $GITHUB_ENV
-            echo "DBIN_INSTALL_DIR=$GOBIN" >> $GITHUB_ENV
-            echo "WITH_SHARUN=1" >> $GITHUB_ENV
-            echo "GEN_LIB_PATH=1" >> $GITHUB_ENV
-            echo "ANY_EXECUTABLE=1" >> $GITHUB_ENV
-            mkdir -p "$GITHUB_WORKSPACE/dist"
-            ROOTFS_URL="$(curl -qsL https://dl-cdn.alpinelinux.org/alpine/edge/releases/${{ matrix.arch }}/latest-releases.yaml | yq '.[0].file')"
-            echo "https://dl-cdn.alpinelinux.org/alpine/edge/releases/${{ matrix.arch }}/${ROOTFS_URL}" >"$GITHUB_WORKSPACE/dist/alpineLinuxEdge.${{ matrix.arch }}.rootfsURL"
-            ROOTFS_URL="https://dl-cdn.alpinelinux.org/alpine/edge/releases/${{ matrix.arch }}/${ROOTFS_URL}"
-            export ROOTFS_URL
-            echo "ROOTFS_URL=$ROOTFS_URL" >> "$GITHUB_ENV"
-            apk add coreutils
+        run: |
+          set -x
+          apk add zstd git bash file binutils patchelf findutils grep sed strace go fuse3 fuse curl yq-go b3sum
+          export GOBIN="$GITHUB_WORKSPACE/.local/bin" CGO_ENABLED=0 GO_LDFLAGS='-buildmode=static-pie' GOFLAGS='-ldflags=-static-pie -ldflags=-s -ldflags=-w'
+          export DBIN_INSTALL_DIR="$GOBIN" DBIN_NOCONFIG=1 PATH="$GOBIN:$PATH"
+          mkdir -p "$GOBIN"
+          wget -qO- "https://raw.githubusercontent.com/xplshn/dbin/master/stubdl" | sh -s -- --install "$DBIN_INSTALL_DIR/dbin" -v
+          "$DBIN_INSTALL_DIR/dbin" --silent add yq upx
+          echo "PATH=$PATH" >> $GITHUB_ENV
+          echo "DBIN_INSTALL_DIR=$GOBIN" >> $GITHUB_ENV
+          echo "WITH_SHARUN=1" >> $GITHUB_ENV
+          echo "GEN_LIB_PATH=1" >> $GITHUB_ENV
+          echo "ANY_EXECUTABLE=1" >> $GITHUB_ENV
+          mkdir "$GITHUB_WORKSPACE/dist"
+          ROOTFS_URL="$(curl -qsL https://dl-cdn.alpinelinux.org/alpine/edge/releases/${{ matrix.arch }}/latest-releases.yaml | yq '.[0].file')"
+          echo "https://dl-cdn.alpinelinux.org/alpine/edge/releases/${{ matrix.arch }}/${ROOTFS_URL}" >"$GITHUB_WORKSPACE/dist/alpineLinuxEdge.${{ matrix.arch }}.rootfsURL"
+          ROOTFS_URL="https://dl-cdn.alpinelinux.org/alpine/edge/releases/${{ matrix.arch }}/${ROOTFS_URL}"
+          export ROOTFS_URL
+          echo "ROOTFS_URL=$ROOTFS_URL" >> "$GITHUB_ENV"
+          apk add coreutils
       - name: Create AppBundle
-        uses: docker/run-action@v3
-        with:
-          image: alpine:edge
-          options: --platform ${{ matrix.platform }} --privileged
-          shell: sh
-          run: |
-            cd "$GITHUB_WORKSPACE"
-            export CGO_ENABLED=0 GOFLAGS="-ldflags=-static-pie -ldflags=-s -ldflags=-w" GO_LDFLAGS="-buildmode=static-pie -s -w"
-            export _RELEASE="1"
-            ./cbuild.sh
-            B3SUM_CHECKSUM="$(b3sum ./pelf | awk '{print $1}')"
-            mv ./pelf "$GITHUB_WORKSPACE/dist/pelf_${{ matrix.arch }}"
-            mv ./cmd/pelfCreator/pelfCreator "$GITHUB_WORKSPACE/dist/pelfCreator_${{ matrix.arch }}"
-            mv ./cmd/misc/appstream-helper/appstream-helper "$GITHUB_WORKSPACE/dist/appstream-helper_${{ matrix.arch }}"
-            echo "RELEASE_TAG=$(date +%d%m%Y)-$B3SUM_CHECKSUM" >> $GITHUB_ENV
+        run: |
+          cd "$GITHUB_WORKSPACE"
+          export CGO_ENABLED=0 GOFLAGS="-ldflags=-static-pie -ldflags=-s -ldflags=-w" GO_LDFLAGS="-buildmode=static-pie -s -w"
+          export _RELEASE="1"
+          ./cbuild.sh
+          B3SUM_CHECKSUM="$(b3sum ./pelf | awk '{print $1}')"
+          mv ./pelf "$GITHUB_WORKSPACE/dist/pelf_${{ matrix.arch }}"
+          mv ./cmd/pelfCreator/pelfCreator "$GITHUB_WORKSPACE/dist/pelfCreator_${{ matrix.arch }}"
+          mv ./cmd/misc/appstream-helper/appstream-helper "$GITHUB_WORKSPACE/dist/appstream-helper_${{ matrix.arch }}"
+          echo "RELEASE_TAG=$(date +%d%m%Y)-$B3SUM_CHECKSUM" >> $GITHUB_ENV
       - name: Upload artifact
         uses: actions/upload-artifact@v4.6.1
         with:
@@ -81,13 +64,8 @@ jobs:
           path: ${{ github.workspace }}/dist/*
       - name: Set build output
         id: build_output
-        uses: docker/run-action@v3
-        with:
-          image: alpine:edge
-          options: --platform ${{ matrix.platform }} --privileged
-          shell: sh
-          run: |
-            echo "release_tag=$(date +%d%m%Y)-$(b3sum "$GITHUB_WORKSPACE/dist/pelf_${{ matrix.arch }}" | awk '{print $1}')" >> $GITHUB_OUTPUT
+        run: |
+          echo "release_tag=$(date +%d%m%Y)-$(b3sum ./pelf | awk '{print $1}')" >> $GITHUB_OUTPUT
 
   release:
     name: Create Release
