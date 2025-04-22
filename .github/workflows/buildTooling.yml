@@ -6,6 +6,7 @@ on:
   schedule:
     - cron: "0 14 * * 0"
   workflow_dispatch:
+
 jobs:
   build:
     name: Build tooling
@@ -62,6 +63,21 @@ jobs:
           name: AppBundle-${{ matrix.arch }}
           path: ${{ github.workspace }}/dist/*
 
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{ github.workspace }}/dist
+
       - name: Create Release
         uses: softprops/action-gh-release@v2.2.1
         with:
@@ -72,4 +88,4 @@ jobs:
           generate_release_notes: false
           make_latest: true
           files: |
-            ${{ github.workspace }}/dist/*
+            ${{ github.workspace }}/dist/**/*
