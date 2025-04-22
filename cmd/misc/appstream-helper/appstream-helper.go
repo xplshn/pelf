@@ -13,7 +13,6 @@ import (
 	"strings"
 	"crypto/sha256"
 	"net/http"
-	"net/url"
 	"sort"
 
 	"github.com/zeebo/blake3"
@@ -203,19 +202,6 @@ func computeHashes(path string) (string, string, error) {
 	return b3Sum, shaSum, nil
 }
 
-func generatePkgId(srcUrl string, tag string) string {
-	// Remove http|https schema and replace special characters
-	u, err := url.Parse(srcUrl)
-	if err != nil {
-		return ""
-	}
-	baseUrl := strings.ReplaceAll(u.Host+u.Path, "/", ".")
-	if tag != "" {
-		baseUrl += "." + tag
-	}
-	return baseUrl
-}
-
 func generateMarkdown(dbinMetadata DbinMetadata) (string, error) {
 	var mdBuffer bytes.Buffer
 	mdBuffer.WriteString("| appname | description | site | download | version |\n")
@@ -306,7 +292,7 @@ func main() {
 			}
 
 			// Generate PkgId
-			pkgId := generatePkgId(*downloadPrefix, baseFilename)
+			pkgId := "github.com.xplshn.appbundlehub" + "." + filepath.Base(baseFilename)
 
 			// Create base item with info from the AppBundle
 			item := binaryEntry{
