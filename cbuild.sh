@@ -15,6 +15,10 @@ if [ "$OPWD" != "$BASE" ]; then
 fi
 trap 'cd "$OPWD"; [ -d "$TEMP_DIR" ] && rm -rf "$TEMP_DIR"' EXIT
 
+if [ "$(uname -m)" = "aarch64" ]; then
+    export GOARCH="arm64" # Weird things happen when it is not set, I think my GH action has this env already set.
+fi
+
 # Logging functions
 log() {
     printf "\033[34m->\033[m %s\n" "$*"
