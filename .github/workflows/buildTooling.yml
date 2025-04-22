@@ -16,7 +16,7 @@ jobs:
           - linux/amd64
     container:
       image: "alpine:edge"
-      options: --platform ${{ matrix.platform }} --privileged
+      options: --privileged
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
