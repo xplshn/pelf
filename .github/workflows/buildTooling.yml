@@ -12,10 +12,14 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        arch: [x86_64, aarch64]
+        include:
+          - arch: x86_64
+            platform: linux/amd64
+          - arch: aarch64
+            platform: linux/arm64
     container:
       image: "alpine:edge"
-      options: --privileged
+      options: --platform ${{ matrix.platform }} --privileged
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
