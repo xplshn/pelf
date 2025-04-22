@@ -32,11 +32,6 @@ jobs:
           image: alpine:edge
           options: --platform ${{ matrix.platform }} --privileged
           shell: sh
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - name: Set up GOBIN and install lib4bin
         uses: docker/run-action@v3
         with:
