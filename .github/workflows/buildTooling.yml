@@ -10,6 +10,9 @@ jobs:
   build:
     name: Build tooling
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [x86_64, aarch64]
     container:
       image: "alpine:edge"
       options: --privileged
@@ -33,12 +36,9 @@ jobs:
           echo "GEN_LIB_PATH=1" >> $GITHUB_ENV
           echo "ANY_EXECUTABLE=1" >> $GITHUB_ENV
           mkdir "$GITHUB_WORKSPACE/dist"
-          ROOTFS_URL="$(curl -qsL https://dl-cdn.alpinelinux.org/alpine/edge/releases/x86_64/latest-releases.yaml | yq '.[0].file')"
-          echo "https://dl-cdn.alpinelinux.org/alpine/edge/releases/x86_64/${ROOTFS_URL}" >"$GITHUB_WORKSPACE/dist/alpineLinuxEdge.x86_64.rootfsURL"
-          ROOTFS_URL="$(curl -qsL https://dl-cdn.alpinelinux.org/alpine/edge/releases/aarch64/latest-releases.yaml | yq '.[0].file')"
-          echo "https://dl-cdn.alpinelinux.org/alpine/edge/releases/aarch64/${ROOTFS_URL}" >"$GITHUB_WORKSPACE/dist/alpineLinuxEdge.aarch64.rootfsURL"
-          ROOTFS_URL="$(curl -qsL https://dl-cdn.alpinelinux.org/alpine/edge/releases/$(uname -m)/latest-releases.yaml | yq '.[0].file')"
-          ROOTFS_URL="https://dl-cdn.alpinelinux.org/alpine/edge/releases/$(uname -m)/${ROOTFS_URL}"
+          ROOTFS_URL="$(curl -qsL https://dl-cdn.alpinelinux.org/alpine/edge/releases/${{ matrix.arch }}/latest-releases.yaml | yq '.[0].file')"
+          echo "https://dl-cdn.alpinelinux.org/alpine/edge/releases/${{ matrix.arch }}/${ROOTFS_URL}" >"$GITHUB_WORKSPACE/dist/alpineLinuxEdge.${{ matrix.arch }}.rootfsURL"
+          ROOTFS_URL="https://dl-cdn.alpinelinux.org/alpine/edge/releases/${{ matrix.arch }}/${ROOTFS_URL}"
           export ROOTFS_URL
           echo "ROOTFS_URL=$ROOTFS_URL" >> "$GITHUB_ENV"
           apk add coreutils
@@ -49,25 +49,42 @@ jobs:
           export _RELEASE="1"
           ./cbuild.sh
           B3SUM_CHECKSUM="$(b3sum ./pelf | awk '{print $1}')"
-          mv ./pelf "$GITHUB_WORKSPACE/dist/pelf_$(uname -m)"
-          mv ./cmd/pelfCreator/pelfCreator "$GITHUB_WORKSPACE/dist/pelfCreator_$(uname -m)"
-          mv ./cmd/misc/appstream-helper/appstream-helper "$GITHUB_WORKSPACE/dist/appstream-helper_$(uname -m)"
+          mv ./pelf "$GITHUB_WORKSPACE/dist/pelf_${{ matrix.arch }}"
+          mv ./cmd/pelfCreator/pelfCreator "$GITHUB_WORKSPACE/dist/pelfCreator_${{ matrix.arch }}"
+          mv ./cmd/misc/appstream-helper/appstream-helper "$GITHUB_WORKSPACE/dist/appstream-helper_${{ matrix.arch }}"
           echo "RELEASE_TAG=$(date +%d%m%Y)-$B3SUM_CHECKSUM" >> $GITHUB_ENV
-
       - name: Upload artifact
         uses: actions/upload-artifact@v4.6.1
         with:
-          name: AppBundle
+          name: AppBundle-${{ matrix.arch }}
           path: ${{ github.workspace }}/dist/*
+      - name: Set build output
+        id: build_output
+        run: |
+          echo "release_tag=$(date +%d%m%Y)-$(b3sum ./pelf | awk '{print $1}')" >> $GITHUB_OUTPUT
 
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      
+      - name: List files
+        run: find artifacts -type f | sort
+        
       - name: Create Release
         uses: softprops/action-gh-release@v2.2.1
         with:
-          name: "Build ${{ env.RELEASE_TAG }}"
-          tag_name: "${{ env.RELEASE_TAG }}"
+          name: "Build ${{ needs.build.outputs.release_tag || github.run_number }}"
+          tag_name: "${{ needs.build.outputs.release_tag || github.run_number }}"
           prerelease: false
           draft: false
           generate_release_notes: false
           make_latest: true
           files: |
-            ${{ github.workspace }}/dist/*
+            artifacts/*
