@@ -19,7 +19,7 @@ jobs:
           - runs-on: ubuntu-24.04-arm
             name: "cbuild.sh (arm64)"
             arch: aarch64
-    container: ghcr.io/pkgforge-dev/archlinux:latest
+    container: "alpine:edge"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
