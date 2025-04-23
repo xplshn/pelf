@@ -83,7 +83,7 @@ var Filesystems = []*Filesystem{
 				logError("squashfuse not available", err, cfg)
 			}
 			args := []string{
-				"-o", "ro,nodev,noatime",
+				"-o", "ro,nodev",
 				"-o", "uid=0,gid=0",
 				"-o", fmt.Sprintf("offset=%d", cfg.archiveOffset),
 				cfg.selfPath,
@@ -118,7 +118,7 @@ var Filesystems = []*Filesystem{
 				logError("dwarfs not available", err, cfg)
 			}
 			args := []string{
-				"-o", "ro,nodev,noatime",
+				"-o", "ro,nodev",
 				"-o", "cache_files,no_cache_image,clone_fd",
 				"-o", "block_allocator="+getEnvWithDefault("DWARFS_BLOCK_ALLOCATOR", DWARFS_BLOCK_ALLOCATOR),
 				"-o", getEnvWithDefault("DWARFS_TIDY_STRATEGY", DWARFS_TIDY_STRATEGY),
