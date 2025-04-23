@@ -349,7 +349,7 @@ func initConfig() (*RuntimeConfig, *fileHandler, error) {
 		selfPath:             getSelfPath(),
 		disableRandomWorkDir: T(os.Getenv("PBUNDLE_DISABLE_RANDOM_WORKDIR") == "1", true, false),
 		noCleanup:            false,
-		mountOrExtract:       2, // Default value for mountOrExtract
+		mountOrExtract:       2,
 	}
 
 	fh, err := newFileHandler(cfg.selfPath)
