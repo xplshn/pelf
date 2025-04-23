@@ -110,14 +110,14 @@ EOF
     if [ ! -f "$TEMP_DIR/binaryDependencies/rootfs.tar.zst" ]; then
         log "Downloading rootfs"
         RELEASE_NAME="AlpineLinux_latest-stable-$(uname -m).tar.xz"
-        curl -sLl "https://github.com/xplshn/filesystems/releases/latest/download/$RELEASE_NAME" -o "$TEMP_DIR/binaryDependencies/$RELEASE_NAME"
+        curl -sL "https://github.com/xplshn/filesystems/releases/latest/download/$RELEASE_NAME" -o "$TEMP_DIR/binaryDependencies/$RELEASE_NAME"
         cd "$TEMP_DIR/binaryDependencies" || log_error "Failed to change to temp directory"
         ln -sfT "$RELEASE_NAME" "rootfs.tar.${RELEASE_NAME##*.}"
     fi
 
     if [ ! -f "$TEMP_DIR/binaryDependencies/sharun" ]; then
         log "Downloading sharun-$(uname -m)-aio"
-        curl -sLl "https://github.com/VHSgunzo/sharun/releases/latest/download/sharun-$(uname -m)-aio" -o "$TEMP_DIR/binaryDependencies/sharun"
+        curl -sL "https://github.com/VHSgunzo/sharun/releases/latest/download/sharun-$(uname -m)-aio" -o "$TEMP_DIR/binaryDependencies/sharun"
         chmod +x "$TEMP_DIR/binaryDependencies/sharun"
     fi
 
@@ -180,15 +180,15 @@ handle_dependencies() {
     DWFS_VER="0.12.3"
 
     unnappear rm "$DBIN_INSTALL_DIR/mkdwarfs"
-    curl -sLl "https://github.com/mhx/dwarfs/releases/download/v$DWFS_VER/dwarfs-universal-$DWFS_VER-Linux-$(uname -m)" -o "$DBIN_INSTALL_DIR/mkdwarfs"
+    curl -sL "https://github.com/mhx/dwarfs/releases/download/v$DWFS_VER/dwarfs-universal-$DWFS_VER-Linux-$(uname -m)" -o "$DBIN_INSTALL_DIR/mkdwarfs"
     chmod +x "$DBIN_INSTALL_DIR/mkdwarfs"
 
     unnappear rm "$DBIN_INSTALL_DIR/dwarfs" "$DBIN_INSTALL_DIR/dwarfsextract"
-    curl -sLl "https://github.com/mhx/dwarfs/releases/download/v$DWFS_VER/dwarfs-fuse-extract-$DWFS_VER-Linux-$(uname -m)" -o "$DBIN_INSTALL_DIR/dwarfs"
+    curl -sL "https://github.com/mhx/dwarfs/releases/download/v$DWFS_VER/dwarfs-fuse-extract-$DWFS_VER-Linux-$(uname -m)" -o "$DBIN_INSTALL_DIR/dwarfs"
     chmod +x "$DBIN_INSTALL_DIR/dwarfs"
 
     unnappear rm "$DBIN_INSTALL_DIR/squashfuse_ll"
-    curl -sLl "https://github.com/VHSgunzo/squashfuse-static/releases/latest/download/squashfuse_ll-musl-mimalloc-$(uname -m)" -o "$DBIN_INSTALL_DIR/squashfuse_ll"
+    curl -sL "https://github.com/VHSgunzo/squashfuse-static/releases/latest/download/squashfuse_ll-musl-mimalloc-$(uname -m)" -o "$DBIN_INSTALL_DIR/squashfuse_ll"
     chmod +x "$DBIN_INSTALL_DIR/squashfuse_ll"
 
     #if [ -n "$(ls -A "$DBIN_INSTALL_DIR" 2>/dev/null)" ]; then
