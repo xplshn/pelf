@@ -71,6 +71,12 @@ func main() {
 				Destination: &config.Name,
 			},
 			&cli.StringFlag{
+				Name:        "id",
+				Aliases:     []string{"i"},
+				Usage:       "Set the ID of the app (optional)",
+				Destination: &config.AppBundleID,
+			},
+			&cli.StringFlag{
 				Name:        "pkg-add",
 				Aliases:     []string{"p"},
 				Usage:       "Packages to add with APK",
@@ -134,7 +140,12 @@ func main() {
 		},
 		Action: func(ctx context.Context, c *cli.Command) error {
 			config.Date = time.Now().Format("02_01_2006")
-			config.AppBundleID = fmt.Sprintf("%s-%s-%s", config.Name, config.Date, config.Maintainer)
+			if config.AppBundleID == "" {
+				config.AppBundleID = fmt.Sprintf("%s-%s-%s", config.Name, config.Date, config.Maintainer)
+				config.Name = config.AppBundleID
+			} else {
+				config.AppBundleID = fmt.Sprintf("%s-%s-%s", config.AppBundleID, config.Date, config.Maintainer)
+			}
 			config.AppDir = fmt.Sprintf("%s.AppDir", config.AppBundleID)
 			if config.Lib4binArgs != "" {
 				config.Sharun = true
@@ -676,14 +687,14 @@ func setupSandboxFiles(protoDir string) error {
 
 func createBundle(config Config) error {
 	if config.OutputTo == "" {
-		config.OutputTo = fmt.Sprintf("%s.%s.AppBundle", config.AppBundleID, config.AppBundleFS)
+		config.OutputTo = fmt.Sprintf("%s.%s.AppBundle", config.Name, config.AppBundleFS)
 	}
 
 	cmd := exec.Command(filepath.Join(config.TempDir, "pelf"),
 		"--add-appdir", config.AppDir,
 		"--appbundle-id", config.AppBundleID,
 		"--output-to", config.OutputTo,
-//		"--add-runtime-info-section", fmt.Sprintf(`'.build_date:%s'`, config.Date),
+	//	"--add-runtime-info-section", fmt.Sprintf(`'.build_date:%s'`, config.Date),
 	)
 
 	cmd.Stdout = os.Stdout
