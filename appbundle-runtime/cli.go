@@ -18,6 +18,7 @@ func handleRuntimeFlags(fh *fileHandler, args *[]string, cfg *RuntimeConfig) err
 		fmt.Printf("  cfg.mountDir: %s%s%s\n", blueColor, cfg.mountDir, resetColor)
 		fmt.Printf("  cfg.workDir: %s%s%s\n", blueColor, cfg.workDir, resetColor)
 		fmt.Printf("  cfg.appBundleFS: %s%s%s\n", blueColor, cfg.appBundleFS, resetColor)
+		fmt.Printf("  cfg.archiveOffset: %s%d%s\n", blueColor, cfg.archiveOffset, resetColor)
 		fmt.Printf(`
   Flags:
   --pbundle_help: Needs no introduction
