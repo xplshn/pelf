@@ -40,10 +40,25 @@ OR
 #### Explanation
 You specify an `AppDir` to be packed and an ID for the app. This ID will be used when mounting the `.AppBundle` and should include the packing date, the project or program name, and the maintainer's information. While you can choose an arbitrary name, it’s not recommended.
 
-Additionally, we embed the tools used for mounting and unmounting the `.AppBundle`, such as `dwarfs` and `fusermount`, when using `pelf`.
+Additionally, we embed the tools used for mounting and unmounting the `.AppBundle`, such as `dwarfs` when using `pelf`.
 
 ![image](https://github.com/user-attachments/assets/f4459934-a5b6-4717-8299-86b56dc0cf48)
 
+#### Known working distros/OSes:
+- Ubuntu (10.04 onwards) & derivatives, Ubuntu Touch
+- Alpine Linux 2.+ onwards
+- Void Linux Musl/Glibc
+- Debian/Devuan, and derivatives
+- Fedora
+- *SUSE
+- Maemo leste
+- AliceLinux
+- FreeBSD's Linuxlator
+- FreeBSD native
+- Chimera Linux
+- LFS (Linux from Scratch)
+- Most if not all Musl linux distributions
+- etc (please contribute to this list if you're a user of AppBundles)
 
 #### Resources:
 - The [AppBundleHUB](https://github.com/xplshn/AppBundleHUB) a repo which builds a ton of portable AppBundles in an automated fashion, using GH actions. (we have a [webStore](https://xplshn.github.io/AppBundleHUB) too, tho that is WIP)
