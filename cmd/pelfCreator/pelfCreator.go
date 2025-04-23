@@ -71,9 +71,9 @@ func main() {
 				Destination: &config.Name,
 			},
 			&cli.StringFlag{
-				Name:        "id",
+				Name:        "appbundle-id",
 				Aliases:     []string{"i"},
-				Usage:       "Set the ID of the app (optional)",
+				Usage:       "Set the AppBundleID of the app (optional)",
 				Destination: &config.AppBundleID,
 			},
 			&cli.StringFlag{

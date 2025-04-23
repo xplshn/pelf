@@ -173,12 +173,14 @@ handle_dependencies() {
           squashfs-tools/mksquashfs
           bintools/objcopy"
 
+    DWFS_VER="0.12.3"
+
     unnappear rm "$DBIN_INSTALL_DIR/mkdwarfs"
-    curl -sLl "https://github.com/mhx/dwarfs/releases/download/v0.12.2/dwarfs-universal-0.12.2-Linux-$(uname -m)" -o "$DBIN_INSTALL_DIR/mkdwarfs"
+    curl -sLl "https://github.com/mhx/dwarfs/releases/download/v$DWFS_VER/dwarfs-universal-$DWFS_VER-Linux-$(uname -m)" -o "$DBIN_INSTALL_DIR/mkdwarfs"
     chmod +x "$DBIN_INSTALL_DIR/mkdwarfs"
 
     unnappear rm "$DBIN_INSTALL_DIR/dwarfs" "$DBIN_INSTALL_DIR/dwarfsextract"
-    curl -sLl "https://github.com/mhx/dwarfs/releases/download/v0.12.2/dwarfs-fuse-extract-0.12.2-Linux-$(uname -m)" -o "$DBIN_INSTALL_DIR/dwarfs"
+    curl -sLl "https://github.com/mhx/dwarfs/releases/download/v$DWFS_VER/dwarfs-fuse-extract-$DWFS_VER-Linux-$(uname -m)" -o "$DBIN_INSTALL_DIR/dwarfs"
     chmod +x "$DBIN_INSTALL_DIR/dwarfs"
 
     unnappear rm "$DBIN_INSTALL_DIR/squashfuse_ll"
