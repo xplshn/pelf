@@ -234,7 +234,7 @@ func generateMarkdown(dbinMetadata DbinMetadata) (string, error) {
 		}
 
 		mdBuffer.WriteString(fmt.Sprintf("| %s | %s | %s | %s | %s |\n",
-			entry.Name,
+			entry.Pkg,
 			ternary(entry.Description != "", entry.Description, "not_available"),
 			ternary(siteURL != "", siteURL, "not_available"),
 			entry.DownloadURL,
