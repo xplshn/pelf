@@ -257,11 +257,20 @@ func generateMarkdown(dbinMetadata DbinMetadata) (string, error) {
 	}
 
 	sort.Slice(allEntries, func(i, j int) bool {
-		return strings.ToLower(allEntries[i].Name) < strings.ToLower(allEntries[j].Name)
+		return strings.ToLower(allEntries[i].Name) < strings.ToLower(allEntries[j].Pkg)
 	})
 
 	for _, entry := range allEntries {
 		siteURL := ""
+
+		pkg := strings.TrimSuffix(entry.Pkg, filepath.Ext(entry.Pkg))
+		pkg = strings.TrimSuffix(pkg, ".dwfs")
+		pkg = strings.TrimSuffix(pkg, ".sqfs")
+
+		if pkg != "" {
+			entry.Pkg = pkg
+		}
+
 		if len(entry.SrcURLs) > 0 {
 			siteURL = entry.SrcURLs[0]
 		} else if len(entry.WebURLs) > 0 {
@@ -274,9 +283,12 @@ func generateMarkdown(dbinMetadata DbinMetadata) (string, error) {
 		if version == "" && entry.BuildDate != "" {
 			version = entry.BuildDate
 		}
+		if version == "" {
+			version = "not_available"
+		}
 
 		mdBuffer.WriteString(fmt.Sprintf("| %s | %s | %s | %s | %s |\n",
-			filepath.Base(entry.Pkg),
+			pkg,
 			ternary(entry.Description != "", entry.Description, "not_available"),
 			ternary(siteURL != "", siteURL, "not_available"),
 			entry.DownloadURL,
