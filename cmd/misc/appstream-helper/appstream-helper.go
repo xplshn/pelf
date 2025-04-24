@@ -4,13 +4,16 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"debug/elf"
+	"encoding/base64"
 	"encoding/hex"
+	"encoding/xml"
 	"flag"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -75,6 +78,22 @@ type AppStreamMetadata struct {
 	Version         string   `json:"version"`
 	Icons           []string `json:"icons"`
 	Screenshots     []string `json:"screenshots"`
+}
+
+type AppStreamXML struct {
+	XMLName     xml.Name `xml:"component"`
+	ID          string   `xml:"id"`
+	Name        string   `xml:"name"`
+	Summary     string   `xml:"summary"`
+	Description struct {
+		InnerXML string `xml:",innerxml"`
+	} `xml:"description"`
+	Icon        string   `xml:"icon"`
+	Screenshots struct {
+		Screenshot []struct {
+			Image string `xml:"image"`
+		} `xml:"screenshot"`
+	} `xml:"screenshots"`
 }
 
 var appStreamMetadata []AppStreamMetadata
@@ -211,6 +230,27 @@ func computeHashes(path string) (string, string, error) {
 	return b3Sum, shaSum, nil
 }
 
+func extractAppStreamXML(filename string) (*AppStreamXML, error) {
+	cmd := exec.Command(filename, "--pbundle_appstream")
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("error extracting AppStream XML: %v", err)
+	}
+
+	decodedOutput, err := base64.StdEncoding.DecodeString(string(output))
+	if err != nil {
+		return nil, fmt.Errorf("error decoding base64 output: %v", err)
+	}
+
+	var appStreamXML AppStreamXML
+	err = xml.Unmarshal(decodedOutput, &appStreamXML)
+	if err != nil {
+		return nil, fmt.Errorf("error unmarshalling XML: %v", err)
+	}
+
+	return &appStreamXML, nil
+}
+
 func generateMarkdown(dbinMetadata DbinMetadata) (string, error) {
 	var mdBuffer bytes.Buffer
 	mdBuffer.WriteString("| appname | description | site | download | version |\n")
@@ -322,44 +362,78 @@ func main() {
 					RepoName:   *repoName,
 				}
 
-				// Look for matching AppStream metadata and use it to enhance our entry
-				appData := findAppStreamMetadataForAppId(runtimeInfo.AppBundleID)
-				if appData != nil {
-					// Log enhanced entry with standardized format
-					log.Printf("Adding %s to repository index\n", baseFilename)
-					log.Println(".pkg: " + pkg)
-
-					// Use the name, icon, screenshots, description fields from appstream_metadata
-					if appData.Name != "" {
-						item.Name = appData.Name
+				// Try to extract AppStream XML from the AppBundle
+				appStreamXML, err := extractAppStreamXML(path)
+				if err != nil {
+					log.Printf("Warning: %s does not have an AppStream AppData.xml\n", path)
+				} else {
+					// Use the name, icon, screenshots, description fields from AppStream XML
+					if appStreamXML.Name != "" {
+						item.Name = appStreamXML.Name
 					}
 
-					if len(appData.Icons) > 0 {
-						item.Icon = appData.Icons[0]
+					if appStreamXML.Icon != "" {
+						item.Icon = appStreamXML.Icon
 					}
 
-					if len(appData.Screenshots) > 0 {
-						item.Screenshots = appData.Screenshots
+					if len(appStreamXML.Screenshots.Screenshot) > 0 {
+						for _, screenshot := range appStreamXML.Screenshots.Screenshot {
+							item.Screenshots = append(item.Screenshots, screenshot.Image)
+						}
 					}
 
-					if appData.Summary != "" {
-						item.Description = appData.Summary
+					if appStreamXML.Summary != "" {
+						item.Description = appStreamXML.Summary
 					}
 
-					if appData.RichDescription != "" {
-						item.LongDescription = appData.RichDescription
+					if appStreamXML.Description.InnerXML != "" {
+						item.LongDescription = appStreamXML.Description.InnerXML
 					}
 
-					if appData.Categories != "" {
-						item.Categories = appData.Categories
-					}
-
-					if appData.Version != "" {
-						item.Version = appData.Version
-					}
-
-					// Set app_id because AppStream data is available
+					// Set app_id because AppStream XML data is available
 					item.AppstreamId = runtimeInfo.AppBundleID
+				}
+
+				// If AppStream XML is not available, fall back to scraped data
+				if item.AppstreamId == "" {
+					appData := findAppStreamMetadataForAppId(runtimeInfo.AppBundleID)
+					if appData != nil {
+						// Log enhanced entry with standardized format
+						log.Printf("Adding %s to repository index\n", baseFilename)
+						log.Println(".pkg: " + pkg)
+
+						// Use the name, icon, screenshots, description fields from appstream_metadata
+						if appData.Name != "" {
+							item.Name = appData.Name
+						}
+
+						if len(appData.Icons) > 0 {
+							item.Icon = appData.Icons[0]
+						}
+
+						if len(appData.Screenshots) > 0 {
+							item.Screenshots = appData.Screenshots
+						}
+
+						if appData.Summary != "" {
+							item.Description = appData.Summary
+						}
+
+						if appData.RichDescription != "" {
+							item.LongDescription = appData.RichDescription
+						}
+
+						if appData.Categories != "" {
+							item.Categories = appData.Categories
+						}
+
+						if appData.Version != "" {
+							item.Version = appData.Version
+						}
+
+						// Set app_id because AppStream data is available
+						item.AppstreamId = runtimeInfo.AppBundleID
+					}
 				}
 
 				// Add to metadata
