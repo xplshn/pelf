@@ -234,7 +234,7 @@ func generateMarkdown(dbinMetadata DbinMetadata) (string, error) {
 		}
 
 		mdBuffer.WriteString(fmt.Sprintf("| %s | %s | %s | %s | %s |\n",
-			entry.Pkg,
+			filepath.Base(entry.Pkg), // No extensions in AM's repo index allowed
 			ternary(entry.Description != "", entry.Description, "not_available"),
 			ternary(siteURL != "", siteURL, "not_available"),
 			entry.DownloadURL,
@@ -283,16 +283,17 @@ func main() {
 				return nil
 			}
 
+			var pkgId string
 			// Extract the base filename without date and author
 			baseFilename := filepath.Base(path)
 			re := regexp.MustCompile(`^(.+)-(\d{2}_\d{2}_\d{4})-(.+)$`)
 			matches := re.FindStringSubmatch(baseFilename)
 			if len(matches) == 4 {
-				baseFilename = matches[1] + "." + matches[3]
+				pkgId = matches[1] + "." + matches[3]
 			}
 
 			// Generate PkgId
-			pkgId := "github.com.xplshn.appbundlehub" + "." + filepath.Base(baseFilename)
+			pkgId = "github.com.xplshn.appbundlehub" + "." + filepath.Base(pkgId)
 
 			// Create base item with info from the AppBundle
 			item := binaryEntry{
