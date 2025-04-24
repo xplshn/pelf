@@ -25,9 +25,7 @@ import (
 	"github.com/zeebo/blake3"
 )
 
-// Initialize logger
 func init() {
-	// Configure logger to not print date/time prefix
 	log.SetFlags(0)
 }
 
@@ -120,7 +118,6 @@ func loadAppStreamMetadata() error {
 		return err
 	}
 
-	// Decompress zstd content
 	zstdReader, err := zstd.NewReader(bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("error creating zstd reader: %v", err)
@@ -172,10 +169,11 @@ func extractAppBundleInfo(filename string) (RuntimeInfo, string, error) {
 	if runtimeInfo.AppBundleID == "" {
 		return RuntimeInfo{}, "", fmt.Errorf("appBundleID not found")
 	}
-	// Parse build date from AppBundleID (format: appstreamId-DD_MM_YYYY-maintainer)
+
 	parts := strings.Split(runtimeInfo.AppBundleID, "-")
 	if len(parts) < 3 {
-		return RuntimeInfo{}, "", fmt.Errorf("invalid appBundleID format")
+		buildDate := "unknown"
+		return runtimeInfo, buildDate, nil
 	}
 	buildDate := parts[len(parts)-2]
 	re := regexp.MustCompile(`^(\d{2})_(\d{2})_(\d{4})$`)
@@ -185,7 +183,6 @@ func extractAppBundleInfo(filename string) (RuntimeInfo, string, error) {
 	}
 	formattedBuildDate := fmt.Sprintf("%s-%s-%s", matches[3], matches[2], matches[1])
 
-	// Extract the actual appstreamId (everything before the date)
 	dateIndex := strings.LastIndex(runtimeInfo.AppBundleID, buildDate) - 1
 	actualAppStreamId := runtimeInfo.AppBundleID[:dateIndex]
 	runtimeInfo.AppBundleID = actualAppStreamId
@@ -209,14 +206,12 @@ func computeHashes(path string) (string, string, error) {
 	}
 	defer file.Close()
 
-	// Compute SHA256
 	shaHasher := sha256.New()
 	if _, err := io.Copy(shaHasher, file); err != nil {
 		return "", "", err
 	}
 	shaSum := hex.EncodeToString(shaHasher.Sum(nil))
 
-	// Compute BLAKE3
 	_, err = file.Seek(0, 0)
 	if err != nil {
 		return "", "", err
@@ -261,12 +256,10 @@ func generateMarkdown(dbinMetadata DbinMetadata) (string, error) {
 		allEntries = append(allEntries, entries...)
 	}
 
-	// Sort entries by pkg_name (lowercased)
 	sort.Slice(allEntries, func(i, j int) bool {
 		return strings.ToLower(allEntries[i].Name) < strings.ToLower(allEntries[j].Name)
 	})
 
-	// Generate markdown content
 	for _, entry := range allEntries {
 		siteURL := ""
 		if len(entry.SrcURLs) > 0 {
@@ -283,7 +276,7 @@ func generateMarkdown(dbinMetadata DbinMetadata) (string, error) {
 		}
 
 		mdBuffer.WriteString(fmt.Sprintf("| %s | %s | %s | %s | %s |\n",
-			filepath.Base(entry.Pkg), // No extensions in AM's repo index allowed
+			filepath.Base(entry.Pkg),
 			ternary(entry.Description != "", entry.Description, "not_available"),
 			ternary(siteURL != "", siteURL, "not_available"),
 			entry.DownloadURL,
@@ -325,120 +318,116 @@ func main() {
 				return nil
 			}
 
-			// Compute hashes and size
 			b3sum, shasum, err := computeHashes(path)
 			if err != nil {
 				log.Printf("Error computing hashes for %s: %v\n", path, err)
 				return nil
 			}
 
-			var pkgId string
-			// Extract the base filename without date and author
+			var pkg, pkgId string
 			baseFilename := filepath.Base(path)
 			re := regexp.MustCompile(`^(.+)-(\d{2}_\d{2}_\d{4})-(.+)(\..+)$`)
 			matches := re.FindStringSubmatch(baseFilename)
 			if len(matches) == 5 {
 				pkgId = matches[1]
-				// matches: [quake3e-14_04_2025-xplshn.dwfs.AppBundle quake3e 14_04_2025 xplshn.dwfs .AppBundle]
-				pkg := matches[1] + "." + strings.Split(matches[3], ".")[1] + matches[4]
+				pkg = matches[1] + "." + strings.Split(matches[3], ".")[1] + matches[4]
 
-				// Log adding file to repository with standardized format
 				log.Printf("Adding %s to repository index\n", baseFilename)
 				log.Println(".pkg: " + pkg)
 
-				// Generate PkgId
 				pkgId = "github.com.xplshn.appbundlehub." + pkgId
+			} else {
+				pkgId = strings.TrimSuffix(baseFilename, filepath.Ext(baseFilename))
+				pkgId = strings.TrimSuffix(pkgId, ".dwfs")
+				pkgId = strings.TrimSuffix(pkgId, ".sqfs")
+				pkg = baseFilename
 
-				// Create base item with info from the AppBundle
-				item := binaryEntry{
-					Pkg:        pkg,
-					Name:       strings.Title(strings.ReplaceAll(runtimeInfo.AppBundleID, "-", " ")),
-					PkgId:      pkgId,
-					BuildDate:  buildDate,
-					Size:       getFileSize(path),
-					Bsum:       b3sum,
-					Shasum:     shasum,
-					DownloadURL: *downloadPrefix + filepath.Base(path),
-					RepoName:   *repoName,
+				log.Printf("Adding %s to repository index\n", baseFilename)
+				log.Println(".pkg: " + pkg)
+
+				pkgId = "github.com.xplshn.appbundlehub." + pkgId
+			}
+
+			item := binaryEntry{
+				Pkg:        pkg,
+				Name:       strings.Title(strings.ReplaceAll(runtimeInfo.AppBundleID, "-", " ")),
+				PkgId:      pkgId,
+				BuildDate:  buildDate,
+				Size:       getFileSize(path),
+				Bsum:       b3sum,
+				Shasum:     shasum,
+				DownloadURL: *downloadPrefix + filepath.Base(path),
+				RepoName:   *repoName,
+			}
+
+			appStreamXML, err := extractAppStreamXML(path)
+			if err != nil {
+				log.Printf("Warning: %s does not have an AppStream AppData.xml\n", path)
+			} else {
+				if appStreamXML.Name != "" {
+					item.Name = appStreamXML.Name
 				}
 
-				// Try to extract AppStream XML from the AppBundle
-				appStreamXML, err := extractAppStreamXML(path)
-				if err != nil {
-					log.Printf("Warning: %s does not have an AppStream AppData.xml\n", path)
-				} else {
-					// Use the name, icon, screenshots, description fields from AppStream XML
-					if appStreamXML.Name != "" {
-						item.Name = appStreamXML.Name
+				if appStreamXML.Icon != "" {
+					item.Icon = appStreamXML.Icon
+				}
+
+				if len(appStreamXML.Screenshots.Screenshot) > 0 {
+					for _, screenshot := range appStreamXML.Screenshots.Screenshot {
+						item.Screenshots = append(item.Screenshots, screenshot.Image)
+					}
+				}
+
+				if appStreamXML.Summary != "" {
+					item.Description = appStreamXML.Summary
+				}
+
+				if appStreamXML.Description.InnerXML != "" {
+					item.LongDescription = appStreamXML.Description.InnerXML
+				}
+
+				item.AppstreamId = runtimeInfo.AppBundleID
+			}
+
+			if item.AppstreamId == "" {
+				appData := findAppStreamMetadataForAppId(runtimeInfo.AppBundleID)
+				if appData != nil {
+					log.Printf("Adding %s to repository index\n", baseFilename)
+					log.Println(".pkg: " + pkg)
+
+					if appData.Name != "" {
+						item.Name = appData.Name
 					}
 
-					if appStreamXML.Icon != "" {
-						item.Icon = appStreamXML.Icon
+					if len(appData.Icons) > 0 {
+						item.Icon = appData.Icons[0]
 					}
 
-					if len(appStreamXML.Screenshots.Screenshot) > 0 {
-						for _, screenshot := range appStreamXML.Screenshots.Screenshot {
-							item.Screenshots = append(item.Screenshots, screenshot.Image)
-						}
+					if len(appData.Screenshots) > 0 {
+						item.Screenshots = appData.Screenshots
 					}
 
-					if appStreamXML.Summary != "" {
-						item.Description = appStreamXML.Summary
+					if appData.Summary != "" {
+						item.Description = appData.Summary
 					}
 
-					if appStreamXML.Description.InnerXML != "" {
-						item.LongDescription = appStreamXML.Description.InnerXML
+					if appData.RichDescription != "" {
+						item.LongDescription = appData.RichDescription
 					}
 
-					// Set app_id because AppStream XML data is available
+					if appData.Categories != "" {
+						item.Categories = appData.Categories
+					}
+
+					if appData.Version != "" {
+						item.Version = appData.Version
+					}
+
 					item.AppstreamId = runtimeInfo.AppBundleID
 				}
-
-				// If AppStream XML is not available, fall back to scraped data
-				if item.AppstreamId == "" {
-					appData := findAppStreamMetadataForAppId(runtimeInfo.AppBundleID)
-					if appData != nil {
-						// Log enhanced entry with standardized format
-						log.Printf("Adding %s to repository index\n", baseFilename)
-						log.Println(".pkg: " + pkg)
-
-						// Use the name, icon, screenshots, description fields from appstream_metadata
-						if appData.Name != "" {
-							item.Name = appData.Name
-						}
-
-						if len(appData.Icons) > 0 {
-							item.Icon = appData.Icons[0]
-						}
-
-						if len(appData.Screenshots) > 0 {
-							item.Screenshots = appData.Screenshots
-						}
-
-						if appData.Summary != "" {
-							item.Description = appData.Summary
-						}
-
-						if appData.RichDescription != "" {
-							item.LongDescription = appData.RichDescription
-						}
-
-						if appData.Categories != "" {
-							item.Categories = appData.Categories
-						}
-
-						if appData.Version != "" {
-							item.Version = appData.Version
-						}
-
-						// Set app_id because AppStream data is available
-						item.AppstreamId = runtimeInfo.AppBundleID
-					}
-				}
-
-				// Add to metadata
-				dbinMetadata[*repoName] = append(dbinMetadata[*repoName], item)
 			}
+
+			dbinMetadata[*repoName] = append(dbinMetadata[*repoName], item)
 		}
 		return nil
 	})
@@ -448,7 +437,6 @@ func main() {
 		return
 	}
 
-	// Generate the output JSON
 	if *outputJSON != "" {
 		buffer := &bytes.Buffer{}
 		encoder := json.NewEncoder(buffer)
@@ -468,7 +456,6 @@ func main() {
 		log.Printf("Successfully wrote JSON output to %s\n", *outputJSON)
 	}
 
-	// Generate the output Markdown
 	if *outputMarkdown != "" {
 		markdownContent, err := generateMarkdown(dbinMetadata)
 		if err != nil {
