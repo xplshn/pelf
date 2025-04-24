@@ -145,6 +145,7 @@ func main() {
 				config.Name = config.AppBundleID
 			} else {
 				config.AppBundleID = fmt.Sprintf("%s-%s-%s", config.AppBundleID, config.Date, config.Maintainer)
+				config.Name = fmt.Sprintf("%s-%s-%s", config.Name, config.Date, config.Maintainer)
 			}
 			config.AppDir = fmt.Sprintf("%s.AppDir", config.AppBundleID)
 			if config.Lib4binArgs != "" {
