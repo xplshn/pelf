@@ -2,54 +2,61 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"debug/elf"
 	"encoding/hex"
 	"flag"
 	"fmt"
 	"io"
+	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
-	"strings"
-	"crypto/sha256"
-	"net/http"
 	"sort"
+	"strings"
 
-	"github.com/zeebo/blake3"
 	"github.com/fxamacker/cbor/v2"
 	"github.com/goccy/go-json"
 	"github.com/klauspost/compress/zstd"
+	"github.com/zeebo/blake3"
 )
 
+// Initialize logger
+func init() {
+	// Configure logger to not print date/time prefix
+	log.SetFlags(0)
+}
+
 type binaryEntry struct {
-	Pkg            string     `json:"pkg,omitempty"`
-	Name           string     `json:"pkg_name,omitempty"`
-	PkgId          string     `json:"pkg_id,omitempty"`
-	AppstreamId    string     `json:"app_id,omitempty"`
-	Icon           string     `json:"icon,omitempty"`
-	Description    string     `json:"description,omitempty"`
-	LongDescription string    `json:"description_long,omitempty"`
-	Screenshots    []string   `json:"screenshots,omitempty"`
-	Version        string     `json:"version,omitempty"`
-	DownloadURL    string     `json:"download_url,omitempty"`
-	Size           string     `json:"size,omitempty"`
-	Bsum           string     `json:"bsum,omitempty"`
-	Shasum         string     `json:"shasum,omitempty"`
-	BuildDate      string     `json:"build_date,omitempty"`
-	SrcURLs        []string   `json:"src_urls,omitempty"`
-	WebURLs        []string   `json:"web_urls,omitempty"`
-	BuildScript    string     `json:"build_script,omitempty"`
-	BuildLog       string     `json:"build_log,omitempty"`
-	Categories     string     `json:"categories,omitempty"`
-	Snapshots      []snapshot `json:"snapshots,omitempty"`
-	Provides       string     `json:"provides,omitempty"`
-	License        []string   `json:"license,omitempty"`
-	Notes          []string   `json:"notes,omitempty"`
-	Appstream      string     `json:"appstream,omitempty"`
-	Rank           uint       `json:"rank,omitempty"`
-	RepoURL        string     `json:"-"`
-	RepoGroup      string     `json:"-"`
-	RepoName       string     `json:"-"`
+	Pkg             string     `json:"pkg,omitempty"`
+	Name            string     `json:"pkg_name,omitempty"`
+	PkgId           string     `json:"pkg_id,omitempty"`
+	AppstreamId     string     `json:"app_id,omitempty"`
+	Icon            string     `json:"icon,omitempty"`
+	Description     string     `json:"description,omitempty"`
+	LongDescription string     `json:"description_long,omitempty"`
+	Screenshots     []string   `json:"screenshots,omitempty"`
+	Version         string     `json:"version,omitempty"`
+	DownloadURL     string     `json:"download_url,omitempty"`
+	Size            string     `json:"size,omitempty"`
+	Bsum            string     `json:"bsum,omitempty"`
+	Shasum          string     `json:"shasum,omitempty"`
+	BuildDate       string     `json:"build_date,omitempty"`
+	SrcURLs         []string   `json:"src_urls,omitempty"`
+	WebURLs         []string   `json:"web_urls,omitempty"`
+	BuildScript     string     `json:"build_script,omitempty"`
+	BuildLog        string     `json:"build_log,omitempty"`
+	Categories      string     `json:"categories,omitempty"`
+	Snapshots       []snapshot `json:"snapshots,omitempty"`
+	Provides        string     `json:"provides,omitempty"`
+	License         []string   `json:"license,omitempty"`
+	Notes           []string   `json:"notes,omitempty"`
+	Appstream       string     `json:"appstream,omitempty"`
+	Rank            uint       `json:"rank,omitempty"`
+	RepoURL         string     `json:"-"`
+	RepoGroup       string     `json:"-"`
+	RepoName        string     `json:"-"`
 }
 
 type snapshot struct {
@@ -74,7 +81,7 @@ var appStreamMetadata []AppStreamMetadata
 var appStreamMetadataLoaded bool
 
 type RuntimeInfo struct {
-	AppBundleID  string   `json:"appBundleID"`
+	AppBundleID string `json:"appBundleID"`
 }
 
 func loadAppStreamMetadata() error {
@@ -82,6 +89,7 @@ func loadAppStreamMetadata() error {
 		return nil
 	}
 
+	log.Println("Loading AppStream metadata from remote source")
 	resp, err := http.Get("https://github.com/xplshn/dbin-metadata/raw/refs/heads/master/misc/cmd/flatpakAppStreamScrapper/appstream_metadata.cbor.zst")
 	if err != nil {
 		return err
@@ -110,6 +118,7 @@ func loadAppStreamMetadata() error {
 		return err
 	}
 
+	log.Printf("Successfully loaded %d AppStream metadata entries", len(appStreamMetadata))
 	appStreamMetadataLoaded = true
 	return nil
 }
@@ -253,12 +262,12 @@ func main() {
 	flag.Parse()
 
 	if *inputDir == "" || *repoName == "" {
-		fmt.Println("Usage: --input-dir <input_directory> --output-file <output_file.json> --download-prefix <url> --repo-name <repo_name> [--output-markdown <output_file.md>]")
+		log.Println("Usage: --input-dir <input_directory> --output-file <output_file.json> --download-prefix <url> --repo-name <repo_name> [--output-markdown <output_file.md>]")
 		return
 	}
 
 	if err := loadAppStreamMetadata(); err != nil {
-		fmt.Printf("Error loading AppStream metadata: %v\n", err)
+		log.Printf("Error loading AppStream metadata: %v\n", err)
 		return
 	}
 
@@ -272,89 +281,96 @@ func main() {
 		if !info.IsDir() && strings.HasSuffix(path, ".AppBundle") {
 			runtimeInfo, buildDate, err := extractAppBundleInfo(path)
 			if err != nil {
-				fmt.Printf("Error extracting runtime info from %s: %v\n", path, err)
+				log.Printf("Error extracting runtime info from %s: %v\n", path, err)
 				return nil
 			}
 
 			// Compute hashes and size
 			b3sum, shasum, err := computeHashes(path)
 			if err != nil {
-				fmt.Printf("Error computing hashes for %s: %v\n", path, err)
+				log.Printf("Error computing hashes for %s: %v\n", path, err)
 				return nil
 			}
 
 			var pkgId string
 			// Extract the base filename without date and author
 			baseFilename := filepath.Base(path)
-			re := regexp.MustCompile(`^(.+)-(\d{2}_\d{2}_\d{4})-(.+)$`)
+			re := regexp.MustCompile(`^(.+)-(\d{2}_\d{2}_\d{4})-(.+)(\..+)$`)
 			matches := re.FindStringSubmatch(baseFilename)
-			if len(matches) == 4 {
-				pkgId = matches[1] + "." + matches[3]
+			if len(matches) == 5 {
+				pkgId = matches[1]
+				// matches: [quake3e-14_04_2025-xplshn.dwfs.AppBundle quake3e 14_04_2025 xplshn.dwfs .AppBundle]
+				pkg := matches[1] + "." + strings.Split(matches[3], ".")[1] + matches[4]
+
+				// Log adding file to repository with standardized format
+				log.Printf("Adding %s to repository index\n", baseFilename)
+				log.Println(".pkg: " + pkg)
+
+				// Generate PkgId
+				pkgId = "github.com.xplshn.appbundlehub." + pkgId
+
+				// Create base item with info from the AppBundle
+				item := binaryEntry{
+					Pkg:        pkg,
+					Name:       strings.Title(strings.ReplaceAll(runtimeInfo.AppBundleID, "-", " ")),
+					PkgId:      pkgId,
+					BuildDate:  buildDate,
+					Size:       getFileSize(path),
+					Bsum:       b3sum,
+					Shasum:     shasum,
+					DownloadURL: *downloadPrefix + filepath.Base(path),
+					RepoName:   *repoName,
+				}
+
+				// Look for matching AppStream metadata and use it to enhance our entry
+				appData := findAppStreamMetadataForAppId(runtimeInfo.AppBundleID)
+				if appData != nil {
+					// Log enhanced entry with standardized format
+					log.Printf("Adding %s to repository index\n", baseFilename)
+					log.Println(".pkg: " + pkg)
+
+					// Use the name, icon, screenshots, description fields from appstream_metadata
+					if appData.Name != "" {
+						item.Name = appData.Name
+					}
+
+					if len(appData.Icons) > 0 {
+						item.Icon = appData.Icons[0]
+					}
+
+					if len(appData.Screenshots) > 0 {
+						item.Screenshots = appData.Screenshots
+					}
+
+					if appData.Summary != "" {
+						item.Description = appData.Summary
+					}
+
+					if appData.RichDescription != "" {
+						item.LongDescription = appData.RichDescription
+					}
+
+					if appData.Categories != "" {
+						item.Categories = appData.Categories
+					}
+
+					if appData.Version != "" {
+						item.Version = appData.Version
+					}
+
+					// Set app_id because AppStream data is available
+					item.AppstreamId = runtimeInfo.AppBundleID
+				}
+
+				// Add to metadata
+				dbinMetadata[*repoName] = append(dbinMetadata[*repoName], item)
 			}
-
-			// Generate PkgId
-			pkgId = "github.com.xplshn.appbundlehub" + "." + filepath.Base(pkgId)
-
-			// Create base item with info from the AppBundle
-			item := binaryEntry{
-				Pkg:            baseFilename,
-				Name:           strings.Title(strings.ReplaceAll(runtimeInfo.AppBundleID, "-", " ")),
-				PkgId:          pkgId,
-				BuildDate:      buildDate,
-				Size:           getFileSize(path),
-				Bsum:           b3sum,
-				Shasum:         shasum,
-				DownloadURL:    *downloadPrefix + filepath.Base(path),
-				RepoName:       *repoName,
-			}
-
-			// Look for matching AppStream metadata and use it to enhance our entry
-			appData := findAppStreamMetadataForAppId(runtimeInfo.AppBundleID)
-			if appData != nil {
-				// Use the name, icon, screenshots, description fields from appstream_metadata
-				if appData.Name != "" {
-					item.Name = appData.Name
-				}
-
-				if len(appData.Icons) > 0 {
-					item.Icon = appData.Icons[0]
-				}
-
-				if len(appData.Screenshots) > 0 {
-					item.Screenshots = appData.Screenshots
-				}
-
-				if appData.Summary != "" {
-					item.Description = appData.Summary
-				}
-
-				if appData.RichDescription != "" {
-					item.LongDescription = appData.RichDescription
-				}
-
-				if appData.Categories != "" {
-					item.Categories = appData.Categories
-				}
-
-				// TODO:
-				if appData.Version != "" {
-					item.Version = appData.Version
-				}
-
-				// Set app_id because AppStream data is available
-				item.AppstreamId = runtimeInfo.AppBundleID
-
-				fmt.Printf("Enhanced entry with AppStream data: %s\n", runtimeInfo.AppBundleID)
-			}
-
-			// Add to metadata
-			dbinMetadata[*repoName] = append(dbinMetadata[*repoName], item)
 		}
 		return nil
 	})
 
 	if err != nil {
-		fmt.Println("Error processing files:", err)
+		log.Println("Error processing files:", err)
 		return
 	}
 
@@ -366,32 +382,32 @@ func main() {
 		encoder.SetIndent("", "  ")
 
 		if err := encoder.Encode(dbinMetadata); err != nil {
-			fmt.Println("Error creating JSON:", err)
+			log.Println("Error creating JSON:", err)
 			return
 		}
 
 		if err := os.WriteFile(*outputJSON, buffer.Bytes(), 0644); err != nil {
-			fmt.Println("Error writing JSON file:", err)
+			log.Println("Error writing JSON file:", err)
 			return
 		}
 
-		fmt.Printf("Successfully wrote JSON output to %s\n", *outputJSON)
+		log.Printf("Successfully wrote JSON output to %s\n", *outputJSON)
 	}
 
 	// Generate the output Markdown
 	if *outputMarkdown != "" {
 		markdownContent, err := generateMarkdown(dbinMetadata)
 		if err != nil {
-			fmt.Println("Error generating Markdown:", err)
+			log.Println("Error generating Markdown:", err)
 			return
 		}
 
 		if err := os.WriteFile(*outputMarkdown, []byte(markdownContent), 0644); err != nil {
-			fmt.Println("Error writing Markdown file:", err)
+			log.Println("Error writing Markdown file:", err)
 			return
 		}
 
-		fmt.Printf("Successfully wrote Markdown output to %s\n", *outputMarkdown)
+		log.Printf("Successfully wrote Markdown output to %s\n", *outputMarkdown)
 	}
 }
 
