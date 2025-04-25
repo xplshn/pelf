@@ -147,7 +147,7 @@ func main() {
 				config.AppBundleID = fmt.Sprintf("%s-%s-%s", config.AppBundleID, config.Date, config.Maintainer)
 				config.Name = fmt.Sprintf("%s-%s-%s", config.Name, config.Date, config.Maintainer)
 			}
-			config.AppDir = fmt.Sprintf("%s.AppDir", config.AppBundleID)
+			config.AppDir = fmt.Sprintf("%s.AppDir", config.Name)
 			if config.Lib4binArgs != "" {
 				config.Sharun = true
 				parts := strings.Fields(config.Lib4binArgs)
