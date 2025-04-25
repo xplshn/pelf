@@ -247,7 +247,7 @@ func getFilesystemTypeFromOutputFile(outputFile string) string {
 
 func validateRunBehavior(ctx context.Context, cmd *cli.Command, value uint64) error {
 	if value > 3 {
-		return fmt.Errorf("run-behavior must be one of 0, 1, 2, or 4")
+		return fmt.Errorf("run-behavior must be one of 0, 1, 2, or 3")
 	}
 	return nil
 }
