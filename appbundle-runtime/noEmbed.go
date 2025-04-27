@@ -32,7 +32,7 @@ func (c *osExecCmd) CombinedOutput() ([]byte, error) { return c.Cmd.CombinedOutp
 var Filesystems = []*Filesystem{
     {
         Type:     "squashfs",
-        Commands: []string{"fusermount", "squashfuse", "unsquashfs"},
+        Commands: []string{"squashfuse", "unsquashfs"},
         MountCmd: func(cfg *RuntimeConfig) CommandRunner {
             executable, err := lookPath("squashfuse", globalPath)
             if err != nil {
@@ -68,7 +68,7 @@ var Filesystems = []*Filesystem{
     },
     {
         Type:     "dwarfs",
-        Commands: []string{"fusermount3", "dwarfs", "dwarfsextract"},
+        Commands: []string{"dwarfs", "dwarfsextract"},
         MountCmd: func(cfg *RuntimeConfig) CommandRunner {
             executable, err := lookPath("dwarfs", globalPath)
             if err != nil {
