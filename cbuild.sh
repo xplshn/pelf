@@ -229,7 +229,7 @@ handle_dependencies() {
     DEPS="bintools/objcopy
           squashfs-tools/mksquashfs"
 
-    unnappear rm "$DBIN_INSTALL_DIR/mkdwarfs"
+    unnappear rm "$DBIN_INSTALL_DIR/dwarfs-tools"
     curl -sL "https://github.com/mhx/dwarfs/releases/download/v$DWFS_VER/dwarfs-universal-$DWFS_VER-Linux-$(uname -m)" -o "$DBIN_INSTALL_DIR/dwarfs-tools"
     chmod +x "$DBIN_INSTALL_DIR/dwarfs-tools"
 
