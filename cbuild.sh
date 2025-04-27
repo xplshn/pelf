@@ -1,4 +1,10 @@
 #!/bin/sh
+# TODO: It really doesn't make sense to use `dbin` here if we (I) plan to support BSDs too.
+#       The only way to build the tooling right now in BSDs is to manually gather and compress all dependencies
+#       To then build each target (appbundle-runtime (universal), pelf)
+#
+# TODO: What to do about pelfCreator in non-Linux systems?
+#
 
 [ "$DEBUG" = "1" ] && set -x
 
@@ -7,6 +13,11 @@ BASE="$(dirname "$(realpath "$0")")"
 TEMP_DIR="/tmp/pelf_build_$(date +%s)"
 export DBIN_INSTALL_DIR="$BASE/binaryDependencies"
 export DBIN_NOCONFIG="1"
+
+# -----------------
+DWFS_VER="0.12.3" #
+# -----------------
+
 
 # Change to BASE directory if not already there
 if [ "$OPWD" != "$BASE" ]; then
@@ -46,11 +57,60 @@ require() {
     available "$1" || log_error "[$1] is not installed. Please ensure the command is available [$1] and try again."
 }
 
-# Project functions
+build_appbundle_runtime() {
+    log "Preparing appbundle-runtime binary dependencies"
+    export DBIN_INSTALL_DIR="$BASE/appbundle-runtime/binaryDependencies"
+    mkdir -p "$DBIN_INSTALL_DIR"
+
+    log "Getting unsquashfs via dbin"
+
+    # Fetch required tools using curl and dbin
+    curl -sL "https://github.com/mhx/dwarfs/releases/download/v$DWFS_VER/dwarfs-fuse-extract-mimalloc-$DWFS_VER-Linux-$(uname -m)" -o "$DBIN_INSTALL_DIR/dwarfs"
+    chmod +x "$DBIN_INSTALL_DIR/dwarfs"
+    curl -sL "https://github.com/VHSgunzo/squashfuse-static/releases/latest/download/squashfuse_ll-musl-mimalloc-$(uname -m)" -o "$DBIN_INSTALL_DIR/squashfuse"
+    chmod +x "$DBIN_INSTALL_DIR/squashfuse"
+
+    dbin add squashfs-tools/unsquashfs
+
+    # UPX the unsquashfs binary
+    if available "upx"; then
+        log "Compressing unsquashfs for appbundle-runtime"
+        upx "$DBIN_INSTALL_DIR/unsquashfs" || log_error "Unable to compress unsquashfs"
+    else
+        log_warning "upx not available. The unsquashfs binary will be unnecessarily large"
+    fi
+
+    chmod +x "$DBIN_INSTALL_DIR"/*
+
+    log "Building appbundle-runtime variants"
+    if [ "$(basename "$(uname -o)")" = "Linux" ]; then
+        # Build dwarfs version
+        log "Building dwarfs appbundle-runtime"
+        go build --tags dwarfs -o "$DBIN_INSTALL_DIR/appbundle-runtime_dwarfs" ./appbundle-runtime || log_error "Unable to build appbundle-runtime_dwarfs"
+        # Build squashfs version
+        log "Building squashfs appbundle-runtime"
+        go build --tags squashfs -o "$DBIN_INSTALL_DIR/appbundle-runtime_squashfs" ./appbundle-runtime || log_error "Unable to build appbundle-runtime_squashfs"
+
+        available "strip" && strip "$DBIN_INSTALL_DIR/appbundle-runtime_dwarfs" "$DBIN_INSTALL_DIR/appbundle-runtime_squashfs"
+    else
+        # Build standard version
+        log "Building universal appbundle-runtime"
+        go build --tags noEmbed -o "$DBIN_INSTALL_DIR/appbundle-runtime" ./appbundle-runtime || log_error "Unable to build appbundle-runtime"
+        available "strip" && strip "$DBIN_INSTALL_DIR/appbundle-runtime"
+    fi
+
+    if ! available "strip"; then
+        log_warning "strip not available. The binaries will be unnecessarily large"
+    fi
+}
+
 build_pelf() {
     if [ -f "./pelf.go" ]; then
+        build_appbundle_runtime
+
+        export DBIN_INSTALL_DIR="$BASE/binaryDependencies"
         mkdir -p "$DBIN_INSTALL_DIR"
-        echo ./appbundle-runtime/*.go | xargs go build -o "$DBIN_INSTALL_DIR/appbundle-runtime"
+
         [ "$NO_REMOTE" != "1" ] && handle_dependencies
 
         log "Creating binaryDependencies.tar.zst for pelf"
@@ -160,7 +220,7 @@ build_appstream_helper() {
 
 clean_project() {
     log "Starting clean process"
-    rm -rf ./pelf ./pelf.upx ./binaryDependencies ./binaryDependencies.tar.zst ./cmd/pelfCreator/pelfCreator ./cmd/pelfCreator/binaryDependencies* ./cmd/misc/appstream-helper/appstream-helper
+    rm -rf ./pelf ./pelf.upx ./binaryDependencies ./binaryDependencies.tar.zst ./cmd/pelfCreator/pelfCreator ./cmd/pelfCreator/binaryDependencies* ./cmd/misc/appstream-helper/appstream-helper ./appbundle-runtime/binaryDependencies
     log "Clean process completed"
 }
 
@@ -172,33 +232,30 @@ retrieve_executable() {
 
 handle_dependencies() {
     mkdir -p "$DBIN_INSTALL_DIR"
-    DEPS="squashfuse/squashfuse_ll
-          squashfs-tools/unsquashfs
-          squashfs-tools/mksquashfs
-          bintools/objcopy"
-
-    DWFS_VER="0.12.3"
+    DEPS="bintools/objcopy
+          squashfs-tools/mksquashfs"
 
     unnappear rm "$DBIN_INSTALL_DIR/mkdwarfs"
-    curl -sL "https://github.com/mhx/dwarfs/releases/download/v$DWFS_VER/dwarfs-universal-$DWFS_VER-Linux-$(uname -m)" -o "$DBIN_INSTALL_DIR/mkdwarfs"
-    chmod +x "$DBIN_INSTALL_DIR/mkdwarfs"
+    curl -sL "https://github.com/mhx/dwarfs/releases/download/v$DWFS_VER/dwarfs-universal-$DWFS_VER-Linux-$(uname -m)" -o "$DBIN_INSTALL_DIR/dwarfs-tools"
+    chmod +x "$DBIN_INSTALL_DIR/dwarfs-tools"
 
-    unnappear rm "$DBIN_INSTALL_DIR/dwarfs" "$DBIN_INSTALL_DIR/dwarfsextract"
-    curl -sL "https://github.com/mhx/dwarfs/releases/download/v$DWFS_VER/dwarfs-fuse-extract-$DWFS_VER-Linux-$(uname -m)" -o "$DBIN_INSTALL_DIR/dwarfs"
-    chmod +x "$DBIN_INSTALL_DIR/dwarfs"
+    if [ "$(basename "$(uname -o)")" != "Linux" ]; then
+        DEPS="$DEPS
+              squashfuse/squashfuse_ll
+              squashfs-tools/unsquashfs"
 
-    unnappear rm "$DBIN_INSTALL_DIR/squashfuse_ll"
-    curl -sL "https://github.com/VHSgunzo/squashfuse-static/releases/latest/download/squashfuse_ll-musl-mimalloc-$(uname -m)" -o "$DBIN_INSTALL_DIR/squashfuse_ll"
-    chmod +x "$DBIN_INSTALL_DIR/squashfuse_ll"
+        unnappear rm "$DBIN_INSTALL_DIR/squashfuse_ll"
+        curl -sL "https://github.com/VHSgunzo/squashfuse-static/releases/latest/download/squashfuse_ll-musl-mimalloc-$(uname -m)" -o "$DBIN_INSTALL_DIR/squashfuse_ll"
+        chmod +x "$DBIN_INSTALL_DIR/squashfuse_ll"
 
-    #if [ -n "$(ls -A "$DBIN_INSTALL_DIR" 2>/dev/null)" ]; then
-    #    log "Updating dependencies..."
-    #    dbin update
-    #else
-        log "Installing dependencies..."
-        # shellcheck disable=SC2086
-        dbin add $DEPS
-    #fi
+        upx unsquashfs
+        [ -f ./squashfuse_ll ] && [ ! -h ./squashfuse_ll ] && mv ./squashfuse_ll ./squashfuse
+        ln -sfT squashfuse squashfuse_ll
+    fi
+
+    log "Installing dependencies..."
+    # shellcheck disable=SC2086
+    dbin add $DEPS
 
     cd "$DBIN_INSTALL_DIR" && {
         log "Linking dependencies"
@@ -206,12 +263,8 @@ handle_dependencies() {
             mv ./dwarfs-tools ./dwarfs
             ln -sfT dwarfs mkdwarfs
         }
-        upx -d dwarfs
         ln -sfT dwarfs dwarfsextract
-        upx mksquashfs
-        upx objcopy
-        [ -f ./squashfuse_ll ] && [ ! -h ./squashfuse_ll ] && mv ./squashfuse_ll ./squashfuse
-        ln -sfT squashfuse squashfuse_ll
+        upx mksquashfs mkdwarfs objcopy
     }
     unnappear rm ./*.upx
     cd "$BASE" || log_error "Unable to go back to $BASE"
@@ -235,6 +288,12 @@ case "$1" in
         log "Starting build process for target: pelf"
         build_pelf
         ;;
+    "appbundle-runtime")
+        require go
+        log "Starting build process for target: appbundle-runtime"
+        mkdir -p "$DBIN_INSTALL_DIR"
+        build_appbundle_runtime
+        ;;
     "pelfCreator")
         require go
         log "Starting build process for target: pelfCreator"
@@ -256,7 +315,7 @@ case "$1" in
         update_dependencies
         ;;
     *)
-        log_warning "Usage: $0 {build|pelfCreator|appstream-helper|clean|retrieve|update-deps}"
+        log_warning "Usage: $0 {build|pelf|appbundle-runtime|pelfCreator|appstream-helper|clean|retrieve|update-deps}"
         exit 1
         ;;
 esac
