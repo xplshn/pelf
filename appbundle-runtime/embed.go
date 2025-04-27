@@ -60,10 +60,5 @@ func checkDeps(cfg *RuntimeConfig, fh *fileHandler) (*Filesystem, error) {
 	if !ok {
 		return nil, fmt.Errorf("unsupported filesystem: %s", cfg.appBundleFS)
 	}
-	for _, cmd := range fs.Commands {
-		if _, err := lookPath(cmd, globalPath); err != nil {
-			return nil, fmt.Errorf("system command %s not found", cmd)
-		}
-	}
 	return fs, nil
 }
