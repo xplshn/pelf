@@ -58,45 +58,39 @@ require() {
 }
 
 build_appbundle_runtime() {
-    log "Preparing appbundle-runtime binary dependencies"
-    export DBIN_INSTALL_DIR="$BASE/appbundle-runtime/binaryDependencies"
-    mkdir -p "$DBIN_INSTALL_DIR"
-
-    log "Getting unsquashfs via dbin"
-
-    # Fetch required tools using curl and dbin
-    curl -sL "https://github.com/mhx/dwarfs/releases/download/v$DWFS_VER/dwarfs-fuse-extract-mimalloc-$DWFS_VER-Linux-$(uname -m)" -o "$DBIN_INSTALL_DIR/dwarfs"
-    chmod +x "$DBIN_INSTALL_DIR/dwarfs"
-    curl -sL "https://github.com/VHSgunzo/squashfuse-static/releases/latest/download/squashfuse_ll-musl-mimalloc-$(uname -m)" -o "$DBIN_INSTALL_DIR/squashfuse"
-    chmod +x "$DBIN_INSTALL_DIR/squashfuse"
-
-    dbin add squashfs-tools/unsquashfs
-
-    # UPX the unsquashfs binary
-    if available "upx"; then
-        log "Compressing unsquashfs for appbundle-runtime"
-        upx "$DBIN_INSTALL_DIR/unsquashfs" || log_error "Unable to compress unsquashfs"
-    else
-        log_warning "upx not available. The unsquashfs binary will be unnecessarily large"
-    fi
-
-    chmod +x "$DBIN_INSTALL_DIR"/*
-
     log "Building appbundle-runtime variants"
     if [ "$(basename "$(uname -o)")" = "Linux" ]; then
+    log "Preparing appbundle-runtime binary dependencies"
+        export DBIN_INSTALL_DIR="$BASE/appbundle-runtime/binaryDependencies"
+        mkdir -p "$DBIN_INSTALL_DIR"
+        # Fetch required tools using curl and dbin
+        curl -sL "https://github.com/mhx/dwarfs/releases/download/v$DWFS_VER/dwarfs-fuse-extract-mimalloc-$DWFS_VER-Linux-$(uname -m)" -o "$DBIN_INSTALL_DIR/dwarfs"
+        chmod +x "$DBIN_INSTALL_DIR/dwarfs"
+        curl -sL "https://github.com/VHSgunzo/squashfuse-static/releases/latest/download/squashfuse_ll-musl-mimalloc-$(uname -m)" -o "$DBIN_INSTALL_DIR/squashfuse"
+        chmod +x "$DBIN_INSTALL_DIR/squashfuse"
+        dbin add squashfs-tools/unsquashfs
+        # UPX the unsquashfs binary
+        if available "upx"; then
+            log "Compressing unsquashfs for appbundle-runtime"
+            upx "$DBIN_INSTALL_DIR/unsquashfs" || log_error "Unable to compress unsquashfs"
+        else
+            log_warning "upx not available. The unsquashfs binary will be unnecessarily large"
+        fi
+        chmod +x "$DBIN_INSTALL_DIR"/*
+
         # Build dwarfs version
         log "Building dwarfs appbundle-runtime"
-        go build --tags dwarfs -o "$DBIN_INSTALL_DIR/appbundle-runtime_dwarfs" ./appbundle-runtime || log_error "Unable to build appbundle-runtime_dwarfs"
+        go build --tags dwarfs -o "$BASE/binaryDependencies/appbundle-runtime_dwarfs" ./appbundle-runtime || log_error "Unable to build appbundle-runtime_dwarfs"
         # Build squashfs version
         log "Building squashfs appbundle-runtime"
-        go build --tags squashfs -o "$DBIN_INSTALL_DIR/appbundle-runtime_squashfs" ./appbundle-runtime || log_error "Unable to build appbundle-runtime_squashfs"
+        go build --tags squashfs -o "$BASE/binaryDependencies/appbundle-runtime_squashfs" ./appbundle-runtime || log_error "Unable to build appbundle-runtime_squashfs"
 
-        available "strip" && strip "$DBIN_INSTALL_DIR/appbundle-runtime_dwarfs" "$DBIN_INSTALL_DIR/appbundle-runtime_squashfs"
+        available "strip" && strip "$BASE/binaryDependencies/appbundle-runtime_dwarfs" "$BASE/binaryDependencies/appbundle-runtime_squashfs"
     else
         # Build standard version
         log "Building universal appbundle-runtime"
-        go build --tags noEmbed -o "$DBIN_INSTALL_DIR/appbundle-runtime" ./appbundle-runtime || log_error "Unable to build appbundle-runtime"
-        available "strip" && strip "$DBIN_INSTALL_DIR/appbundle-runtime"
+        go build --tags noEmbed -o "$BASE/binaryDependencies/appbundle-runtime" ./appbundle-runtime || log_error "Unable to build appbundle-runtime"
+        available "strip" && strip "$BASE/binaryDependencies/appbundle-runtime"
     fi
 
     if ! available "strip"; then
@@ -291,7 +285,6 @@ case "$1" in
     "appbundle-runtime")
         require go
         log "Starting build process for target: appbundle-runtime"
-        mkdir -p "$DBIN_INSTALL_DIR"
         build_appbundle_runtime
         ;;
     "pelfCreator")
