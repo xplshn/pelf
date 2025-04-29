@@ -227,25 +227,16 @@ retrieve_executable() {
 handle_dependencies() {
     mkdir -p "$DBIN_INSTALL_DIR"
     DEPS="bintools/objcopy
-          squashfs-tools/mksquashfs"
+          squashfs-tools/mksquashfs
+          squashfs-tools/unsquashfs
+          squashfuse/squashfuse_ll"
 
     unnappear rm "$DBIN_INSTALL_DIR/dwarfs-tools"
     curl -sL "https://github.com/mhx/dwarfs/releases/download/v$DWFS_VER/dwarfs-universal-$DWFS_VER-Linux-$(uname -m)" -o "$DBIN_INSTALL_DIR/dwarfs-tools"
     chmod +x "$DBIN_INSTALL_DIR/dwarfs-tools"
-
-    if [ "$(basename "$(uname -o)")" != "Linux" ]; then
-        DEPS="$DEPS
-              squashfuse/squashfuse_ll
-              squashfs-tools/unsquashfs"
-
-        unnappear rm "$DBIN_INSTALL_DIR/squashfuse_ll"
-        curl -sL "https://github.com/VHSgunzo/squashfuse-static/releases/latest/download/squashfuse_ll-musl-mimalloc-$(uname -m)" -o "$DBIN_INSTALL_DIR/squashfuse_ll"
-        chmod +x "$DBIN_INSTALL_DIR/squashfuse_ll"
-
-        upx unsquashfs
-        [ -f ./squashfuse_ll ] && [ ! -h ./squashfuse_ll ] && mv ./squashfuse_ll ./squashfuse
-        ln -sfT squashfuse squashfuse_ll
-    fi
+    unnappear rm "$DBIN_INSTALL_DIR/squashfuse_ll"
+    curl -sL "https://github.com/VHSgunzo/squashfuse-static/releases/latest/download/squashfuse_ll-musl-mimalloc-$(uname -m)" -o "$DBIN_INSTALL_DIR/squashfuse_ll"
+    chmod +x "$DBIN_INSTALL_DIR/squashfuse_ll"
 
     log "Installing dependencies..."
     # shellcheck disable=SC2086
@@ -259,6 +250,8 @@ handle_dependencies() {
         }
         ln -sfT dwarfs dwarfsextract
         upx mksquashfs mkdwarfs objcopy
+        [ -f ./squashfuse_ll ] && [ ! -h ./squashfuse_ll ] && mv ./squashfuse_ll ./squashfuse
+        ln -sfT squashfuse squashfuse_ll
     }
     unnappear rm ./*.upx
     cd "$BASE" || log_error "Unable to go back to $BASE"
