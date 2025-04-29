@@ -36,6 +36,10 @@ cloud.google.com/go/storage v1.5.0/go.mod h1:tpKbwo567HUNpVclU5sGELwQWBDZ8gh0Zeo
 cloud.google.com/go/storage v1.6.0/go.mod h1:N7U0C8pVQ/+NIKOBQyamJIeKQKkZ+mxpohlUTyfDhBk=
 cloud.google.com/go/storage v1.8.0/go.mod h1:Wv1Oy7z6Yz3DshWRJFhqM/UCfaWIRTdp0RXyy7KQOVs=
 cloud.google.com/go/storage v1.10.0/go.mod h1:FLPqc6j+Ki4BU591ie1oL6qBQGu2Bl/tZ9ullr3+Kg0=
+codeberg.org/msantos/embedexe v0.0.0-20250421111610-c1538c66a2a1 h1:kNgh5czOvrBtHD81ir3HrleBumsuCdjTU6LOeZNBpG4=
+codeberg.org/msantos/embedexe v0.0.0-20250421111610-c1538c66a2a1/go.mod h1:ipqSRAomnausawEF799WqXRHS6GzorCo7MN//9DC9+0=
+codeberg.org/msantos/execve v0.0.0-20230206112018-e5c3a7f4d436 h1:JfctQYg/vUC3LpnjGeNTDI/JSenwfeshld2kUjjR2+0=
+codeberg.org/msantos/execve v0.0.0-20230206112018-e5c3a7f4d436/go.mod h1:mvAmIdjLHiBlHQXtcPhQycOi0QuCAbw8dxOXxk0gYaE=
 dmitri.shuralyov.com/gpu/mtl v0.0.0-20190408044501-666a987793e9/go.mod h1:H6x//7gZCb22OMCxBHrMx7a5I7Hp++hsVxbQ4BYO7hU=
 fyne.io/fyne/v2 v2.5.5 h1:IhS8Vf1EtSHS94/i41D9Rh4s1rG1habkGN/oISA0kTU=
 fyne.io/fyne/v2 v2.5.5/go.mod h1:0GOXKqyvNwk3DLmsFu9v0oYM0ZcD1ysGnlHCerKoAmo=
@@ -246,6 +250,8 @@ github.com/kr/pretty v0.1.0/go.mod h1:dAy3ld7l9f0ibDNOQOHHMYYIIbhfbHSm3C4ZsoJORN
 github.com/kr/pty v1.1.1/go.mod h1:pFQYn66WHrOpPYNljwOMqo10TkYh1fy3cYio2l3bCsQ=
 github.com/kr/text v0.1.0 h1:45sCR5RtlFHMR4UwH9sdQ5TC8v0qDQCHnXt+kaKSTVE=
 github.com/kr/text v0.1.0/go.mod h1:4Jbv+DJW3UT/LiOwJeYQe1efqtUx/iVham/4vfdArNI=
+github.com/liamg/memit v0.0.3 h1:80dCuCidekMUISNIeKwV66KZtI/1bX73tfpI6PgmU2Y=
+github.com/liamg/memit v0.0.3/go.mod h1:DayHg1TvGB2eKc2xinAJzjVywyLRUxkxAOELKL0aHCI=
 github.com/liamg/tml v0.7.0 h1:0cVok661KuQy659aFpXpem8mXUDroREuWc1p/+y7hfU=
 github.com/liamg/tml v0.7.0/go.mod h1:Vuzs4Dn44Awoyd0MLl2EuJR++l1NlFqU6BJk0oxVYX4=
 github.com/magiconair/properties v1.8.5/go.mod h1:y3VJvCyxH9uVvJTWEGAELF3aiYNyPKd5NZ3oSwXrF60=

@@ -3,11 +3,13 @@ module pelf
 go 1.24
 
 require (
+	codeberg.org/msantos/embedexe v0.0.0-20250421111610-c1538c66a2a1
 	fyne.io/fyne/v2 v2.5.5
 	github.com/emmansun/base64 v0.7.0
 	github.com/fxamacker/cbor/v2 v2.8.0
 	github.com/goccy/go-json v0.10.5
 	github.com/klauspost/compress v1.18.0
+	github.com/liamg/memit v0.0.3
 	github.com/liamg/tml v0.7.0
 	github.com/mholt/archives v0.1.1
 	github.com/minio/md5-simd v1.1.2
@@ -20,6 +22,7 @@ require (
 )
 
 require (
+	codeberg.org/msantos/execve v0.0.0-20230206112018-e5c3a7f4d436 // indirect
 	fyne.io/systray v1.11.0 // indirect
 	github.com/BurntSushi/toml v1.4.1-0.20240526193622-a339e1f7089c // indirect
 	github.com/STARRY-S/zip v0.2.3 // indirect
