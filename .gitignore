@@ -4,6 +4,7 @@
 work/
 exp/
 appbundle-runtime/appbundle-runtime
+appbundle-runtime/binaryDependencies
 cmd/pelfCreator/pelfCreator
 cmd/misc/appstream-helper/appstream-helper
 binaryDependencies
