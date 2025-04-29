@@ -22,7 +22,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-const pelFVersion = "3.0"
+const pelfVersion = "3.0"
 
 var globalPath = os.Getenv("PATH")
 
@@ -38,7 +38,7 @@ type Filesystem struct {
 var Filesystems = []Filesystem{
 	{
 		Type:     map[string]string{"squashfs": "sqfs"},
-		Commands: []string{"mksquashfs", "squashfuse", "unsquashfs"},
+		Commands: []string{"squashfuse", "unsquashfs"},
 		CmdBuilder: func(config *Config) *exec.Cmd {
 			args := []string{"mksquashfs", config.AppDir, config.ArchivePath}
 			compressionArgs := strings.Split(config.CompressionArgs, " ")
@@ -56,7 +56,7 @@ var Filesystems = []Filesystem{
 	},
 	{
 		Type:     map[string]string{"dwarfs": "dwfs"},
-		Commands: []string{"dwarfs", "mkdwarfs", "dwarfsextract"},
+		Commands: []string{"dwarfs", "dwarfsextract"},
 		CmdBuilder: func(config *Config) *exec.Cmd {
 			compressionArgs := strings.Split(config.CompressionArgs, " ")
 			args := []string{"mkdwarfs", "--input", config.AppDir, "--progress=ascii", "--set-owner", "0", "--set-group", "0", "--no-create-timestamp", "--no-history"}
@@ -261,7 +261,6 @@ func main() {
 			&cli.StringFlag{Name: "compression", Aliases: []string{"c"}, Usage: "Specify compression flags for the selected filesystem"},
 			&cli.StringFlag{Name: "add-appdir", Aliases: []string{"a"}, Usage: "Add an AppDir"},
 			&cli.StringFlag{Name: "appbundle-id", Aliases: []string{"i"}, Usage: "Specify the ID of the AppBundle"},
-			&cli.BoolFlag{Name: "do-not-embed-static-tools", Aliases: []string{"t"}, Usage: "Do not embed static tools into the bundle"},
 			&cli.StringFlag{Name: "static-tools-dir", Usage: "Specify a custom directory from which to get the static tools"},
 			&cli.StringFlag{Name: "runtime", Usage: "Specify which runtime shall be used", Sources: cli.EnvVars("PBUNDLE_RUNTIME")},
 			&cli.BoolFlag{Name: "upx", Usage: "Enables usage of UPX compression in the static tools"},
@@ -279,7 +278,6 @@ func main() {
 				AppBundleID:           c.String("appbundle-id"),
 				OutputFile:            c.String("output-to"),
 				CompressionArgs:       c.String("compression"),
-				DoNotEmbedStaticTools: c.Bool("do-not-embed-static-tools"),
 				CustomEmbedDir:        c.String("static-tools-dir"),
 				Runtime:               c.String("runtime"),
 				UseUPX:                c.Bool("upx"),
@@ -341,7 +339,7 @@ func initRuntimeInfo(runtimeInfo *RuntimeInfo, filesystemType, appBundleID strin
 
 	*runtimeInfo = RuntimeInfo{
 		AppBundleID:          appBundleID,
-		PelfVersion:          pelFVersion,
+		PelfVersion:          pelfVersion,
 		HostInfo:             hostInfo,
 		FilesystemType:       filesystemType,
 		Hash:                 "",
@@ -631,9 +629,14 @@ func copyFile(src, dest string) error {
 func createSelfExtractingArchive(config *Config, workDir string, buildInfo BuildInfo) error {
 	runtimePath := config.Runtime
 	if runtimePath == "" {
-		runtimePath = filepath.Join(config.BinDepDir, "appbundle-runtime")
+		runtimePath = filepath.Join(config.BinDepDir, "appbundle-runtime_"+config.FilesystemType)
+		config.DoNotEmbedStaticTools = true
 		if _, err := os.Stat(runtimePath); os.IsNotExist(err) {
-			return fmt.Errorf("User did not provide --runtime flag and we apparently lack a default embedded runtime")
+			runtimePath = filepath.Join(config.BinDepDir, "appbundle-runtime")
+			config.DoNotEmbedStaticTools = false
+			if _, err := os.Stat(runtimePath); os.IsNotExist(err) {
+				return fmt.Errorf("User did not provide --runtime flag and we apparently lack a default embedded runtime")
+			}
 		}
 	}
 
@@ -641,7 +644,6 @@ func createSelfExtractingArchive(config *Config, workDir string, buildInfo Build
 		return fmt.Errorf("failed to copy runtime to output file: %w", err)
 	}
 
-	// Ensure DisableRandomWorkDir is set correctly in RuntimeInfo
 	config.RuntimeInfo.DisableRandomWorkDir = config.DisableRandomWorkDir
 
 	var err error
@@ -703,11 +705,19 @@ func createSelfExtractingArchive(config *Config, workDir string, buildInfo Build
 		return fmt.Errorf("No objcopy binary in $PATH: %w", err)
 	}
 
-	objcopyCmd := exec.Command(objcopyPath,
-		"--add-section", ".pbundle_static_tools="+filepath.Join(workDir, "static.tar.zst"),
-		"--add-section", ".pbundle_runtime_info="+runtimeInfoTempFile.Name(),
-		config.OutputFile,
-	)
+	var objcopyCmd *exec.Cmd
+	if config.DoNotEmbedStaticTools {
+		objcopyCmd = exec.Command(objcopyPath,
+			"--add-section", ".pbundle_runtime_info="+runtimeInfoTempFile.Name(),
+			config.OutputFile,
+		)
+	} else {
+		objcopyCmd = exec.Command(objcopyPath,
+			"--add-section", ".pbundle_static_tools="+filepath.Join(workDir, "static.tar.zst"),
+			"--add-section", ".pbundle_runtime_info="+runtimeInfoTempFile.Name(),
+			config.OutputFile,
+		)
+	}
 
 	if out, err := objcopyCmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("failed to add ELF sections: %s", string(out))
