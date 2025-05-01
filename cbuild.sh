@@ -150,14 +150,12 @@ build_pelfCreator() {
 
 	cat <<'EOF' > "$TEMP_DIR/binaryDependencies/pkgadd.sh"
 #!/bin/sh
-# The AlpineLinux Package Keeper has a very annoying error which can't be disabled!
-# Track https://gitlab.alpinelinux.org/alpine/apk-tools/-/issues/11099
-apk -U \
-    --allow-untrusted \
-    --no-interactive \
-    --no-cache \
-    --initdb add \
-    $@ || true # Because of the aforementioned!
+fakeroot apk -U \
+        --allow-untrusted \
+        --no-interactive \
+        --no-cache \
+        --initdb add \
+        $@
 EOF
 	chmod +x "$TEMP_DIR/binaryDependencies/pkgadd.sh"
 
