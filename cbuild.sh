@@ -155,7 +155,7 @@ fakeroot apk -U \
         --no-interactive \
         --no-cache \
         --initdb add \
-        $@
+        $@ || true
 EOF
 	chmod +x "$TEMP_DIR/binaryDependencies/pkgadd.sh"
 
