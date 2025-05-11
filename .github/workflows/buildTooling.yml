@@ -25,14 +25,14 @@ jobs:
         - /:/host  # Jailbreak!
     steps:
       - name: Patch native Alpine NodeJS into Runner environment
-        if: runner.os == 'Linux'
+        if: runner.arch == 'aarch64'
         run: |
           apk add nodejs gcompat
           sed -i "s:ID=alpine:ID=NotpineForGHA:" /etc/os-release
           cd /host/home/runner/runners/*/externals/
           rm -rf node20/*
           mkdir node20/bin
-          ln -s /usr/bin/node node20/bin/node
+          ln -sfT /usr/bin/node node20/bin/node
 
       - name: Checkout repository
         uses: actions/checkout@v4
