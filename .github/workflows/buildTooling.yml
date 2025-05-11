@@ -27,7 +27,7 @@ jobs:
       - name: Patch native Alpine NodeJS into Runner environment
         if: matrix.arch == 'aarch64'
         run: |
-          apk add nodejs gcompat
+          apk add nodejs gcompat libressl
           sed -i "s:ID=alpine:ID=NotpineForGHA:" /etc/os-release
           cd /host/home/runner/runners/*/externals/
           rm -rf node20/*
