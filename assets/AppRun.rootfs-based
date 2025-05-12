@@ -145,7 +145,7 @@ build_bwrap_options() {
         --ro-bind-try	/etc/nsswitch.conf   /etc/nsswitch.conf	 \
         --ro-bind-try	/etc/hostname        /etc/hostname 		 \
         --ro-bind-try	\"$SELF_TEMPDIR\"    /app 				 \
-        ---bind-try	    \"${TMPDIR:-/tmp}\"  \"${TMPDIR:-/tmp}\" \
+        --bind-try	    \"${TMPDIR:-/tmp}\"  \"${TMPDIR:-/tmp}\" \
         --bind-try	    /home                /home				 \
         --setenv		SELF                 \"$SELF\" 			 \
         --setenv		SELF_TEMPDIR         \"$SELF_TEMPDIR\" 	 \
