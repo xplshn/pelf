@@ -87,7 +87,7 @@ mkdir -p "$MOUNT_DIR"
 
 # Mount the unionfs
 # Note: Using CoW (copy-on-write) and preserving branch for better compatibility
-"$UNIONFS_BIN" -o cow,preserve_branch "/:$PROTO=RO" "$MOUNT_DIR" # -o cow,preserve_branch,allow_other # allow_other is not enabled in most fuse installs...
+"$UNIONFS_BIN" -o cow,preserve_branch "/=RW:$PROTO=RO" "$MOUNT_DIR"
 
 cleanup() {
     (
