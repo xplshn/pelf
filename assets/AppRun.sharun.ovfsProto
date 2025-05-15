@@ -87,7 +87,7 @@ mkdir -p "$MOUNT_DIR"
 
 # Mount the unionfs
 # Note: Using CoW (copy-on-write) and preserving branch for better compatibility
-"$UNIONFS_BIN" -o cow,preserve_branch "/=RW:$PROTO=RO" "$MOUNT_DIR"
+"$UNIONFS_BIN" -o cow,preserve_branch "$PROTO=RO:/=RW" "$MOUNT_DIR"
 
 cleanup() {
     (
