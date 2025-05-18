@@ -20,14 +20,14 @@ jobs:
             name: "cbuild.sh (arm64)"
             arch: aarch64
     container:
-      image: "alpine:latest"
+      image: "alpine:edge"
       volumes:
         - /:/host  # Jailbreak!
     steps:
       - name: Patch native Alpine NodeJS into Runner environment
         if: matrix.arch == 'aarch64'
         run: |
-          apk add nodejs gcompat
+          apk add nodejs gcompat openssl
           sed -i "s:ID=alpine:ID=NotpineForGHA:" /etc/os-release
           cd /host/home/runner/runners/*/externals/
           rm -rf node20/*
