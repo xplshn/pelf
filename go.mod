@@ -1,6 +1,6 @@
 module pelf
 
-go 1.23
+go 1.24
 
 require (
 	codeberg.org/msantos/embedexe v0.0.0-20250421111610-c1538c66a2a1
