@@ -20,7 +20,7 @@ jobs:
             name: "cbuild.sh (arm64)"
             arch: aarch64
     container:
-      image: "alpine:edge"
+      image: "alpine:latest"
       volumes:
         - /:/host  # Jailbreak!
     steps:
