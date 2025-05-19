@@ -59,7 +59,7 @@ var Filesystems = []Filesystem{
 		Commands: []string{"dwarfs", "dwarfsextract"},
 		CmdBuilder: func(config *Config) *exec.Cmd {
 			compressionArgs := strings.Split(config.CompressionArgs, " ")
-			args := []string{"mkdwarfs", "--input", config.AppDir, "--progress=ascii", "--set-owner", "0", "--set-group", "0", "--no-create-timestamp", "--no-history"}
+			args := []string{"mkdwarfs", "--input", config.AppDir, "--progress=ascii", "--memory-limit=auto", "--set-owner", "0", "--set-group", "0", "--no-create-timestamp", "--no-history"}
 			if len(compressionArgs) == 1 && compressionArgs[0] == "" {
 				compressionArgs = strings.Split("-l7", " ")
 			}
@@ -90,6 +90,12 @@ type RuntimeInfo struct {
 	MountOrExtract       uint8  `json:"mountOrExtract"`
 }
 
+type elfSectionSpec struct {
+	Name string
+	Path string
+	Temp bool
+}
+
 type Config struct {
 	DoNotEmbedStaticTools bool
 	UseUPX                bool
@@ -109,6 +115,7 @@ type Config struct {
 	CustomSections        []string
 	RuntimeInfo           RuntimeInfo
 	RunBehavior           uint8
+	elfSections           []elfSectionSpec
 }
 
 func lookPath(file string) (string, error) {
@@ -118,7 +125,7 @@ func lookPath(file string) (string, error) {
 		}
 		return "", fmt.Errorf("executable file not found in $PATH")
 	}
-	for dir := range strings.SplitSeq(globalPath, ":") {
+	for _, dir := range strings.Split(globalPath, ":") {
 		if dir == "" {
 			dir = "."
 		}
@@ -271,6 +278,8 @@ func main() {
 			&cli.BoolFlag{Name: "appimage-compat", Aliases: []string{"A"}, Usage: "Use AI as magic bytes for AppImage compatibility"},
 			&cli.StringSliceFlag{Name: "add-runtime-info-section", Usage: "Add a custom section to runtime info in format '.sectionName:contentsOfSection'"},
 			&cli.UintFlag{Name: "run-behavior", Aliases: []string{"b"}, Usage: "Specify the run behavior of the output AppBundle (0[Only FUSE mounting], 1[Only Extract & Run], 2[Try FUSE, fallback to Extract & Run], 3[2, but only if the file is <= 350MB])", Value: 3, Action: validateRunBehavior},
+			&cli.StringSliceFlag{Name: "add-elf-section", Usage: "Add custom ELF sections from an .elfS file (e.g. --add-elf-section=./foo.elfS); section name is file name without .elfS extension, section contents are file contents"},
+			&cli.StringFlag{Name: "add-updinfo", Usage: "Add an ELF section named upd_info, with a string as its contents"},
 		},
 		Action: func(ctx context.Context, c *cli.Command) error {
 			config := &Config{
@@ -288,12 +297,59 @@ func main() {
 				RunBehavior:           uint8(c.Uint("run-behavior")),
 			}
 
+			addSectionFiles := c.StringSlice("add-elf-section")
+			updinfoStr := c.String("add-updinfo")
+			var elfSections []elfSectionSpec
+
+			for _, path := range addSectionFiles {
+				if !strings.HasSuffix(path, ".elfS") {
+					return fmt.Errorf("--add-elf-section file must have .elfS extension: %s", path)
+				}
+				sectionName := strings.TrimSuffix(filepath.Base(path), ".elfS")
+				elfSections = append(elfSections, elfSectionSpec{
+					Name: sectionName,
+					Path: path,
+					Temp: false,
+				})
+			}
+
+			var updinfoTempFile string
+			if updinfoStr != "" {
+				tmpfile, err := os.CreateTemp("", "upd_info_*.elfS")
+				if err != nil {
+					return fmt.Errorf("failed to create temp .elfS file for upd_info: %w", err)
+				}
+				_, err = tmpfile.Write([]byte(updinfoStr))
+				if err != nil {
+					tmpfile.Close()
+					os.Remove(tmpfile.Name())
+					return fmt.Errorf("failed to write to temp .elfS file for upd_info: %w", err)
+				}
+				tmpfile.Close()
+				updinfoTempFile = tmpfile.Name()
+				elfSections = append(elfSections, elfSectionSpec{
+					Name: "upd_info",
+					Path: updinfoTempFile,
+					Temp: true,
+				})
+			}
+
+			config.elfSections = elfSections
+
 			var err error
 			globalPath, err = setupBinaryDependencies(config)
 			if err != nil {
+				if updinfoTempFile != "" {
+					os.Remove(updinfoTempFile)
+				}
 				return fmt.Errorf("failed to set up binary dependencies: %w", err)
 			}
-			defer os.RemoveAll(config.BinDepDir)
+			defer func() {
+				os.RemoveAll(config.BinDepDir)
+				if updinfoTempFile != "" {
+					os.Remove(updinfoTempFile)
+				}
+			}()
 
 			if c.Bool("list-static-tools") {
 				return listStaticTools(config.BinDepDir)
@@ -586,7 +642,6 @@ func createTar(srcDir, tarPath string) error {
 
 		header.Mode = int64(fi.Mode())
 
-		// FIXME: Preserve original, instead of making all files executable
 		header.Mode |= 0111
 
 		if err := tw.WriteHeader(header); err != nil {
@@ -661,7 +716,6 @@ func createSelfExtractingArchive(config *Config, workDir string, buildInfo Build
 		return fmt.Errorf("failed to marshal RuntimeInfo to CBOR: %w", err)
 	}
 
-	// Handle custom sections
 	if len(config.CustomSections) > 0 {
 		var runtimeInfoMap map[string]interface{}
 		if err := cbor.Unmarshal(runtimeInfoCBOR, &runtimeInfoMap); err != nil {
@@ -680,7 +734,6 @@ func createSelfExtractingArchive(config *Config, workDir string, buildInfo Build
 			runtimeInfoMap[sectionName[1:]] = parts[1]
 		}
 
-		// Remarshal the modified data
 		runtimeInfoCBOR, err = cbor.Marshal(runtimeInfoMap)
 		if err != nil {
 			return fmt.Errorf("failed to remarshal modified RuntimeInfo: %w", err)
@@ -705,25 +758,27 @@ func createSelfExtractingArchive(config *Config, workDir string, buildInfo Build
 		return fmt.Errorf("No objcopy binary in $PATH: %w", err)
 	}
 
-	var objcopyCmd *exec.Cmd
-	if config.DoNotEmbedStaticTools {
-		objcopyCmd = exec.Command(objcopyPath,
-			"--add-section", ".pbundle_runtime_info="+runtimeInfoTempFile.Name(),
-			config.OutputFile,
-		)
-	} else {
-		objcopyCmd = exec.Command(objcopyPath,
-			"--add-section", ".pbundle_static_tools="+filepath.Join(workDir, "static.tar.zst"),
-			"--add-section", ".pbundle_runtime_info="+runtimeInfoTempFile.Name(),
-			config.OutputFile,
-		)
+	var objcopyArgs []string
+
+	for _, sec := range config.elfSections {
+		if sec.Name == "" || sec.Path == "" {
+			return fmt.Errorf("invalid custom ELF section: name=%q path=%q", sec.Name, sec.Path)
+		}
+		objcopyArgs = append(objcopyArgs, "--add-section", "."+sec.Name+"="+sec.Path)
 	}
 
+	if !config.DoNotEmbedStaticTools {
+		objcopyArgs = append(objcopyArgs, "--add-section", ".pbundle_static_tools="+filepath.Join(workDir, "static.tar.zst"))
+	}
+
+	objcopyArgs = append(objcopyArgs, "--add-section", ".pbundle_runtime_info="+runtimeInfoTempFile.Name())
+	objcopyArgs = append(objcopyArgs, config.OutputFile)
+
+	objcopyCmd := exec.Command(objcopyPath, objcopyArgs...)
 	if out, err := objcopyCmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("failed to add ELF sections: %s", string(out))
 	}
 
-	// Get the size of the archive file to be appended
 	archiveInfo, err := os.Stat(config.ArchivePath)
 	if err != nil {
 		return fmt.Errorf("failed to get archive file info: %w", err)
@@ -731,14 +786,12 @@ func createSelfExtractingArchive(config *Config, workDir string, buildInfo Build
 	expectedSize := archiveInfo.Size()
 	fmt.Printf("Appending archive file (%d bytes) to output file...\n", expectedSize)
 
-	// Open the output file for appending
 	outFile, err := os.OpenFile(config.OutputFile, os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to open output file for appending: %w", err)
 	}
 	defer outFile.Close()
 
-	// Open the filesystem image
 	fsFile, err := os.Open(config.ArchivePath)
 	if err != nil {
 		return fmt.Errorf("failed to open archive file: %w", err)
