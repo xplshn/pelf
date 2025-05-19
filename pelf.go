@@ -271,7 +271,7 @@ func main() {
 			&cli.StringFlag{Name: "static-tools-dir", Usage: "Specify a custom directory from which to get the static tools"},
 			&cli.StringFlag{Name: "runtime", Usage: "Specify which runtime shall be used", Sources: cli.EnvVars("PBUNDLE_RUNTIME")},
 			&cli.BoolFlag{Name: "upx", Usage: "Enables usage of UPX compression in the static tools"},
-			&cli.StringFlag{Name: "filesystem", Aliases: []string{"j"}, Usage: "Specify the filesystem type: 'dwarfs' for DWARFS, 'squashfs' for SQUASHFS", Value: "squashfs", Sources: cli.EnvVars("PBUNDLE_FS")},
+			&cli.StringFlag{Name: "filesystem", Aliases: []string{"j"}, Usage: "Specify the filesystem type: 'dwarfs' for DWARFS, 'squashfs' for SQUASHFS", Value: "dwarfs", Sources: cli.EnvVars("PBUNDLE_FS")},
 			&cli.BoolFlag{Name: "prefer-tools-in-path", Usage: "Prefer tools in PATH over embedded binary dependencies"},
 			&cli.BoolFlag{Name: "list-static-tools", Usage: "List all binary dependencies with their B3SUMs"},
 			&cli.BoolFlag{Name: "disable-use-random-workdir", Aliases: []string{"d"}, Usage: "Disable the use of a random working directory"},
