@@ -337,11 +337,8 @@ case "$1" in
         build_pelfCreator
         ;;
     "pelfCreator_extensions")
-        require go
         log "Starting build process for target: pelfCreator_extensions"
-        build_pelf
-        log "Starting build process for target: pelfCreator_archLinux"
-        build_pelfCreator_archLinux
+        build_pelfCreator_extensions
         # TODO: Add moar
         ;;
     "appstream-helper")
