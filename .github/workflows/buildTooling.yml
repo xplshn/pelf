@@ -59,15 +59,16 @@ jobs:
           export ROOTFS_URL
           echo "ROOTFS_URL=$ROOTFS_URL" >> "$GITHUB_ENV"
           apk add coreutils
-      - name: Create AppBundle
+      - name: Build AppBundle tooling
         run: |
           cd "$GITHUB_WORKSPACE"
           export CGO_ENABLED=0 GOFLAGS="-ldflags=-static-pie -ldflags=-s -ldflags=-w" GO_LDFLAGS="-buildmode=static-pie -s -w"
           export _RELEASE="1"
-          ./cbuild.sh
+          ./cbuild.sh && ./cbuild.sh pelfCreator_extensions
           B3SUM_CHECKSUM="$(b3sum ./pelf | awk '{print $1}')"
           mv ./pelf "$GITHUB_WORKSPACE/dist/pelf_${{ matrix.arch }}"
           mv ./cmd/pelfCreator/pelfCreator "$GITHUB_WORKSPACE/dist/pelfCreator_${{ matrix.arch }}"
+          mv ./cmd/pelfCreator/pelfCreatorExtension_archLinux.tar.zst "$GITHUB_WORKSPACE/dist/pelfCreatorExtension_archLinux_${{ matrix.arch }}".tar.zst
           mv ./cmd/misc/appstream-helper/appstream-helper "$GITHUB_WORKSPACE/dist/appstream-helper_${{ matrix.arch }}"
           echo "RELEASE_TAG=$(date +%d%m%Y)-$B3SUM_CHECKSUM" >> $GITHUB_ENV
       - name: Upload artifact
