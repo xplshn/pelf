@@ -118,7 +118,8 @@ func main() {
 			&cli.StringFlag{
 				Name:        "local",
 				Usage:       "A directory from which to pick up files such as 'AppRun.sharun', 'rootfs.tgz', 'pelf', 'bwrap', etc",
-				Destination: &config.LocalResources, // Updated to LocalResources
+				Sources: cli.EnvVars("PELFCREATOR_RESOURCES"),
+				Destination: &config.LocalResources,
 			},
 			&cli.BoolFlag{
 			    Name:        "preserve-rootfs-permissions",
