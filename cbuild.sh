@@ -195,57 +195,57 @@ EOF
     rm -rf "$TEMP_DIR"
 }
 
-build_pelfCreator_archLinux() {
-    log "Building pelfCreator_archLinux"
+build_pelfCreator_extensions() {
+    log "Building pelfCreator extensions"
 
-    # Create temporary build directory
-    mkdir -p "$TEMP_DIR/binaryDependencies"
-
-    # Copy only the necessary dependencies to temp dir
-    log "Preparing dependencies for pelfCreator_archLinux"
-    cp "$BASE/pelf" "$TEMP_DIR/binaryDependencies/pelf" || log_error "Unable to move pelf to the binaryDependencies of pelfCreator_archLinux"
-
-    # Get the unionfs and bwrap binaries
-    mkdir -p "$TEMP_DIR/binaryDependencies"
-    DBIN_INSTALL_DIR="$TEMP_DIR/binaryDependencies" dbin add unionfs-fuse3/unionfs bwrap
-
-    # Copy AppRun assets
-    if [ -d "$BASE/assets" ]; then
-        cp "$BASE/assets/AppRun"* "$BASE/assets/LAUNCH"* "$TEMP_DIR/binaryDependencies/" 2>/dev/null || log_warning "AppRun assets not found"
-    else
-        log_warning "assets directory not found, AppRun files might be missing"
+    if [ ! -d "$BASE/cmd/pelfCreator/binaryDependencies" ]; then
+        log_error "pelfCreator must be built first. Run './cbuild.sh pelfCreator' before building extensions"
     fi
+
+    mkdir -p "$TEMP_DIR/binaryDependencies"
+
+    # Copy existing dependencies (excluding rootfs)
+    log "Copying dependencies from pelfCreator binaryDependencies (excluding rootfs)"
+    for file in "$BASE/cmd/pelfCreator/binaryDependencies"/*; do
+        [ -f "$file" ] || continue
+        filename=$(basename "$file")
+        case "$filename" in
+            *.tar* | pkgadd.sh)
+                log "Skipping $filename"
+                ;;
+            *)
+                cp "$file" "$TEMP_DIR/binaryDependencies/"
+                ;;
+        esac
+    done
+
+    # Build ArchLinux extension
+    log "Creating pelfCreator ArchLinux extension"
 
     cat <<'EOF' > "$TEMP_DIR/binaryDependencies/pkgadd.sh"
 #!/bin/sh
-fakeroot pacman -Sy --noconfirm \
-        $@
+fakeroot pacman -Sy --noconfirm $@
 EOF
     chmod +x "$TEMP_DIR/binaryDependencies/pkgadd.sh"
 
+    # Download ArchLinux rootfs
     if [ ! -f "$TEMP_DIR/binaryDependencies/rootfs.tar.zst" ]; then
-        log "Downloading rootfs"
+        log "Downloading ArchLinux rootfs"
         RELEASE_NAME="ArchLinux-base_$(uname -m).tar.zst"
         curl -sL "https://github.com/xplshn/filesystems/releases/latest/download/$RELEASE_NAME" -o "$TEMP_DIR/binaryDependencies/$RELEASE_NAME"
         cd "$TEMP_DIR/binaryDependencies" || log_error "Failed to change to temp directory"
         ln -sfT "$RELEASE_NAME" "rootfs.tar.${RELEASE_NAME##*.}"
+        cd "$BASE" || log_error "Unable to return to base directory"
     fi
 
-    if [ ! -f "$TEMP_DIR/binaryDependencies/sharun" ]; then
-        log "Downloading sharun-$(uname -m)-aio"
-        curl -sL "https://github.com/VHSgunzo/sharun/releases/latest/download/sharun-$(uname -m)-aio" -o "$TEMP_DIR/binaryDependencies/sharun"
-        chmod +x "$TEMP_DIR/binaryDependencies/sharun"
-    fi
+    # Create the extension archive
+    log "Creating pelfCreatorExtension_archLinux.tar.zst"
+    tar -C "$TEMP_DIR/binaryDependencies" -c . | zstd -T0 -19 -fo "$BASE/cmd/pelfCreator/pelfCreatorExtension_archLinux.tar.zst"
 
-    unnappear rm -rf "$BASE/cmd/pelfCreator/binaryDependencies_archLinux"
-    mv "$TEMP_DIR/binaryDependencies" "$BASE/cmd/pelfCreator/binaryDependencies_archLinux" || log_error "Unable to move binaryDependencies from temp to pelfCreator_archLinux"
-
-    # Create archive of binaryDependencies
-    log "Creating binaryDependencies_archLinux.tar.zst for pelfCreator_archLinux"
-    tar -C "$BASE/cmd/pelfCreator/binaryDependencies_archLinux" -c . | zstd -T0 -19 -fo "$BASE/cmd/pelfCreator/pelfCreatorExtension_archLinux.tar.zst"
-
-    # Clean up temporary directory
+    # Clean up
     rm -rf "$TEMP_DIR"
+
+    log "pelfCreator ArchLinux extension created successfully"
 }
 
 build_appstream_helper() {
