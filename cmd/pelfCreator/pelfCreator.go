@@ -12,12 +12,12 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"slices"
 
 	"github.com/mholt/archives"
 	"github.com/urfave/cli/v3"
 	"github.com/zeebo/blake3"
 	"golang.org/x/sys/unix"
-	"slices"
 )
 
 //go:embed binaryDependencies.tar.zst
@@ -37,13 +37,14 @@ type Config struct {
 	Entrypoint    string
 	DontPack      bool
 	Sharun        bool
-	Lib4binArgs   string
 	Sandbox       bool
+	PreservePermissions bool
+	Lib4binArgs   string
 	ToBeKeptFiles string
 	GetridFiles   string
 	AppBundleFS   string
 	OutputTo      string
-	LocalPath     string
+	LocalResources string // Renamed from LocalDir to LocalResources
 	AppDir        string
 	Date          string
 	TempDir       string
@@ -89,24 +90,6 @@ func main() {
 				Usage:       "Set the entrypoint (required unless using --multicall)",
 				Destination: &config.Entrypoint,
 			},
-			&cli.BoolFlag{
-				Name:        "dontpack",
-				Aliases:     []string{"z"},
-				Usage:       "Disables .dwfs.AppBundle packaging, thus leaving only the AppDir",
-				Destination: &config.DontPack,
-			},
-			&cli.StringFlag{
-				Name:        "sharun",
-				Aliases:     []string{"x"},
-				Usage:       "Processes the desired binaries with lib4bin and adds sharun",
-				Destination: &config.Lib4binArgs,
-			},
-			&cli.BoolFlag{
-				Name:        "sandbox",
-				Aliases:     []string{"s"},
-				Usage:       "Enable sandbox mode (uses AppRun.rootfs-based)",
-				Destination: &config.Sandbox,
-			},
 			&cli.StringFlag{
 				Name:        "keep",
 				Aliases:     []string{"k"},
@@ -135,7 +118,30 @@ func main() {
 			&cli.StringFlag{
 				Name:        "local",
 				Usage:       "A directory from which to pick up files such as 'AppRun.sharun', 'rootfs.tgz', 'pelf', 'bwrap', etc",
-				Destination: &config.LocalPath,
+				Destination: &config.LocalResources, // Updated to LocalResources
+			},
+			&cli.BoolFlag{
+			    Name:        "preserve-rootfs-permissions",
+			    Usage:       "Preserve the original permissions from the rootfs",
+			    Destination: &config.PreservePermissions,
+			},
+			&cli.BoolFlag{
+				Name:        "dontpack",
+				Aliases:     []string{"z"},
+				Usage:       "Disables .dwfs.AppBundle packaging, thus leaving only the AppDir",
+				Destination: &config.DontPack,
+			},
+			&cli.StringFlag{
+				Name:        "sharun",
+				Aliases:     []string{"x"},
+				Usage:       "Processes the desired binaries with lib4bin and adds sharun",
+				Destination: &config.Lib4binArgs,
+			},
+			&cli.BoolFlag{
+				Name:        "sandbox",
+				Aliases:     []string{"s"},
+				Usage:       "Enable sandbox mode (uses AppRun.rootfs-based)",
+				Destination: &config.Sandbox,
 			},
 		},
 		Action: func(ctx context.Context, c *cli.Command) error {
@@ -164,6 +170,17 @@ func main() {
 			}
 			defer os.RemoveAll(config.TempDir)
 
+			// Check if --local is an archive and overwrite binaryDependencies if true
+			if config.LocalResources != "" {
+				if isArchive(config.LocalResources) {
+					fileContent, err := os.ReadFile(config.LocalResources)
+					if err != nil {
+						return fmt.Errorf("failed to read local archive: %v", err)
+					}
+					binaryDependencies = fileContent
+				}
+			}
+
 			return runPelfCreator(config)
 		},
 	}
@@ -171,6 +188,18 @@ func main() {
 	if err := app.Run(context.Background(), os.Args); err != nil {
 		log.Fatalf("Error: %v", err)
 	}
+}
+
+func isArchive(filePath string) bool {
+	// Check if the file is an archive by attempting to identify its format
+	archiveFile, err := os.Open(filePath)
+	if err != nil {
+		return false
+	}
+	defer archiveFile.Close()
+
+	_, _, identifyErr := archives.Identify(context.Background(), filePath, archiveFile)
+	return identifyErr == nil
 }
 
 func runPelfCreator(config Config) error {
@@ -194,7 +223,7 @@ func runPelfCreator(config Config) error {
 		return err
 	}
 
-	if err := extractToDirectory(rootfsPath, protoDir); err != nil {
+	if err := extractToDirectory(rootfsPath, protoDir, &config); err != nil {
 		return fmt.Errorf("failed to extract rootfs: %v", err)
 	}
 
@@ -247,18 +276,13 @@ func runPelfCreator(config Config) error {
 }
 
 func setupSandboxMode(config Config) error {
-	// Copy sandbox-specific files
 	if err := copyFromTemp(config, "bwrap", filepath.Join(config.AppDir, "usr/bin/bwrap"), 0755); err != nil {
 		return fmt.Errorf("bwrap setup failed: %v", err)
 	}
-
-	// Setup sandbox-specific files
 	protoDir := filepath.Join(config.AppDir, "proto")
 	if err := setupSandboxFiles(protoDir); err != nil {
 		return err
 	}
-
-	// Use AppRun.rootfs-based
 	return copyFromTemp(config, "AppRun.rootfs-based", filepath.Join(config.AppDir, "AppRun"), 0755)
 }
 
@@ -270,15 +294,12 @@ func setupSharunMode(config Config) error {
 
 	// Handle proto directory based on keep/getrid flags
 	if config.ToBeKeptFiles != "" || config.GetridFiles != "" {
-		// Hybrid mode - keep specified files
 		if err := trimProtoDir(config); err != nil {
 			return err
 		}
-		// Use AppRun.sharun.ovfsProto
 		if err := copyFromTemp(config, "AppRun.sharun.ovfsProto", filepath.Join(config.AppDir, "AppRun"), 0755); err != nil {
 			return err
 		}
-		// Copy unionfs & bwrap for hybrid mode
 		if err := copyFromTemp(config, "unionfs", filepath.Join(config.AppDir, "usr", "bin", "unionfs"), 0755); err != nil {
 			return err
 		}
@@ -290,7 +311,6 @@ func setupSharunMode(config Config) error {
 		if err := os.RemoveAll(filepath.Join(config.AppDir, "proto")); err != nil {
 			return err
 		}
-		// Use AppRun.sharun
 		if err := copyFromTemp(config, "AppRun.sharun", filepath.Join(config.AppDir, "AppRun"), 0755); err != nil {
 			return err
 		}
@@ -326,7 +346,7 @@ func setupDependencies(config Config) error {
 		return fmt.Errorf("failed to write temp archive: %v", err)
 	}
 
-	if err := extractToDirectory(tempArchive, config.TempDir); err != nil {
+	if err := extractToDirectory(tempArchive, config.TempDir, &config); err != nil {
 		return fmt.Errorf("failed to extract binaryDependencies: %v", err)
 	}
 
@@ -334,8 +354,8 @@ func setupDependencies(config Config) error {
 }
 
 func findRootfs(config Config) (string, error) {
-	if config.LocalPath != "" {
-		localRootfs, err := findFirstMatch(config.LocalPath, "rootfs.tar*")
+	if config.LocalResources != "" {
+		localRootfs, err := findFirstMatch(config.LocalResources, "rootfs.tar*")
 		if err == nil {
 			return localRootfs, nil
 		}
@@ -360,8 +380,8 @@ func findFirstMatch(dir, pattern string) (string, error) {
 
 func copyFromTemp(config Config, srcRelPath, dest string, mode os.FileMode) error {
 	srcPath := filepath.Join(config.TempDir, srcRelPath)
-	if config.LocalPath != "" {
-		localSrcPath := filepath.Join(config.LocalPath, srcRelPath)
+	if config.LocalResources != "" {
+		localSrcPath := filepath.Join(config.LocalResources, srcRelPath)
 		if _, err := os.Stat(localSrcPath); err == nil {
 			srcPath = localSrcPath
 		}
@@ -756,24 +776,33 @@ func calculateB3Sum(filePath string) (string, error) {
 	return string(hash[:]), nil
 }
 
-func handleFile(f archives.FileInfo, dst string) error {
-	dstPath, pathErr := securePath(dst, f.NameInArchive)
-	if pathErr != nil {
-		return pathErr
-	}
+func handleFile(f archives.FileInfo, dst string, config *Config) error {
+    dstPath, pathErr := securePath(dst, f.NameInArchive)
+    if pathErr != nil {
+        return pathErr
+    }
 
-	parentDir := filepath.Dir(dstPath)
-	if dirErr := os.MkdirAll(parentDir, dirPermissions); dirErr != nil {
-		return dirErr
-	}
+    parentDir := filepath.Dir(dstPath)
+    if dirErr := os.MkdirAll(parentDir, dirPermissions); dirErr != nil {
+        return dirErr
+    }
 
-	if f.IsDir() {
-		return os.MkdirAll(dstPath, f.Mode())
-	}
+    mode := f.Mode()
+    if !config.PreservePermissions {
+        if f.IsDir() {
+            mode = dirPermissions
+        } else {
+            mode = filePermissions
+        }
+    }
 
-	if f.LinkTarget != "" {
-		return os.Symlink(f.LinkTarget, dstPath)
-	}
+    if f.IsDir() {
+        return os.MkdirAll(dstPath, mode)
+    }
+
+    if f.LinkTarget != "" {
+        return os.Symlink(f.LinkTarget, dstPath)
+    }
 
 	if f.Mode()&os.ModeNamedPipe != 0 {
 		return syscall.Mkfifo(dstPath, uint32(f.Mode().Perm()))
@@ -841,7 +870,7 @@ func handleFile(f archives.FileInfo, dst string) error {
 	return nil
 }
 
-func extractToDirectory(tarball, dst string) error {
+func extractToDirectory(tarball, dst string, config *Config) error {
 	archiveFile, openErr := os.Open(tarball)
 	if openErr != nil {
 		return fmt.Errorf("open tarball %s: %w", tarball, openErr)
@@ -863,7 +892,7 @@ func extractToDirectory(tarball, dst string) error {
 	}
 
 	handler := func(ctx context.Context, f archives.FileInfo) error {
-		return handleFile(f, dst)
+		return handleFile(f, dst, config)
 	}
 
 	if extractErr := extractor.Extract(context.Background(), input, handler); extractErr != nil {

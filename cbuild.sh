@@ -15,9 +15,8 @@ export DBIN_INSTALL_DIR="$BASE/binaryDependencies"
 export DBIN_NOCONFIG="1"
 
 # -----------------
-DWFS_VER="0.12.3" #
+DWFS_VER="0.12.4" #
 # -----------------
-
 
 # Change to BASE directory if not already there
 if [ "$OPWD" != "$BASE" ]; then
@@ -161,7 +160,7 @@ EOF
 
     if [ ! -f "$TEMP_DIR/binaryDependencies/rootfs.tar.zst" ]; then
         log "Downloading rootfs"
-        RELEASE_NAME="AlpineLinux_latest-stable-$(uname -m).tar.xz"
+        RELEASE_NAME="AlpineLinux_edge-$(uname -m).tar.xz"
         curl -sL "https://github.com/xplshn/filesystems/releases/latest/download/$RELEASE_NAME" -o "$TEMP_DIR/binaryDependencies/$RELEASE_NAME"
         cd "$TEMP_DIR/binaryDependencies" || log_error "Failed to change to temp directory"
         ln -sfT "$RELEASE_NAME" "rootfs.tar.${RELEASE_NAME##*.}"
@@ -196,14 +195,66 @@ EOF
     rm -rf "$TEMP_DIR"
 }
 
+build_pelfCreator_archLinux() {
+    log "Building pelfCreator_archLinux"
+
+    # Create temporary build directory
+    mkdir -p "$TEMP_DIR/binaryDependencies"
+
+    # Copy only the necessary dependencies to temp dir
+    log "Preparing dependencies for pelfCreator_archLinux"
+    cp "$BASE/pelf" "$TEMP_DIR/binaryDependencies/pelf" || log_error "Unable to move pelf to the binaryDependencies of pelfCreator_archLinux"
+
+    # Get the unionfs and bwrap binaries
+    mkdir -p "$TEMP_DIR/binaryDependencies"
+    DBIN_INSTALL_DIR="$TEMP_DIR/binaryDependencies" dbin add unionfs-fuse3/unionfs bwrap
+
+    # Copy AppRun assets
+    if [ -d "$BASE/assets" ]; then
+        cp "$BASE/assets/AppRun"* "$BASE/assets/LAUNCH"* "$TEMP_DIR/binaryDependencies/" 2>/dev/null || log_warning "AppRun assets not found"
+    else
+        log_warning "assets directory not found, AppRun files might be missing"
+    fi
+
+    cat <<'EOF' > "$TEMP_DIR/binaryDependencies/pkgadd.sh"
+#!/bin/sh
+fakeroot pacman -Sy --noconfirm \
+        $@
+EOF
+    chmod +x "$TEMP_DIR/binaryDependencies/pkgadd.sh"
+
+    if [ ! -f "$TEMP_DIR/binaryDependencies/rootfs.tar.zst" ]; then
+        log "Downloading rootfs"
+        RELEASE_NAME="ArchLinux-base_$(uname -m).tar.zst"
+        curl -sL "https://github.com/xplshn/filesystems/releases/latest/download/$RELEASE_NAME" -o "$TEMP_DIR/binaryDependencies/$RELEASE_NAME"
+        cd "$TEMP_DIR/binaryDependencies" || log_error "Failed to change to temp directory"
+        ln -sfT "$RELEASE_NAME" "rootfs.tar.${RELEASE_NAME##*.}"
+    fi
+
+    if [ ! -f "$TEMP_DIR/binaryDependencies/sharun" ]; then
+        log "Downloading sharun-$(uname -m)-aio"
+        curl -sL "https://github.com/VHSgunzo/sharun/releases/latest/download/sharun-$(uname -m)-aio" -o "$TEMP_DIR/binaryDependencies/sharun"
+        chmod +x "$TEMP_DIR/binaryDependencies/sharun"
+    fi
+
+    unnappear rm -rf "$BASE/cmd/pelfCreator/binaryDependencies_archLinux"
+    mv "$TEMP_DIR/binaryDependencies" "$BASE/cmd/pelfCreator/binaryDependencies_archLinux" || log_error "Unable to move binaryDependencies from temp to pelfCreator_archLinux"
+
+    # Create archive of binaryDependencies
+    log "Creating binaryDependencies_archLinux.tar.zst for pelfCreator_archLinux"
+    tar -C "$BASE/cmd/pelfCreator/binaryDependencies_archLinux" -c . | zstd -T0 -19 -fo "$BASE/cmd/pelfCreator/pelfCreatorExtension_archLinux.tar.zst"
+
+    # Clean up temporary directory
+    rm -rf "$TEMP_DIR"
+}
+
 build_appstream_helper() {
     log "Building appstream-helper"
     cd "$BASE/cmd/misc/appstream-helper" || log_error "Unable to change directory to ./cmd/misc/appstream-helper"
     go build || log_error "Unable to build appstream-helper"
     if available "upx"; then
         log "Compressing ./appstream-helper tool"
-        upx ./appstream-helper || log_error "unable to compress ./appstream-helper"
-        rm -f ./appstream-helper.upx
+        upx ./appstream-helper
     else
         log_warning "upx not available. The resulting binary will be unnecessarily large"
     fi
@@ -212,7 +263,7 @@ build_appstream_helper() {
 
 clean_project() {
     log "Starting clean process"
-    rm -rf ./pelf ./pelf.upx ./binaryDependencies ./binaryDependencies.tar.zst ./cmd/pelfCreator/pelfCreator ./cmd/pelfCreator/binaryDependencies* ./cmd/misc/appstream-helper/appstream-helper ./appbundle-runtime/binaryDependencies
+    rm -rf ./pelf ./pelf.upx ./binaryDependencies ./binaryDependencies.tar.zst ./appbundle-runtime/binaryDependencies ./cmd/pelfCreator/pelfCreator ./cmd/pelfCreator/binaryDependencies* ./cmd/pelfCreator/*.zst.tar ./cmd/misc/appstream-helper/appstream-helper
     log "Clean process completed"
 }
 
@@ -220,6 +271,7 @@ retrieve_executable() {
     readlink -f ./pelf
     readlink -f ./cmd/pelfCreator/pelfCreator
     readlink -f ./cmd/misc/appstream-helper/appstream-helper
+    readlink -f ./cmd/pelfCreator/binaryDependencies_archLinux.tar.zst
 }
 
 handle_dependencies() {
@@ -284,6 +336,14 @@ case "$1" in
         build_pelf
         build_pelfCreator
         ;;
+    "pelfCreator_extensions")
+        require go
+        log "Starting build process for target: pelfCreator_extensions"
+        build_pelf
+        log "Starting build process for target: pelfCreator_archLinux"
+        build_pelfCreator_archLinux
+        # TODO: Add moar
+        ;;
     "appstream-helper")
         require go
         log "Starting build process for target: appstream-helper"
@@ -299,7 +359,7 @@ case "$1" in
         update_dependencies
         ;;
     *)
-        log_warning "Usage: $0 {build|pelf|appbundle-runtime|pelfCreator|appstream-helper|clean|retrieve|update-deps}"
+        log_warning "Usage: $0 {build|pelf|appbundle-runtime|pelfCreator|pelfCreator_extensions|appstream-helper|clean|retrieve|update-deps}"
         exit 1
         ;;
 esac
