@@ -5,9 +5,7 @@ package main
 import (
 	_ "embed"
 	"fmt"
-	"os"
 	"strings"
-	"runtime"
 )
 
 //go:embed binaryDependencies/dwarfs
@@ -18,24 +16,25 @@ var Filesystems = []*Filesystem{
 		Type:     "dwarfs",
 		Commands: []string{"dwarfs", "dwarfsextract"},
 		MountCmd: func(cfg *RuntimeConfig) CommandRunner {
+			cacheSize := getDwarfsCacheSize()
 			args := []string{
 				"-o", "ro,nodev",
 				"-o", "cache_files,no_cache_image,clone_fd",
-				"-o", "block_allocator=" + getEnvWithDefault("DWARFS_BLOCK_ALLOCATOR", DWARFS_BLOCK_ALLOCATOR),
-				"-o", getEnvWithDefault("DWARFS_TIDY_STRATEGY", DWARFS_TIDY_STRATEGY),
-				"-o", "debuglevel=" + T(os.Getenv("ENABLE_FUSE_DEBUG") != "", "debug", "error"),
-				"-o", "cachesize=" + getEnvWithDefault("DWARFS_CACHESIZE", DWARFS_CACHESIZE),
-				"-o", "readahead=" + getEnvWithDefault("DWARFS_READAHEAD", DWARFS_READAHEAD),
-				"-o", "blocksize=" + getEnvWithDefault("DWARFS_BLOCKSIZE", DWARFS_BLOCKSIZE),
-				"-o", fmt.Sprintf("workers=%d", getEnvWithDefault("DWARFS_WORKERS", runtime.NumCPU())),
+				"-o", "block_allocator=" + getEnvWithDefault(globalEnv, "DWARFS_BLOCK_ALLOCATOR", DWARFS_BLOCK_ALLOCATOR),
+				"-o", getEnvWithDefault(globalEnv, "DWARFS_TIDY_STRATEGY", DWARFS_TIDY_STRATEGY),
+				"-o", "debuglevel=" + T(getEnv(globalEnv, "ENABLE_FUSE_DEBUG") != "", "debug", "error"),
+				"-o", "readahead=" + getEnvWithDefault(globalEnv, "DWARFS_READAHEAD", DWARFS_READAHEAD),
+				"-o", "blocksize=" + getEnvWithDefault(globalEnv, "DWARFS_BLOCKSIZE", DWARFS_BLOCKSIZE),
+				"-o", "cachesize=" + cacheSize,
+				"-o", "workers=" + getDwarfsWorkers(&cacheSize),
 				"-o", fmt.Sprintf("offset=%d", cfg.archiveOffset),
 				cfg.selfPath,
 				cfg.mountDir,
 			}
-			if e := os.Getenv("DWARFS_ANALYSIS_FILE"); e != "" {
+			if e := getEnv(globalEnv, "DWARFS_ANALYSIS_FILE"); e != "" {
 				args = append(args, "-o", "analysis_file="+e)
 			}
-			if e := os.Getenv("DWARFS_PRELOAD_ALL"); e != "" {
+			if e := getEnv(globalEnv, "DWARFS_PRELOAD_ALL"); e != "" {
 				args = append(args, "-o", "preload_all")
 			} else {
 				args = append(args, "-o", "preload_category=hotness")

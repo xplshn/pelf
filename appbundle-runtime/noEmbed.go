@@ -46,11 +46,13 @@ var Filesystems = []*Filesystem{
                 cfg.selfPath,
                 cfg.mountDir,
             }
-            if os.Getenv("ENABLE_FUSE_DEBUG") != "" {
+            if getEnv(globalEnv, "ENABLE_FUSE_DEBUG") != "" {
                 logWarning("squashfuse's debug mode implies foreground. The AppRun won't be called.")
                 args = append(args, "-o", "debug")
             }
-            return &osExecCmd{exec.Command(executable, args...)}
+            cmd := exec.Command(executable, args...)
+            cmd.Env = globalEnv
+            return &osExecCmd{cmd}
         },
         ExtractCmd: func(cfg *RuntimeConfig, query string) CommandRunner {
             executable, err := lookPath("unsquashfs", globalPath)
@@ -63,7 +65,9 @@ var Filesystems = []*Filesystem{
                     args = append(args, "-e", file)
                 }
             }
-            return &osExecCmd{exec.Command(executable, args...)}
+            cmd := exec.Command(executable, args...)
+            cmd.Env = globalEnv
+            return &osExecCmd{cmd}
         },
     },
     {
@@ -74,29 +78,32 @@ var Filesystems = []*Filesystem{
             if err != nil {
                 logError("dwarfs not available", err, cfg)
             }
-            args := []string{
-                "-o", "ro,nodev",
-                "-o", "cache_files,no_cache_image,clone_fd",
-                "-o", "block_allocator="+getEnvWithDefault("DWARFS_BLOCK_ALLOCATOR", DWARFS_BLOCK_ALLOCATOR),
-                "-o", getEnvWithDefault("DWARFS_TIDY_STRATEGY", DWARFS_TIDY_STRATEGY),
-                "-o", "debuglevel="+T(os.Getenv("ENABLE_FUSE_DEBUG") != "", "debug", "error"),
-                "-o", "cachesize="+getEnvWithDefault("DWARFS_CACHESIZE", DWARFS_CACHESIZE),
-                "-o", "readahead="+getEnvWithDefault("DWARFS_READAHEAD", DWARFS_READAHEAD),
-                "-o", "blocksize="+getEnvWithDefault("DWARFS_BLOCKSIZE", DWARFS_BLOCKSIZE),
-                "-o", fmt.Sprintf("workers=%d", getEnvWithDefault("DWARFS_WORKERS", runtime.NumCPU())),
-                "-o", fmt.Sprintf("offset=%d", cfg.archiveOffset),
-                cfg.selfPath,
-                cfg.mountDir,
-            }
-            if e := os.Getenv("DWARFS_ANALYSIS_FILE"); e != "" {
+            cacheSize := getDwarfsCacheSize()
+			args := []string{
+				"-o", "ro,nodev",
+				"-o", "cache_files,no_cache_image,clone_fd",
+				"-o", "block_allocator=" + getEnvWithDefault(globalEnv, "DWARFS_BLOCK_ALLOCATOR", DWARFS_BLOCK_ALLOCATOR),
+				"-o", getEnvWithDefault(globalEnv, "DWARFS_TIDY_STRATEGY", DWARFS_TIDY_STRATEGY),
+				"-o", "debuglevel=" + T(getEnv(globalEnv, "ENABLE_FUSE_DEBUG") != "", "debug", "error"),
+				"-o", "readahead=" + getEnvWithDefault(globalEnv, "DWARFS_READAHEAD", DWARFS_READAHEAD),
+				"-o", "blocksize=" + getEnvWithDefault(globalEnv, "DWARFS_BLOCKSIZE", DWARFS_BLOCKSIZE),
+				"-o", "cachesize=" + cacheSize,
+				"-o", "workers=" + getDwarfsWorkers(&cacheSize),
+				"-o", fmt.Sprintf("offset=%d", cfg.archiveOffset),
+				cfg.selfPath,
+				cfg.mountDir,
+			}
+            if e := getEnv(globalEnv, "DWARFS_ANALYSIS_FILE"); e != "" {
                 args = append(args, "-o", "analysis_file="+e)
             }
-            if e := os.Getenv("DWARFS_PRELOAD_ALL"); e != "" {
+            if e := getEnv(globalEnv, "DWARFS_PRELOAD_ALL"); e != "" {
                 args = append(args, "-o", "preload_all")
             } else {
                 args = append(args, "-o", "preload_category=hotness")
             }
-            return &osExecCmd{exec.Command(executable, args...)}
+            cmd := exec.Command(executable, args...)
+            cmd.Env = globalEnv
+            return &osExecCmd{cmd}
         },
         ExtractCmd: func(cfg *RuntimeConfig, query string) CommandRunner {
             executable, err := lookPath("dwarfsextract", globalPath)
@@ -113,7 +120,9 @@ var Filesystems = []*Filesystem{
                     args = append(args, "--pattern", pattern)
                 }
             }
-            return &osExecCmd{exec.Command(executable, args...)}
+            cmd := exec.Command(executable, args...)
+            cmd.Env = globalEnv
+            return &osExecCmd{cmd}
         },
     },
 }

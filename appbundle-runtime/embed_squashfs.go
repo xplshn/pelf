@@ -5,7 +5,6 @@ package main
 import (
 	_ "embed"
 	"fmt"
-	"os"
 	"strings"
 )
 
@@ -27,7 +26,7 @@ var Filesystems = []*Filesystem{
 				cfg.selfPath,
 				cfg.mountDir,
 			}
-			if os.Getenv("ENABLE_FUSE_DEBUG") != "" {
+			if getEnv(globalEnv, "ENABLE_FUSE_DEBUG") != "" {
 				logWarning("squashfuse's debug mode implies foreground. The AppRun won't be called.")
 				args = append(args, "-o", "debug")
 			}

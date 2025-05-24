@@ -14,10 +14,14 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"runtime"
 
-	"github.com/emmansun/base64"
+	"github.com/shirou/gopsutil/v4/mem"
 	"github.com/fxamacker/cbor/v2"
 	"github.com/pkg/xattr"
+	"github.com/joho/godotenv"
+
+	"github.com/emmansun/base64"
 	"pgregory.net/rand"
 )
 
@@ -34,7 +38,8 @@ const (
 	DWARFS_TIDY_STRATEGY   = "tidy_strategy=time,tidy_interval=4s,tidy_max_age=10s,seq_detector=1"
 )
 
-var globalPath = os.Getenv("PATH")
+var globalEnv = os.Environ()
+var globalPath = getEnv(globalEnv, "PATH")
 
 type RuntimeConfig struct {
 	poolDir              string
@@ -54,6 +59,8 @@ type RuntimeConfig struct {
 	mountOrExtract       uint8
 	noCleanup            bool
 	disableRandomWorkDir bool
+	dotenvPath           string
+	shareDir             string
 }
 
 type fileHandler struct {
@@ -251,14 +258,38 @@ func calculateElfSize(elfFile *elf.File, file *os.File) (len uint64, err error) 
 
 // getEnvWithDefault is a generic function that retrieves an environment variable
 // and returns the first value if it exists, otherwise it returns the default value.
-func getEnvWithDefault[T any](key string, defaultValue T) T {
-	if value := os.Getenv(key); value != "" {
-		opts := strings.Split(value, ",")
-		if len(opts) > 0 {
-			return any(opts[0]).(T)
+func getEnvWithDefault[T any](env []string, key string, defaultValue T) T {
+	for _, e := range env {
+		pair := strings.SplitN(e, "=", 2)
+		if pair[0] == key {
+			opts := strings.Split(pair[1], ",")
+			if len(opts) > 0 {
+				return any(opts[0]).(T)
+			}
 		}
 	}
 	return defaultValue
+}
+
+func getEnv(env []string, key string) string {
+	for _, e := range env {
+		pair := strings.SplitN(e, "=", 2)
+		if pair[0] == key {
+			return pair[1]
+		}
+	}
+	return ""
+}
+
+func setEnv(env *[]string, key, value string) {
+	for i, e := range *env {
+		pair := strings.SplitN(e, "=", 2)
+		if pair[0] == key {
+			(*env)[i] = key + "=" + value
+			return
+		}
+	}
+	*env = append(*env, key+"="+value)
 }
 
 func initConfig() (*RuntimeConfig, *fileHandler, error) {
@@ -266,9 +297,11 @@ func initConfig() (*RuntimeConfig, *fileHandler, error) {
 		exeName:              "",
 		poolDir:              filepath.Join(os.TempDir(), ".pelfbundles"),
 		selfPath:             getSelfPath(),
-		disableRandomWorkDir: T(os.Getenv("PBUNDLE_DISABLE_RANDOM_WORKDIR") == "1", true, false),
+		disableRandomWorkDir: T(getEnv(globalEnv, "PBUNDLE_DISABLE_RANDOM_WORKDIR") == "1", true, false),
 		noCleanup:            false,
 		mountOrExtract:       2,
+		dotenvPath:           filepath.Join(os.TempDir(), ".pelfbundles", ".env"),
+		shareDir:             filepath.Join(os.TempDir(), ".pelfbundles", ".share"),
 	}
 
 	fh, err := newFileHandler(cfg.selfPath)
@@ -315,7 +348,7 @@ func sanitizeFilename(name string) string {
 
 func getWorkDir(cfg *RuntimeConfig, fh *fileHandler) string {
 	envKey := cfg.rExeName + "_workDir"
-	workDir := os.Getenv(envKey)
+	workDir := getEnv(globalEnv, envKey)
 
 	if workDir == "" {
 		if cfg.disableRandomWorkDir {
@@ -348,18 +381,17 @@ func logError(msg string, err error, cfg *RuntimeConfig) {
 }
 
 func determineHome(cfg *RuntimeConfig) string {
-	selfHomeDir := cfg.selfPath + ".home"
-	selfConfigDir := cfg.selfPath + ".config"
+	selfHomeDir := "." + cfg.selfPath + ".home"
+	selfConfigDir := "." + cfg.selfPath + ".config"
 
-	setEnvIfExists := func(suffix, envVar, oldEnvVar string) string {
-		dir := cfg.selfPath + suffix
+	setEnvIfExists := func(dir, envVar, oldEnvVar string) string {
 		if _, err := os.Stat(dir); err == nil {
-			oldValue := os.Getenv(oldEnvVar)
+			oldValue := getEnv(globalEnv, oldEnvVar)
 			if oldValue == "" {
-				oldValue = os.Getenv(envVar)
-				os.Setenv(oldEnvVar, oldValue)
+				oldValue = getEnv(globalEnv, envVar)
+				setEnv(&globalEnv, oldEnvVar, oldValue)
 			}
-			os.Setenv(envVar, dir)
+			setEnv(&globalEnv, envVar, dir)
 			return dir
 		}
 		return ""
@@ -386,42 +418,45 @@ func executeFile(args []string, cfg *RuntimeConfig) error {
 		cfg.mountDir + "/libx32:" +
 		cfg.mountDir + "/usr/libx32"
 
-	os.Setenv(cfg.rExeName+"_libDir", libDirs)
-	os.Setenv(cfg.rExeName+"_binDir", binDirs)
-	os.Setenv(cfg.rExeName+"_mountDir", cfg.mountDir)
+	setEnv(&globalEnv, cfg.rExeName+"_libDir", libDirs)
+	setEnv(&globalEnv, cfg.rExeName+"_binDir", binDirs)
+	setEnv(&globalEnv, cfg.rExeName+"_mountDir", cfg.mountDir)
 
 	updatePath("PATH", binDirs)
 
-	os.Setenv("APPDIR", cfg.mountDir)
-	os.Setenv("SELF", cfg.selfPath)
-	os.Setenv("ARGV0", filepath.Base(os.Args[0]))
+	setEnv(&globalEnv, "APPDIR", cfg.mountDir)
+	setEnv(&globalEnv, "SELF", cfg.selfPath)
+	setEnv(&globalEnv, "ARGV0", filepath.Base(os.Args[0]))
 
 	// COMPAT
-	os.Setenv("APPIMAGE", cfg.selfPath)
+	setEnv(&globalEnv, "APPIMAGE", cfg.selfPath)
 
 	executableFile, err := lookPath(cfg.entrypoint, globalPath)
 	if err != nil {
 		return fmt.Errorf("Unable to find the location of %s: %v", cfg.entrypoint, err)
 	}
 
+	determineHome(cfg)
+
 	cmd := exec.Command(executableFile, args...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+	cmd.Env = globalEnv
 	return cmd.Run()
 }
 
 func updatePath(envVar, dirs string) string {
 	var newPath string
-	if os.Getenv(envVar) == "" {
+	if getEnv(globalEnv, envVar) == "" {
 		newPath = dirs
-	} else if os.Getenv(fmt.Sprintf("PBUNDLE_OVERTAKE_%s", envVar)) == "1" {
-		newPath = dirs + ":" + os.Getenv(envVar)
+	} else if getEnv(globalEnv, fmt.Sprintf("PBUNDLE_OVERTAKE_%s", envVar)) == "1" {
+		newPath = dirs + ":" + getEnv(globalEnv, envVar)
 	} else {
-		newPath = os.Getenv(envVar) + ":" + dirs
+		newPath = getEnv(globalEnv, envVar) + ":" + dirs
 	}
 
-	os.Setenv(envVar, newPath)
+	setEnv(&globalEnv, envVar, newPath)
 	globalPath = newPath
 	return newPath
 }
@@ -434,6 +469,7 @@ func cleanup(cfg *RuntimeConfig) {
 	cmd.Stdin = nil
 	cmd.Stdout = nil
 	cmd.Stderr = nil
+	cmd.Env = globalEnv
 	if err := cmd.Start(); err != nil {
 		panic(err)
 	}
@@ -493,6 +529,15 @@ func findAndEncodeFiles(dir, pattern string, cfg *RuntimeConfig) error {
 	return nil
 }
 
+func loadDotEnv(cfg *RuntimeConfig) error {
+	if _, err := os.Stat(cfg.dotenvPath); err == nil {
+		if err := godotenv.Load(cfg.dotenvPath); err != nil {
+			return fmt.Errorf("failed to load .env file: %w", err)
+		}
+	}
+	return nil
+}
+
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "--pbundle_internal_Cleanup" {
 		if len(os.Args) < 5 {
@@ -509,6 +554,7 @@ func main() {
 					break
 				}
 				cmd := exec.Command("fusermount3", "-u", mountDir)
+				cmd.Env = globalEnv
 				cmd.Run()
 				sleep(1)
 			}
@@ -528,6 +574,10 @@ func main() {
 	cfg, fh, err := initConfig()
 	if err != nil {
 		logError("Failed to initialize config", err, cfg)
+	}
+
+	if err := loadDotEnv(cfg); err != nil {
+		logError("Failed to load .env file", err, cfg)
 	}
 
 	sigChan := make(chan os.Signal, 1)
@@ -563,47 +613,7 @@ func main() {
 			}
 		}
 	} else {
-		fs, err := checkDeps(cfg, fh)
-		if err != nil {
-			logError("Unexpected failure when checking the availability of the AppBundle's dependencies", err, cfg)
-		}
-
-		switch cfg.mountOrExtract {
-		case 0:
-			// FUSE mounting only
-			if err := mountImage(cfg, fh, fs); err != nil {
-				logError("Failed to mount image", err, cfg)
-			}
-		case 1:
-			// Do not use FUSE mounting, but extract and run
-			if err := extractImage(cfg, fh, fs, ""); err != nil {
-				logError("Failed to extract image", err, cfg)
-			}
-		case 2:
-			// Try to use FUSE mounting and if it is unavailable extract and run
-			if err := mountImage(cfg, fh, fs); err != nil {
-				logWarning("FUSE mounting failed, falling back to extraction")
-				if err := extractImage(cfg, fh, fs, ""); err != nil {
-					logError("Failed to extract image", err, cfg)
-				}
-			}
-		case 3:
-			// As above, but if the image size is less than 350 MB (default)
-			const defaultSizeLimit = 350 * 1024 * 1024
-			if err := mountImage(cfg, fh, fs); err != nil {
-				logWarning("FUSE mounting failed, falling back to extraction")
-				if cfg.elfFileSize <= defaultSizeLimit {
-					if err := extractImage(cfg, fh, fs, ""); err != nil {
-						logError("Failed to extract image", err, cfg)
-					}
-				} else {
-					logError("Refusing to fallback to Extract & Run mode.", fmt.Errorf("Size of AppBundle falls outside of allowed size threshold, %d", defaultSizeLimit), cfg)
-				}
-			}
-		default:
-			logError("Invalid value for mountOrExtract", nil, cfg)
-		}
-
+		mountOrExtract(cfg, fh)
 		_ = executeFile(args, cfg)
 		cleanup(cfg)
 	}
@@ -702,4 +712,38 @@ func T[T any](cond bool, vtrue, vfalse T) T {
 		return vtrue
 	}
 	return vfalse
+}
+
+// --- DWARFS ---
+func getDwarfsCacheSize() string {
+    if cacheSize := getEnv(globalEnv, "DWARFS_CACHESIZE"); cacheSize != "" { return cacheSize }
+
+    memStats, err := mem.VirtualMemory()
+    if err != nil { return DWARFS_CACHESIZE }
+
+	availableMemory := memStats.Available
+    if availableMemory == 0 { availableMemory = memStats.Free }
+
+    availableMemoryMB := float64(availableMemory) / 1024.0 / 1024.0 / 1.3
+    cacheSizesMB := []uint32{64, 128, 256, 384, 512, 640, 768, 896, 1024, 1536}
+
+    for i := len(cacheSizesMB) - 1; i >= 0; i-- {
+        if availableMemoryMB >= float64(cacheSizesMB[i]) { return fmt.Sprintf("%dM", cacheSizesMB[i]) }
+    }
+    return "32M"
+}
+
+func getDwarfsWorkers(cachesize *string) string {
+    workers := getEnv(globalEnv, "DWARFS_WORKERS")
+    if workers != "" {
+        return workers
+    }
+    switch *cachesize {
+    case "1536M", "1024M":
+        return strconv.Itoa(runtime.NumCPU())
+    case "896M":
+        return "2"
+    default:
+        return "1"
+    }
 }
