@@ -35,7 +35,7 @@ func (c *memitCmd) Run() error {
 }
 
 func newMemitCmd(cfg *RuntimeConfig, binary []byte, name string, args ...string) (*memitCmd, error) {
-	if os.Getenv("NO_MEMFDEXEC") == "1" {
+	if getEnv(globalEnv, "NO_MEMFDEXEC") == "1" {
 		tempDir := filepath.Join(cfg.workDir, ".static")
 		if err := os.MkdirAll(tempDir, 0755); err != nil {
 			return nil, fmt.Errorf("failed to create temporary directory: %v", err)
@@ -45,6 +45,7 @@ func newMemitCmd(cfg *RuntimeConfig, binary []byte, name string, args ...string)
 			return nil, fmt.Errorf("failed to write temporary file: %v", err)
 		}
 		cmd := exec.Command(tempFile, args...)
+		cmd.Env = globalEnv
 		return &memitCmd{Cmd: cmd}, nil
 	}
 	cmd, file, err := memit.Command(bytes.NewReader(binary), args...)
@@ -52,6 +53,7 @@ func newMemitCmd(cfg *RuntimeConfig, binary []byte, name string, args ...string)
 		return nil, err
 	}
 	cmd.Args[0] = name
+	cmd.Env = globalEnv
 	return &memitCmd{Cmd: cmd, file: file}, nil
 }
 
