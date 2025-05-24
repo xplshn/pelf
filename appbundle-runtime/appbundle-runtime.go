@@ -59,8 +59,6 @@ type RuntimeConfig struct {
 	mountOrExtract       uint8
 	noCleanup            bool
 	disableRandomWorkDir bool
-	dotenvPath           string
-	shareDir             string
 }
 
 type fileHandler struct {
@@ -300,8 +298,6 @@ func initConfig() (*RuntimeConfig, *fileHandler, error) {
 		disableRandomWorkDir: T(getEnv(globalEnv, "PBUNDLE_DISABLE_RANDOM_WORKDIR") == "1", true, false),
 		noCleanup:            false,
 		mountOrExtract:       2,
-		dotenvPath:           filepath.Join(os.TempDir(), ".pelfbundles", ".env"),
-		shareDir:             filepath.Join(os.TempDir(), ".pelfbundles", ".share"),
 	}
 
 	fh, err := newFileHandler(cfg.selfPath)
@@ -380,11 +376,9 @@ func logError(msg string, err error, cfg *RuntimeConfig) {
 	os.Exit(1)
 }
 
-func determineHome(cfg *RuntimeConfig) string {
-	selfHomeDir := "." + cfg.selfPath + ".home"
-	selfConfigDir := "." + cfg.selfPath + ".config"
+func setSelfEnvs(cfg *RuntimeConfig) error {
 
-	setEnvIfExists := func(dir, envVar, oldEnvVar string) string {
+	setEnvIfExists := func(dir, envVar, oldEnvVar string) error {
 		if _, err := os.Stat(dir); err == nil {
 			oldValue := getEnv(globalEnv, oldEnvVar)
 			if oldValue == "" {
@@ -392,15 +386,26 @@ func determineHome(cfg *RuntimeConfig) string {
 				setEnv(&globalEnv, oldEnvVar, oldValue)
 			}
 			setEnv(&globalEnv, envVar, dir)
-			return dir
 		}
-		return ""
+		return nil
 	}
 
-	setEnvIfExists(selfHomeDir, "HOME", "OLD_HOME")
-	config := setEnvIfExists(selfConfigDir, "XDG_CONFIG_HOME", "OLD_XDG_CONFIG_HOME")
+	setEnvIfExists("." + cfg.selfPath + ".home", "HOME", "OLD_HOME")
+	setEnvIfExists("." + cfg.selfPath + ".share", "XDG_DATA_HOME", "OLD_XDG_DATA_HOME")
+	setEnvIfExists("." + cfg.selfPath + ".config", "XDG_CONFIG_HOME", "OLD_XDG_CONFIG_HOME")
 
-	return config
+	selfEnvFile := "." + cfg.selfPath + ".env"
+	if _, err := os.Stat(selfEnvFile); err == nil {
+		if envs, err := godotenv.Read(selfEnvFile); err == nil {
+			for key, value := range envs {
+				globalEnv = append(globalEnv, fmt.Sprintf("%s=%s", key, value))
+			}
+		} else {
+			return fmt.Errorf("failed to load .env file: %w", err)
+		}
+	}
+
+	return nil
 }
 
 func executeFile(args []string, cfg *RuntimeConfig) error {
@@ -436,7 +441,7 @@ func executeFile(args []string, cfg *RuntimeConfig) error {
 		return fmt.Errorf("Unable to find the location of %s: %v", cfg.entrypoint, err)
 	}
 
-	determineHome(cfg)
+	setSelfEnvs(cfg)
 
 	cmd := exec.Command(executableFile, args...)
 	cmd.Stdin = os.Stdin
@@ -529,15 +534,6 @@ func findAndEncodeFiles(dir, pattern string, cfg *RuntimeConfig) error {
 	return nil
 }
 
-func loadDotEnv(cfg *RuntimeConfig) error {
-	if _, err := os.Stat(cfg.dotenvPath); err == nil {
-		if err := godotenv.Load(cfg.dotenvPath); err != nil {
-			return fmt.Errorf("failed to load .env file: %w", err)
-		}
-	}
-	return nil
-}
-
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "--pbundle_internal_Cleanup" {
 		if len(os.Args) < 5 {
@@ -574,10 +570,6 @@ func main() {
 	cfg, fh, err := initConfig()
 	if err != nil {
 		logError("Failed to initialize config", err, cfg)
-	}
-
-	if err := loadDotEnv(cfg); err != nil {
-		logError("Failed to load .env file", err, cfg)
 	}
 
 	sigChan := make(chan os.Signal, 1)
