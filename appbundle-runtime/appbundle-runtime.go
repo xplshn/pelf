@@ -17,7 +17,7 @@ import (
 	"runtime"
 
 	"github.com/shirou/gopsutil/v4/mem"
-	"github.com/fxamacker/cbor/v2"
+	"github.com/shamaton/msgpack/v2" //"github.com/fxamacker/cbor/v2"
 	"github.com/pkg/xattr"
 	"github.com/joho/godotenv"
 
@@ -189,17 +189,17 @@ func (f *fileHandler) readPlaceholdersAndMarkers(cfg *RuntimeConfig) error {
 	}
 
 	var runtimeInfo map[string]any
-	if err := cbor.Unmarshal(runtimeInfoData, &runtimeInfo); err != nil {
-		return fmt.Errorf("failed to parse .pbundle_runtime_info CBOR: %w", err)
+	if err := msgpack.Unmarshal(runtimeInfoData, &runtimeInfo); err != nil {
+		return fmt.Errorf("failed to parse .pbundle_runtime_info MessagePack: %w", err)
 	}
 
-	cfg.appBundleFS = runtimeInfo["filesystemType"].(string)
-	cfg.exeName = runtimeInfo["appBundleID"].(string)
-	cfg.pelfVersion = runtimeInfo["pelfVersion"].(string)
-	cfg.pelfHost = runtimeInfo["hostInfo"].(string)
-	cfg.hash = runtimeInfo["hash"].(string)
-	cfg.disableRandomWorkDir = runtimeInfo["disableRandomWorkDir"].(bool)
-	cfg.mountOrExtract = uint8(runtimeInfo["mountOrExtract"].(uint64))
+	cfg.appBundleFS = runtimeInfo["FilesystemType"].(string)
+	cfg.exeName = runtimeInfo["AppBundleID"].(string)
+	cfg.pelfVersion = runtimeInfo["PelfVersion"].(string)
+	cfg.pelfHost = runtimeInfo["HostInfo"].(string)
+	cfg.hash = runtimeInfo["Hash"].(string)
+	cfg.mountOrExtract = runtimeInfo["MountOrExtract"].(uint8) // cfg.mountOrExtract = uint8(runtimeInfo["MountOrExtract"].(uint64))
+	cfg.disableRandomWorkDir = runtimeInfo["DisableRandomWorkDir"].(bool)
 	cfg.archiveOffset = cfg.elfFileSize
 
 	xattrData := fmt.Sprintf("%s\n%d\n%s\n%s\n%s\n%s\n%s\n%d\n",
@@ -739,3 +739,4 @@ func getDwarfsWorkers(cachesize *string) string {
         return "1"
     }
 }
+

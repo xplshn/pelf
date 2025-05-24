@@ -205,3 +205,4 @@ func handleRuntimeFlags(fh *fileHandler, args *[]string, cfg *RuntimeConfig) err
 
 	return nil
 }
+

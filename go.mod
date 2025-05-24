@@ -3,8 +3,8 @@ module pelf
 go 1.24
 
 require (
-	codeberg.org/msantos/embedexe v0.0.0-20250421111610-c1538c66a2a1
 	fyne.io/fyne/v2 v2.5.5
+	github.com/adrg/xdg v0.5.3
 	github.com/emmansun/base64 v0.7.0
 	github.com/fxamacker/cbor/v2 v2.8.0
 	github.com/goccy/go-json v0.10.5
@@ -15,16 +15,19 @@ require (
 	github.com/mholt/archives v0.1.1
 	github.com/minio/md5-simd v1.1.2
 	github.com/pkg/xattr v0.4.10
+	github.com/shamaton/msgpack/v2 v2.2.3
 	github.com/shirou/gopsutil/v4 v4.25.4
 	github.com/u-root/u-root v0.14.0
-	github.com/urfave/cli/v3 v3.1.1
+	github.com/urfave/cli/v3 v3.3.3
 	github.com/zeebo/blake3 v0.2.4
+	golang.org/x/image v0.25.0
 	golang.org/x/sys v0.33.0
+	gopkg.in/yaml.v3 v3.0.1
+	lukechampine.com/blake3 v1.4.1
 	pgregory.net/rand v1.0.2
 )
 
 require (
-	codeberg.org/msantos/execve v0.0.0-20230206112018-e5c3a7f4d436 // indirect
 	fyne.io/systray v1.11.0 // indirect
 	github.com/BurntSushi/toml v1.4.1-0.20240526193622-a339e1f7089c // indirect
 	github.com/STARRY-S/zip v0.2.3 // indirect
@@ -34,7 +37,7 @@ require (
 	github.com/bodgit/windows v1.0.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dsnet/compress v0.0.2-0.20230904184137-39efe44ab707 // indirect
-	github.com/ebitengine/purego v0.8.3 // indirect
+	github.com/ebitengine/purego v0.8.4 // indirect
 	github.com/fredbi/uri v1.1.0 // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/fyne-io/gl-js v0.0.0-20220119005834-d2da28d9ccfe // indirect
@@ -75,9 +78,7 @@ require (
 	github.com/yuin/goldmark v1.7.1 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go4.org v0.0.0-20230225012048-214862532bf5 // indirect
-	golang.org/x/image v0.25.0 // indirect
 	golang.org/x/mobile v0.0.0-20231127183840-76ac6878050a // indirect
-	golang.org/x/net v0.38.0 // indirect
-	golang.org/x/text v0.24.0 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
+	golang.org/x/net v0.40.0 // indirect
+	golang.org/x/text v0.25.0 // indirect
 )

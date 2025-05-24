@@ -14,7 +14,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/fxamacker/cbor/v2"
+	"github.com/shamaton/msgpack/v2" //"github.com/fxamacker/cbor/v2"
 	"github.com/klauspost/compress/zstd"
 	"github.com/pkg/xattr"
 	"github.com/urfave/cli/v3"
@@ -81,13 +81,13 @@ type BuildInfo struct {
 }
 
 type RuntimeInfo struct {
-	AppBundleID          string `json:"appBundleID"`
-	PelfVersion          string `json:"pelfVersion"`
-	HostInfo             string `json:"hostInfo"`
-	FilesystemType       string `json:"filesystemType"`
-	Hash                 string `json:"hash"`
-	DisableRandomWorkDir bool   `json:"disableRandomWorkDir"`
-	MountOrExtract       uint8  `json:"mountOrExtract"`
+	AppBundleID          string `json:"AppBundleID"`
+	PelfVersion          string `json:"PelfVersion"`
+	HostInfo             string `json:"HostInfo"`
+	FilesystemType       string `json:"FilesystemType"`
+	Hash                 string `json:"Hash"`
+	DisableRandomWorkDir bool   `json:"DisableRandomWorkDir"`
+	MountOrExtract       uint8  `json:"MountOrExtract"`
 }
 
 type elfSectionSpec struct {
@@ -252,7 +252,7 @@ func getFilesystemTypeFromOutputFile(outputFile string) string {
 	return "squashfs"
 }
 
-func validateRunBehavior(ctx context.Context, cmd *cli.Command, value uint64) error {
+func validateRunBehavior(ctx context.Context, cmd *cli.Command, value uint) error {
 	if value > 3 {
 		return fmt.Errorf("run-behavior must be one of 0, 1, 2, or 3")
 	}
@@ -711,14 +711,14 @@ func createSelfExtractingArchive(config *Config, workDir string, buildInfo Build
 		return fmt.Errorf("failed to make output file executable: %w", err)
 	}
 
-	runtimeInfoCBOR, err := cbor.Marshal(config.RuntimeInfo)
+	runtimeInfoData, err := msgpack.Marshal(config.RuntimeInfo)
 	if err != nil {
-		return fmt.Errorf("failed to marshal RuntimeInfo to CBOR: %w", err)
+		return fmt.Errorf("failed to marshal RuntimeInfe: %w", err)
 	}
 
 	if len(config.CustomSections) > 0 {
 		var runtimeInfoMap map[string]interface{}
-		if err := cbor.Unmarshal(runtimeInfoCBOR, &runtimeInfoMap); err != nil {
+		if err := msgpack.Unmarshal(runtimeInfoData, &runtimeInfoMap); err != nil {
 			return fmt.Errorf("failed to unmarshal RuntimeInfo for modification: %w", err)
 		}
 
@@ -734,23 +734,23 @@ func createSelfExtractingArchive(config *Config, workDir string, buildInfo Build
 			runtimeInfoMap[sectionName[1:]] = parts[1]
 		}
 
-		runtimeInfoCBOR, err = cbor.Marshal(runtimeInfoMap)
+		runtimeInfoData, err = msgpack.Marshal(runtimeInfoMap)
 		if err != nil {
 			return fmt.Errorf("failed to remarshal modified RuntimeInfo: %w", err)
 		}
 	}
 
-	runtimeInfoTempFile, err := os.CreateTemp("", "runtime_info_*.cbor")
+	runtimeInfoTempFile, err := os.CreateTemp("", "runtime_info_*.msgpack")
 	if err != nil {
-		return fmt.Errorf("failed to create tempfile for RuntimeInfo CBOR: %w", err)
+		return fmt.Errorf("failed to create tempfile for RuntimeInfo serialization: %w", err)
 	}
 	defer os.Remove(runtimeInfoTempFile.Name())
 
-	if _, err := runtimeInfoTempFile.Write(runtimeInfoCBOR); err != nil {
-		return fmt.Errorf("failed to write RuntimeInfo CBOR to tempfile: %w", err)
+	if _, err := runtimeInfoTempFile.Write(runtimeInfoData); err != nil {
+		return fmt.Errorf("failed to write RuntimeInfo serialization to tempfile: %w", err)
 	}
 	if err := runtimeInfoTempFile.Close(); err != nil {
-		return fmt.Errorf("failed to close RuntimeInfo CBOR tempfile: %w", err)
+		return fmt.Errorf("failed to close RuntimeInfo tempfile: %w", err)
 	}
 
 	objcopyPath, err := lookPath("objcopy")
