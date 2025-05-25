@@ -149,7 +149,7 @@
 
 </span>
         
-            &ndash; <span class="date">2025/05/24</span>
+            &ndash; <span class="date">2025/05/25</span>
         
     
     <p class="terms">
@@ -265,8 +265,8 @@
 <li><strong>AppRun</strong>: A shell script that serves as the entrypoint for the application. It sets up the environment and executes the main program.</li>
 <li><strong>Optional Files</strong>:
 <ul>
-<li><code>.DirIcon</code>: A PNG icon in one or more sizes (512x512, 256x256, or 128x128).</li>
-<li><code>.DirIcon.svg</code>: An SVG icon for scalable display.</li>
+<li><code>.DirIcon</code>: A PNG icon in a standard size (512x512, 256x256, or 128x128).</li>
+<li><code>.DirIcon.svg</code>: An SVG icon</li>
 <li><code>program.desktop</code>: A desktop entry file for integration with desktop environments.</li>
 <li><code>program.appdata.xml</code>: An AppStream metadata file for application metadata.</li>
 <li><code>proto</code> or <code>rootfs</code>: A directory containing the application&rsquo;s filesystem, including binaries, libraries, and configuration files.</li>
@@ -277,7 +277,6 @@
 <ul>
 <li>The AppBundle format is designed to be self-contained, requiring no external dependencies for execution in most cases, assuming the necessary tools are embedded or available on the host system.</li>
 <li>The choice of filesystem (DwarFS or SquashFS) affects the tools included in the <code>.pbundle_static_tools</code> section and the runtime behavior.</li>
-<li>The AppBundle can be customized with flags (e.g., <code>--pbundle_portableHome</code>, <code>--pbundle_extract</code>) to modify its behavior at runtime, as detailed in the runtime documentation.</li>
 </ul>
 
   </main>

@@ -6,12 +6,12 @@
     <description>Recent content in Documentation Index on AppBundle Documentation &amp; Implementation Details</description>
     <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Sat, 24 May 2025 23:55:33 +0000</lastBuildDate>
+    <lastBuildDate>Sun, 25 May 2025 00:00:29 +0000</lastBuildDate>
     <atom:link href="https://xplshn.github.io/pelf/docs/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>format.md</title>
       <link>https://xplshn.github.io/pelf/docs/format/</link>
-      <pubDate>Sat, 24 May 2025 23:55:33 +0000</pubDate>
+      <pubDate>Sun, 25 May 2025 00:00:29 +0000</pubDate>
       <guid>https://xplshn.github.io/pelf/docs/format/</guid>
       <description>&lt;h1 id=&#34;appbundle-file-format-specification&#34;&gt;AppBundle File Format Specification&lt;/h1&gt;&#xA;&lt;p&gt;This document outlines the structure and composition of an AppBundle, a self-contained executable format designed to package applications with their dependencies for portable execution on Linux systems.&lt;/p&gt;&#xA;&lt;h2 id=&#34;file-structure&#34;&gt;File Structure&lt;/h2&gt;&#xA;&lt;p&gt;An AppBundle is a single executable file that combines an ELF (Executable and Linkable Format) runtime with an appended filesystem image containing the application&amp;rsquo;s data. The structure is as follows:&lt;/p&gt;&#xA;&lt;ol&gt;&#xA;&lt;li&gt;&#xA;&lt;p&gt;&lt;strong&gt;ELF Runtime&lt;/strong&gt;:&lt;/p&gt;&#xA;&lt;ul&gt;&#xA;&lt;li&gt;The AppBundle begins with an ELF executable, identifiable by the magic bytes &amp;ldquo;AB&amp;rdquo; or optionally &amp;ldquo;AI&amp;rdquo; at the start of the file.&lt;/li&gt;&#xA;&lt;li&gt;This runtime is responsible for handling the execution logic, including mounting or extracting the filesystem image and setting up the environment.&lt;/li&gt;&#xA;&lt;/ul&gt;&#xA;&lt;/li&gt;&#xA;&lt;li&gt;&#xA;&lt;p&gt;&lt;strong&gt;Runtime Information Section (.pbundle_runtime_info)&lt;/strong&gt;:&lt;/p&gt;</description>
     </item>
