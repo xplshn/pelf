@@ -20,6 +20,8 @@ import (
 	"strings"
 
 	"github.com/fxamacker/cbor/v2"
+	"github.com/shamaton/msgpack/v2"
+
 	"github.com/goccy/go-json"
 	"github.com/klauspost/compress/zstd"
 	"github.com/zeebo/blake3"
@@ -98,7 +100,7 @@ var appStreamMetadata []AppStreamMetadata
 var appStreamMetadataLoaded bool
 
 type RuntimeInfo struct {
-	AppBundleID string `json:"appBundleID"`
+	AppBundleID string `json:"AppBundleID"`
 }
 
 func loadAppStreamMetadata() error {
@@ -163,7 +165,7 @@ func extractAppBundleInfo(filename string) (RuntimeInfo, string, error) {
 		return RuntimeInfo{}, "", err
 	}
 	var runtimeInfo RuntimeInfo
-	if err := cbor.Unmarshal(data, &runtimeInfo); err != nil {
+	if err := msgpack.Unmarshal(data, &runtimeInfo); err != nil {
 		return RuntimeInfo{}, "", err
 	}
 	if runtimeInfo.AppBundleID == "" {
