@@ -1,0 +1,71 @@
+name: Deploy static content to Pages
+
+on:
+  push:
+    branches: ["master"]
+  workflow_dispatch:
+
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+
+    container:
+      image: alpine:latest
+
+    steps:
+      - name: Install Hugo, Git, and the worst version of Tar
+        run: |
+          apk update
+          apk add hugo git tar
+
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v4
+        with:
+          ref: 'master'
+          submodules: 'true'
+          fetch-depth: 0
+
+      - name: Configure Git safe.directory
+        run: |
+          git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+
+      - name: Generate the site
+        run: |
+          cd "${GITHUB_WORKSPACE}/www"
+          tree
+          ./gen.sh
+          cd "${GITHUB_WORKSPACE}"
+
+          # Prepare git to commit changes
+          git config user.name '[CI]'
+          git config user.email 'action@github.com'
+
+          # Commit changes dynamically
+          git add "${GITHUB_WORKSPACE}/www"
+          git commit -m "[www]" || echo "Nothing to commit"
+          git push origin HEAD || echo "Push failed; check repository settings"
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: "./www/pub"
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
