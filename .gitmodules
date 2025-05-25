@@ -1,0 +1,3 @@
+[submodule "www/themes/werx"]
+	path = www/themes/werx
+	url = https://github.com/xplshn/werx
