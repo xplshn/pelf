@@ -263,7 +263,7 @@ build_appstream_helper() {
 
 clean_project() {
     log "Starting clean process"
-    rm -rf ./pelf ./pelf.upx ./binaryDependencies ./binaryDependencies.tar.zst ./appbundle-runtime/binaryDependencies ./cmd/pelfCreator/pelfCreator ./cmd/pelfCreator/binaryDependencies* ./cmd/pelfCreator/*.zst.tar ./cmd/misc/appstream-helper/appstream-helper
+    rm -rf ./pelf ./pelf.upx ./binaryDependencies ./binaryDependencies.tar.zst ./appbundle-runtime/binaryDependencies ./cmd/pelfCreator/pelfCreator ./cmd/pelfCreator/binaryDependencies* ./cmd/pelfCreator/*.zst.tar ./cmd/misc/appstream-helper/appstream-helper ./cmd/misc/appstream-helper/appstream-helper.upx
     log "Clean process completed"
 }
 
