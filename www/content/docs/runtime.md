@@ -1,10 +1,10 @@
 +++
-date = ''
+date = '2025-05-24T23:55:33'
 draft = false
 title = 'runtime.md'
 [params.author]
-  name = ''
-  email = ''
+  name = 'xplshn'
+  email = 'xplshn@murena.io'
 +++
 # AppBundle Runtime Execution
 

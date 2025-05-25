@@ -1,0 +1,27 @@
+/* Color Schemes */
+:root {
+  /* Light theme (default) */
+  --bg-color: white;
+  --fg-color: black;
+  --super-accent: #6487DC;
+  --super-text: white;
+  --mid-accent: #FF6D06;
+  --mid-text: black;
+  --text-accent: #0066CC;
+  --header-border: black;
+  --sidebar-border: #ddd;
+}
+/* Dark theme */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg-color: #17181c;
+    --fg-color: white;
+    --super-accent: #1b3575;
+    --super-text: white;
+    --mid-accent: #c85300;
+    --mid-text: white;
+    --text-accent: #52b1ff;
+    --header-border: #666666;
+    --sidebar-border: #3a3a3a;
+  }
+}

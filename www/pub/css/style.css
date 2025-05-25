@@ -1,0 +1,227 @@
+/* Original WERC CSS */
+body { display: flex; flex-wrap: wrap; font-family: sans; }
+header { flex-basis: 100%; flex-shrink: 0; }
+article { flex-basis: 60%; padding-left: 1em; }
+footer { flex-basis: 100%; flex-shrink: 0; }
+header nav { display: flex; justify-content: space-between; }
+nav a, header a { text-decoration: none ; color: inherit; }
+header h1 span { margin-left: 1em; font-size: 50%; font-style: italic; }
+body > nav { flex-basis: content; padding-right: 1vw; min-width: 16em; }
+nav ul { display: flex; flex-direction: column; list-style-type: none; list-style-position: outside; padding-left: 0;  }
+nav li ul { padding-left: 0.6em }
+footer { display: flex; justify-content: space-between; }
+
+/* Additional styles from WERC */
+body { margin:0; padding: 0; font-size: 84%; font-family: Helvetica, Verdana, Arial, 'Liberation Sans', FreeSans, sans-serif; }
+a { text-decoration: none; color: var(--text-accent); }
+a:hover { text-decoration: underline; }
+.thisPage { color: var(--fg-color); }
+
+/* header and top bar */
+header nav { background-color: var(--super-accent); color: var(--super-text); padding: 0.3em; border-bottom: 2px solid var(--header-border); font-size: 91%; }
+header h1 { background-color: var(--mid-accent); color: var(--mid-text); margin: 0; border-bottom: 2px solid var(--header-border); font-weight: normal; padding: 0.25ex; font-size: 233%; }
+header a:hover { text-decoration: none; }
+
+/* sidebar */
+body > nav { border-right: 1px solid var(--sidebar-border); padding: 0;  }
+body > nav > div { border-bottom: 1px solid var(--sidebar-border); }
+body > nav > div a { color: var(--text-accent); display: block; text-transform: capitalize; font-weight: bold; padding: 0.25em 1ex 0.25em 2mm; font-size: 102%}
+body > nav > div a:hover { color: var(--super-text); background-color: var(--super-accent); border-left: var(--header-border) solid 0.2em; text-decoration: none; }
+body > nav > div p { font-weight: bold; margin: 0 0 0.5em 2mm; padding: 1em 0 0 0; }
+
+/* main copy */
+article { padding: 0.5ex 0 5vh 1vw;  }
+article h1, article h2 { color: var(--text-accent); font-weight: bold; margin: 2em 0 0 0; border-bottom: 2px solid var(--text-accent); }
+article h3, article h4, article h5 { color: var(--text-accent); font-weight: bold; margin: 2em 0 0 0; }
+article h6, article h7, article h8 { color: var(--text-accent); font-weight: bold; margin: 2em 0 0 0; }
+article a { color: var(--text-accent); }
+article a:hover { color: var(--super-accent); }
+
+/* footer */
+footer { color: var(--super-text); background-color: var(--super-accent); }
+footer a { color: inherit; }
+footer div { padding: 1em; }
+
+/* tables */
+table { border: 1px solid rgba(128,128,128,0.5); padding: 0; }
+th { color: var(--super-text); background-color: var(--super-accent); }
+tr:nth-child(odd) { background-color: rgba(128,128,128,0.1)  }
+
+/* Some elements shall not be printed */
+@media print {
+  .no-print, .no-print * {
+    display: none !important;
+  }
+  article tr,
+  article td {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+  article thead {
+    display: table-header-group;
+  }
+  article tfoot {
+    display: table-footer-group;
+  }
+  article table,
+  article blockquote,
+  article pre,
+  article code,
+  article figure,
+  article li,
+  article hr,
+  article ul,
+  article ol,
+  article a,
+  article tr {
+    page-break-inside: avoid;
+  }
+  article h2,
+  article h3,
+  article h4,
+  article p,
+  article a {
+     orphans: 3;
+     widows: 3;
+  }
+  article h1,
+  article h2,
+  article h3,
+  article h4,
+  article h5,
+  article h6 {
+   page-break-after: avoid;
+   page-break-inside: avoid;
+  }
+  article h1 + p + ul,
+  article h2 + p + ul,
+  article h3 + p + ul,
+  article h4 + p + ul,
+  article h5 + p + ul,
+  article h6 + p + ul {
+   page-break-before: avoid;
+   page-break-inside: avoid;
+  }
+  article h1 + p,
+  article h2 + p,
+  article h3 + p {
+    page-break-before: avoid;
+  }
+  article a[href^=http]:after, a[href^=ftp]:after {
+    content: " (" attr(href) ")";
+    font-size: 80%;
+  }
+  article a[href$=".jpg"]:after, a[href$=".jpeg"]:after, a[href$=".gif"]:after, a[href$=".png"]:after {
+    display: none;
+  }
+  article abbr[title]:after,
+  article acronym[title]:after {
+    content: " (" attr(title) ")";
+  }
+  article a.no-reformat:after {
+    content: "";
+  }
+  article abbr[title].no-reformat:after,
+  article acronym[title].no-reformat:after {
+    content: "";
+  }
+  article .no-reformat abbr:after,
+  article .no-reformat acronym:after,
+  article .no-reformat a:after {
+    content: "";
+  }
+  article .page-break,
+  article .break-before,
+  article .page-break-before {
+    page-break-before: always;
+  }
+  article .break-after,
+  article .page-break-after {
+    page-break-after: always;
+  }
+  article.avoid-break-inside {
+    page-break-inside: avoid;
+  }
+  ::-webkit-input-placeholder,
+  :-moz-placeholder, ::-moz-placeholder,
+  :-ms-input-placeholder {
+  	color: transparent;
+  }
+}
+
+/* Responsive Design */
+/* Collapsible sidebar
+input#menu-toggle {
+  display: none;
+}
+.menu-button {
+  display: none;
+  cursor: pointer;
+  background-color: var(--fg-color);
+  color: var(--super-text);
+  position: fixed;
+  z-index: 2;
+  padding: 0.12rem;
+}
+
+.menu-toggle:checked+.menu-button {
+  display: block;
+}
+
+.menu-toggle:checked~#sidebar {
+  transform: translateX(0);
+}
+
+@media screen and (max-width: 620px) {
+
+  .menu-button {
+    display: block;
+  }
+
+  #sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    overflow-y: auto;
+    padding-top: 4rem;
+    transition: transform 0.3s ease-in-out;
+    background-color: var(--bg-color);
+    color: var(--fg-color);
+  }
+
+  #main {
+    margin-left: 0;
+    border-left: none;
+    padding: 1rem;
+  }
+
+  #footer .pull-left,
+  #footer .pull-right {
+    float: none;
+    text-align: center;
+    margin: 0.5em 0;
+  }
+}
+
+@media screen and (max-width: 480px) {
+  body {
+    font-size: 90%;
+  }
+
+  .nav h1 {
+    font-size: 180%;
+  }
+
+  #main {
+    padding: 0.5rem;
+  }
+
+  .nav div {
+    position: static;
+    text-align: center;
+    transform: none;
+    padding: 0.3em 0;
+  }
+}
+*/
