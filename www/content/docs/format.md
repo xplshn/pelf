@@ -1,4 +1,12 @@
 +++
+date = ''
+draft = false
+title = 'format.md'
+[params.author]
+  name = ''
+  email = ''
++++
++++
 date = "2025-05-24T21:04:50-03:00"
 draft = false
 title = "AppBundle File Format and Structure"

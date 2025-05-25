@@ -1,41 +1,41 @@
 <!DOCTYPE html>
 <html lang="en-us">
 <head>
-	<meta name="generator" content="Hugo 0.146.0-DEV"><script src="/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=livereload" data-no-instant defer></script>
+	<meta name="generator" content="Hugo 0.146.0-DEV">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <link rel="icon" type="image/x-icon" href="/img/favicon.ico">
-  <link rel="manifest" href="/site.webmanifest">
-  <meta name="apple-mobile-web-app-title" content="🅮">
-  <meta name="application-name" content="🅮">
+  <link rel="manifest" href="/pelf/site.webmanifest">
+  <meta name="apple-mobile-web-app-title" content="AppBundle Documentation &amp; Implementation Details">
+  <meta name="application-name" content="AppBundle Documentation &amp; Implementation Details">
   <meta name="msapplication-TileColor" content="#ffffff">
   <meta name="theme-color" content="#ffffff">
 
   <style>
     body{font-family:monospace;}
-    html{cursor: url('http://localhost:1313/img/9cursor.png'), auto;}
+    html{cursor: url('https://xplshn.github.io/img/9cursor.png'), auto;}
   </style>
 
-  <title>Index</title>
+  <title>Home</title>
   
   
-  <link rel="stylesheet" href="http://localhost:1313/css/style.css">
+  <link rel="stylesheet" href="https://xplshn.github.io/pelf/css/style.css">
   
-  <link rel="stylesheet" href="http://localhost:1313/css/theme_blue.css">
+  <link rel="stylesheet" href="https://xplshn.github.io/pelf/css/theme_blue.css">
 
   
 
-  <link rel="alternate" type="application/rss+xml" href="/index.xml" title="🅮">
-  <link href='http://localhost:1313/css/SerenityOS-Emoji.css' rel="stylesheet" type="text/css">
-  <link href='http://localhost:1313/css/highlightjs_style.css' rel="stylesheet" type="text/css">
+  <link rel="alternate" type="application/rss+xml" href="/pelf/index.xml" title="AppBundle Documentation & Implementation Details">
+  <link href='https://xplshn.github.io/css/SerenityOS-Emoji.css' rel="stylesheet" type="text/css">
+  <link href='https://xplshn.github.io/css/highlightjs_style.css' rel="stylesheet" type="text/css">
   
-  <script src="http://localhost:1313/js/tex-mml-svg.js"></script>
-  <script src="http://localhost:1313/js/highlight.min.js"></script>
-  <script src="http://localhost:1313/js/highlight-basic.min.js"></script>
-  <script src="http://localhost:1313/js/highlight-bash.min.js"></script>
-  <script src="http://localhost:1313/js/highlight-go.min.js"></script>
-  <script src="http://localhost:1313/js/highlight-c.min.js"></script>
+  <script src="https://xplshn.github.io/js/tex-mml-svg.js"></script>
+  <script src="https://xplshn.github.io/js/highlight.min.js"></script>
+  <script src="https://xplshn.github.io/js/highlight-basic.min.js"></script>
+  <script src="https://xplshn.github.io/js/highlight-bash.min.js"></script>
+  <script src="https://xplshn.github.io/js/highlight-go.min.js"></script>
+  <script src="https://xplshn.github.io/js/highlight-c.min.js"></script>
   
   <script>
   (function() {
@@ -101,12 +101,12 @@
       
         <a href="https://fatbuffalo.neocities.org/def">neoblog</a> |
       
-        <a href="/index.xml">subscribe</a> |
+        <a href="/pelf/index.xml">subscribe</a> |
       
     </div>
   </nav>
   <h1>
-    <a href="http://localhost:1313/">🅮
+    <a href="https://xplshn.github.io/pelf/">AppBundle Documentation &amp; Implementation Details
       <span id="headerSubTitle">Labs</span>
     </a>
   </h1>
@@ -121,13 +121,13 @@
     
     
       
-        <li><a href="/" title="">&rsaquo; Home</a></li>
+        <li><a href="/pelf/" title="">&rsaquo; Home</a></li>
       
     
     
     
       
-        <li><a href="http://localhost:1313/docs/" title="Documentation Index">&rsaquo; Documentation Index</a></li>
+        <li><a href="https://xplshn.github.io/pelf/docs/" title="Documentation Index">&rsaquo; Documentation Index</a></li>
       
     
     </ul>
@@ -138,9 +138,68 @@
   <article id="main">
     
   
-  <p align="center">
-	<b>Automate once, package forever, distribute <i>everywhere</i></b>
+  <h3 id="pelf---the-appbundle-format-and-the-appbundle-creation-tool">PELF - The AppBundle format and the AppBundle Creation Tool</h3>
+<h6 id="pelf-used-to-stand-for-pack-an-elf-but-we-slowly-evolved-into-a-much-simpler-yet-more-featureful-alternative-to-appimages">PELF used to stand for Pack an Elf, but we slowly evolved into a much simpler yet more featureful alternative to .AppImages</h6>
+<h6 id="pelf-now-refers-to-the-tool-used-to-create-appbundles">PELF now refers to the tool used to create .AppBundles</h6>
+<hr>
+<blockquote>
+<p>.AppBundles are an executable <em>packaging format</em> designed to pack applications, toolchains, window managers, and multiple programs into a <em>single portable file</em>.</p></blockquote>
+<p>AppBundles can serve as a drop-in replacement for AppImages. Both AppBundles and AppImages utilize the AppDir specification, making it easy to unpack an AppImage and re-package it as an AppBundle, gaining many features, such as faster start-up times, better compression and file de-duplication, and faster build-time. A completely customizable and flexible format.</p>
+<h4 id="advantages">Advantages</h4>
+<ul>
+<li><strong>Support for multiple filesystem formats</strong>: Support for multiple mountable filesystem formats, we currently support <code>squashfs</code> and <code>dwarfs</code>. With ongoing efforts to add a third alternative that isn&rsquo;t copylefted/propietary</li>
+<li><strong>Simplicity</strong>: PELF is a minimalistic Go program that makes creating portable POSIX executables a trivial task.</li>
+<li><strong>Flexibility of AppBundles</strong>: AppBundles do not force compliance with the AppDir standard. For example, you can bundle window managers and basic GUI utilities into a single file (as done with <code>Sway.AppBundle</code>). You can even package toolchains as single-file executables.</li>
+<li><strong>Endless Possibilities</strong>: With a custom AppRun script, you can create versatile <code>.AppBundles</code>. For instance, packaging a Rick Roll video with a video player that works on both glibc and musl systems is straightforward. You can even generate AppBundles that overlay on top of each other.</li>
+<li><strong>Complete tooling</strong>: The <code>pelfd</code> daemon (and its GUI version) are available for use as system integrators, they&rsquo;re in charge of adding the AppBundles that you put under ~/Applications in your &ldquo;start menu&rdquo;. This is one of the many programs that are part of the tooling, another great tool is pelfCreator, which lets you create programs via simple one-liners (by default it uses an Alpine rootfs + bwrap, but you can get smaller binaries via using -x to only keep the binaries you want), a one-liner to pack Chromium into a single-file executable looks like this: <code>pelfCreator --maintainer &quot;xplshn&quot; --name &quot;org.chromium.Chromium&quot; --pkg-add &quot;chromium&quot; --entrypoint &quot;chromium.desktop&quot;</code></li>
+<li><strong>Predictable mount directories</strong>: Our mount directories contain the AppBundle&rsquo;s ID, making it clear to which AppBundle the mount directory belongs</li>
+<li><strong>Reliable unmount</strong>: The AppBundle starts a background task to unmount the filesystem, and it retries 5 times, then it forces the unmount if all 5 tries failed</li>
+<li><strong>Leverages many handy env variables</strong>: Thus making .AppBundles very flexible and scriptable</li>
+<li><strong>AppImage compatibility</strong>: The &ndash;appimage-* flags are supported by our runtime, making us an actual drop-in replacement</li>
+</ul>
+<h3 id="usage">Usage</h3>
+<pre tabindex="0"><code>./pelf --add-appdir &#34;nano-14_02_2025.AppDir&#34; --appbundle-id &#34;nano-14_02_2025-xplshn&#34; --output-to &#34;nano-14_02_2025.dwfs.AppBundle&#34;
+</code></pre><p>OR</p>
+<pre tabindex="0"><code>./pelf --add-appdir &#34;nano-14_02_2025.AppDir&#34; --appbundle-id &#34;nano-14_02_2025-xplshn&#34; --output-to &#34;nano-14_02_2025.sqfs.AppBundle&#34;
+</code></pre><h3 id="build-pelf">Build ./pelf</h3>
+<ol>
+<li>Get yourself an up-to-date <code>go</code> toolchain and install <code>dbin</code> into your system or put it anywhere in your <code>$PATH</code></li>
+<li>execute <code>./cbuild.sh</code></li>
+<li>Put the resulting <code>./pelf</code> binary in your <code>$PATH</code></li>
+<li>Spread the joy of AppBundles! :)</li>
+</ol>
+<h3 id="usage-of-the-resulting-appbundle">Usage of the Resulting <code>.AppBundle</code></h3>
+<blockquote>
+<p>By using the <code>--pbundle_link</code> option, you can access files contained within the <code>./bin</code> or <code>./usr/bin</code> directories of an <code>.AppBundle</code>, inheriting environment variables like <code>PATH</code>. This allows multiple AppBundles to stack on top of each other, sharing libraries and binaries across &ldquo;parent&rdquo; bundles.</p></blockquote>
+<h4 id="explanation">Explanation</h4>
+<p>You specify an <code>AppDir</code> to be packed and an ID for the app. This ID will be used when mounting the <code>.AppBundle</code> and should include the packing date, the project or program name, and the maintainer&rsquo;s information. While you can choose an arbitrary name, it’s not recommended.</p>
+<p>Additionally, we embed the tools used for mounting and unmounting the <code>.AppBundle</code>, such as <code>dwarfs</code> when using <code>pelf</code>.</p>
+<p align="center">
+	<img src="assets/screenshot.png" width="800" alt="Screenshot showcasing a bunch of AppBundles with their icons correctly set in a thunar file manager window" />
 </p>
+<h4 id="known-working-distrososes">Known working distros/OSes:</h4>
+<ul>
+<li>Ubuntu (10.04 onwards) &amp; derivatives, Ubuntu Touch</li>
+<li>Alpine Linux 2.+ onwards</li>
+<li>Void Linux Musl/Glibc</li>
+<li>Debian/Devuan, and derivatives</li>
+<li>Fedora</li>
+<li>*SUSE</li>
+<li>Maemo leste</li>
+<li>AliceLinux</li>
+<li>FreeBSD&rsquo;s Linuxlator</li>
+<li>FreeBSD native</li>
+<li>Chimera Linux</li>
+<li>LFS (Linux from Scratch)</li>
+<li>Most if not all Musl linux distributions</li>
+<li>etc (please contribute to this list if you&rsquo;re a user of AppBundles)</li>
+</ul>
+<h4 id="resources">Resources:</h4>
+<ul>
+<li><a href="https://xplshn.github.io/pelf/docs">AppBundle format documentation &amp; specifications</a></li>
+<li>The <a href="https://github.com/xplshn/AppBundleHUB">AppBundleHUB</a> a repo which builds a ton of portable AppBundles in an automated fashion, using GH actions. (we have a <a href="https://xplshn.github.io/AppBundleHUB">webStore</a> too, tho that is WIP)</li>
+<li><a href="https://github.com/xplshn/dbin">dbin</a> a self-contained, portable, statically linked, package manager, +4000 binaries (portable, self-contained/static) are available in its repos at the time of writting. Among these, are the AppBundles from the AppBundleHUB and from pkgforge</li>
+</ul>
 
 
   

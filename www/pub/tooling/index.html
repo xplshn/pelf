@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en-us">
-<head>
+<head><script src="/pelf/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=pelf/livereload" data-no-instant defer></script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
@@ -13,28 +13,28 @@
 
   <style>
     body{font-family:monospace;}
-    html{cursor: url('https://xplshn.github.io/img/9cursor.png'), auto;}
+    html{cursor: url('http://localhost:1313/img/9cursor.png'), auto;}
   </style>
 
-  <title>tooling.md</title>
+  <title>AppBundle Tooling: pelf and pelfCreator</title>
   
   
-  <link rel="stylesheet" href="https://xplshn.github.io/pelf/css/style.css">
+  <link rel="stylesheet" href="http://localhost:1313/pelf/css/style.css">
   
-  <link rel="stylesheet" href="https://xplshn.github.io/pelf/css/theme_blue.css">
+  <link rel="stylesheet" href="http://localhost:1313/pelf/css/theme_blue.css">
 
   
 
   
-  <link href='https://xplshn.github.io/css/SerenityOS-Emoji.css' rel="stylesheet" type="text/css">
-  <link href='https://xplshn.github.io/css/highlightjs_style.css' rel="stylesheet" type="text/css">
+  <link href='http://localhost:1313/css/SerenityOS-Emoji.css' rel="stylesheet" type="text/css">
+  <link href='http://localhost:1313/css/highlightjs_style.css' rel="stylesheet" type="text/css">
   
-  <script src="https://xplshn.github.io/js/tex-mml-svg.js"></script>
-  <script src="https://xplshn.github.io/js/highlight.min.js"></script>
-  <script src="https://xplshn.github.io/js/highlight-basic.min.js"></script>
-  <script src="https://xplshn.github.io/js/highlight-bash.min.js"></script>
-  <script src="https://xplshn.github.io/js/highlight-go.min.js"></script>
-  <script src="https://xplshn.github.io/js/highlight-c.min.js"></script>
+  <script src="http://localhost:1313/js/tex-mml-svg.js"></script>
+  <script src="http://localhost:1313/js/highlight.min.js"></script>
+  <script src="http://localhost:1313/js/highlight-basic.min.js"></script>
+  <script src="http://localhost:1313/js/highlight-bash.min.js"></script>
+  <script src="http://localhost:1313/js/highlight-go.min.js"></script>
+  <script src="http://localhost:1313/js/highlight-c.min.js"></script>
   
   <script>
   (function() {
@@ -105,7 +105,7 @@
     </div>
   </nav>
   <h1>
-    <a href="https://xplshn.github.io/pelf/">AppBundle Documentation &amp; Implementation Details
+    <a href="http://localhost:1313/pelf/">AppBundle Documentation &amp; Implementation Details
       <span id="headerSubTitle">Labs</span>
     </a>
   </h1>
@@ -125,10 +125,6 @@
     
     
     
-      
-        <li><a href="https://xplshn.github.io/pelf/docs/" title="Documentation Index">&rsaquo; Documentation Index</a></li>
-      
-    
     </ul>
   </div>
 </nav>
@@ -137,7 +133,20 @@
   <article id="main">
     
   <div class="article-meta">
-    <h1><span class="title">tooling.md</span></h1>
+    <h1><span class="title">AppBundle Tooling: pelf and pelfCreator</span></h1>
+    
+        <span class="author">
+    <span class="author">
+      by
+      <a href="mailto:xplshn@murena.io">
+        xplshn
+      </a>
+    </span>
+
+</span>
+        
+            &ndash; <span class="date">2025/05/24</span>
+        
     
     <p class="terms">
       
@@ -149,15 +158,7 @@
   </div>
   
   <main>
-    <p>+++
-date = &ldquo;2025-05-24T21:04:50-03:00&rdquo;
-draft = false
-title = &ldquo;AppBundle Tooling: pelf and pelfCreator&rdquo;
-[params.author]
-name = &ldquo;xplshn&rdquo;
-email = &ldquo;<a href="mailto:xplshn@murena.io">xplshn@murena.io</a>&rdquo;
-+++</p>
-<h1 id="appbundle-tooling-pelf-and-pelfcreator">AppBundle Tooling: pelf and pelfCreator</h1>
+    <h1 id="appbundle-tooling-pelf-and-pelfcreator">AppBundle Tooling: pelf and pelfCreator</h1>
 <p>This document describes the <code>pelf</code> and <code>pelfCreator</code> tools, which are used to create and manage AppBundles, self-contained executable packages for Linux applications.</p>
 <h2 id="pelf-tool">pelf Tool</h2>
 <p>The <code>pelf</code> tool is responsible for assembling an AppBundle by combining an ELF runtime, runtime information, static tools, and a compressed filesystem image.</p>

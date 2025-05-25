@@ -1,4 +1,12 @@
 +++
+date = ''
+draft = false
+title = 'tooling.md'
+[params.author]
+  name = ''
+  email = ''
++++
++++
 date = "2025-05-24T21:04:50-03:00"
 draft = false
 title = "AppBundle Tooling: pelf and pelfCreator"

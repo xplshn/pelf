@@ -16,7 +16,7 @@ AppBundles can serve as a drop-in replacement for AppImages. Both AppBundles and
 - **Complete tooling**: The `pelfd` daemon (and its GUI version) are available for use as system integrators, they're in charge of adding the AppBundles that you put under ~/Applications in your "start menu". This is one of the many programs that are part of the tooling, another great tool is pelfCreator, which lets you create programs via simple one-liners (by default it uses an Alpine rootfs + bwrap, but you can get smaller binaries via using -x to only keep the binaries you want), a one-liner to pack Chromium into a single-file executable looks like this: `pelfCreator --maintainer "xplshn" --name "org.chromium.Chromium" --pkg-add "chromium" --entrypoint "chromium.desktop"`
 - **Predictable mount directories**: Our mount directories contain the AppBundle's ID, making it clear to which AppBundle the mount directory belongs
 - **Reliable unmount**: The AppBundle starts a background task to unmount the filesystem, and it retries 5 times, then it forces the unmount if all 5 tries failed
-- **Leverages many handy env variables**: Thus making .AppBundles very flexible and scriptable 
+- **Leverages many handy env variables**: Thus making .AppBundles very flexible and scriptable
 - **AppImage compatibility**: The --appimage-* flags are supported by our runtime, making us an actual drop-in replacement
 
 ### Usage
@@ -42,7 +42,9 @@ You specify an `AppDir` to be packed and an ID for the app. This ID will be used
 
 Additionally, we embed the tools used for mounting and unmounting the `.AppBundle`, such as `dwarfs` when using `pelf`.
 
-![image](https://github.com/user-attachments/assets/f4459934-a5b6-4717-8299-86b56dc0cf48)
+<p align="center">
+	<img src="assets/screenshot.png" width="800" alt="Screenshot showcasing a bunch of AppBundles with their icons correctly set in a thunar file manager window" />
+</p>
 
 #### Known working distros/OSes:
 - Ubuntu (10.04 onwards) & derivatives, Ubuntu Touch
@@ -61,5 +63,6 @@ Additionally, we embed the tools used for mounting and unmounting the `.AppBundl
 - etc (please contribute to this list if you're a user of AppBundles)
 
 #### Resources:
+- [AppBundle format documentation & specifications](https://xplshn.github.io/pelf/docs)
 - The [AppBundleHUB](https://github.com/xplshn/AppBundleHUB) a repo which builds a ton of portable AppBundles in an automated fashion, using GH actions. (we have a [webStore](https://xplshn.github.io/AppBundleHUB) too, tho that is WIP)
 - [dbin](https://github.com/xplshn/dbin) a self-contained, portable, statically linked, package manager, +4000 binaries (portable, self-contained/static) are available in its repos at the time of writting. Among these, are the AppBundles from the AppBundleHUB and from pkgforge
