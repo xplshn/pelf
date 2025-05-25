@@ -1,11 +1,3 @@
-+++
-date = ''
-draft = false
-title = 'format.md'
-[params.author]
-  name = ''
-  email = ''
-+++
 # AppBundle File Format Specification
 
 This document outlines the structure and composition of an AppBundle, a self-contained executable format designed to package applications with their dependencies for portable execution on Linux systems.

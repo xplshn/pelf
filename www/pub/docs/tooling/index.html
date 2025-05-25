@@ -149,18 +149,8 @@
   </div>
   
   <main>
-    <p>+++
-date = &ldquo;2025-05-24T21:04:50-03:00&rdquo;
-draft = false
-title = &ldquo;AppBundle Tooling: pelf and pelfCreator&rdquo;
-[params.author]
-name = &ldquo;xplshn&rdquo;
-email = &ldquo;<a href="mailto:xplshn@murena.io">xplshn@murena.io</a>&rdquo;
-+++</p>
-<h1 id="appbundle-tooling-pelf-and-pelfcreator">AppBundle Tooling: pelf and pelfCreator</h1>
-<p>This document describes the <code>pelf</code> and <code>pelfCreator</code> tools, which are used to create and manage AppBundles, self-contained executable packages for Linux applications.</p>
-<h2 id="pelf-tool">pelf Tool</h2>
-<p>The <code>pelf</code> tool is responsible for assembling an AppBundle by combining an ELF runtime, runtime information, static tools, and a compressed filesystem image.</p>
+    <h1 id="pelf">pelf</h1>
+<p>The <code>pelf</code> command is responsible for assembling an AppBundle by combining an ELF runtime, runtime information, static tools, and a compressed filesystem image.</p>
 <h3 id="functionality">Functionality</h3>
 <ul>
 <li><strong>Purpose</strong>: Creates an AppBundle from an AppDir, embedding necessary metadata and tools.</li>
@@ -195,8 +185,8 @@ email = &ldquo;<a href="mailto:xplshn@murena.io">xplshn@murena.io</a>&rdquo;
 <li><strong>&ndash;add-elf-section <path>:</strong> Adds a custom ELF section from a .elfS file., where the filename of the .elfS file minus the extension is the section name, and the file contents are the data</li>
 <li><strong>&ndash;add-updinfo <string>:</strong> Adds an upd_info ELF section with the given string.</li>
 </ul>
-<h2 id="pelfcreator-tool">pelfCreator Tool</h2>
-<p>The <code>pelfCreator</code> tool is a higher-level utility that prepares an AppDir and invokes <code>pelf</code> to create an AppBundle. It supports multiple modes for different use cases.</p>
+<h1 id="pelfcreator">pelfCreator</h1>
+<p>The <code>pelfCreator</code> command is a higher-level utility that prepares an AppDir and invokes <code>pelf</code> to create an AppBundle. It supports multiple modes for different use cases.</p>
 <h3 id="functionality-1">Functionality</h3>
 <ul>
 <li><strong>Purpose</strong>: Creates an AppDir, populates it with a root filesystem, application files, and dependencies, and then packages it into an AppBundle.</li>

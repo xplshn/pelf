@@ -2,22 +2,20 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
   xmlns:xhtml="http://www.w3.org/1999/xhtml">
   <url>
-    <loc>https://xplshn.github.io/pelf/docs/</loc>
+    <loc>http://localhost:1313/pelf/docs/</loc>
     <lastmod>2025-04-25T15:48:50+00:00</lastmod>
   </url><url>
-    <loc>https://xplshn.github.io/pelf/</loc>
+    <loc>http://localhost:1313/pelf/</loc>
     <lastmod>2025-04-25T15:48:50+00:00</lastmod>
   </url><url>
-    <loc>https://xplshn.github.io/pelf/categories/</loc>
+    <loc>http://localhost:1313/pelf/categories/</loc>
   </url><url>
-    <loc>https://xplshn.github.io/pelf/docs/format/</loc>
+    <loc>http://localhost:1313/pelf/docs/format/</loc>
   </url><url>
-    <loc>https://xplshn.github.io/pelf/docs/runtime/</loc>
+    <loc>http://localhost:1313/pelf/docs/runtime/</loc>
   </url><url>
-    <loc>https://xplshn.github.io/pelf/series/</loc>
+    <loc>http://localhost:1313/pelf/series/</loc>
   </url><url>
-    <loc>https://xplshn.github.io/pelf/tags/</loc>
-  </url><url>
-    <loc>https://xplshn.github.io/pelf/docs/tooling/</loc>
+    <loc>http://localhost:1313/pelf/tags/</loc>
   </url>
 </urlset>

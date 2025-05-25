@@ -1,11 +1,3 @@
-+++
-date = ''
-draft = false
-title = 'runtime.md'
-[params.author]
-  name = ''
-  email = ''
-+++
 # AppBundle Runtime Execution
 
 This document describes how the AppBundle runtime operates, including how it reads its own information, extracts static tools, determines environment variables, and handles runtime flags.
