@@ -9,14 +9,14 @@
 [ "$EXT_APPRUN" = "1" ] || {
     # Determine the path to the AppRun itself
     SELF="$(readlink -f "$0")"
-    SELF_TEMPDIR="${SELF%/*}"
+    APPDIR="${SELF%/*}"
 }
 
-[ -d "$SELF_TEMPDIR/rootfs" ] && BWROOTFS="$SELF_TEMPDIR/rootfs"
-[ -d "$SELF_TEMPDIR/proto" ] && BWROOTFS="$SELF_TEMPDIR/proto"
+[ -d "$APPDIR/rootfs" ] && BWROOTFS="$APPDIR/rootfs"
+[ -d "$APPDIR/proto" ] && BWROOTFS="$APPDIR/proto"
 
 # Find bwrap
-BWRAP_BIN="${SELF_TEMPDIR}/usr/bin/bwrap"
+BWRAP_BIN="${APPDIR}/usr/bin/bwrap"
 [ ! -f "$BWRAP_BIN" ] && BWRAP_BIN="bwrap"
 
 # Default ARGV0
@@ -36,8 +36,8 @@ bool() {
 # Function to check if a feature is enabled by file presence
 is_enabled() {
     _propName="$1"
-    [ -f "$SELF_TEMPDIR/.enabled/$_propName" ] && echo "1" && return 0
-    [ -f "$SELF_TEMPDIR/.disabled/$_propName" ] && echo "0" && return 0
+    [ -f "$APPDIR/.enabled/$_propName" ] && echo "1" && return 0
+    [ -f "$APPDIR/.disabled/$_propName" ] && echo "0" && return 0
     echo "$2" ; return 5
 }
 
@@ -55,7 +55,7 @@ _sh_cat() {
     done < "$1"
 }
 # Set default cmd
-SELF_ARGS="-- $(_sh_cat "$SELF_TEMPDIR/entrypoint")"
+SELF_ARGS="-- $(_sh_cat "$APPDIR/entrypoint")"
 
 # Parse other arguments
 while [ "$#" -gt 0 ]; do
@@ -144,11 +144,11 @@ build_bwrap_options() {
         --ro-bind-try	/etc/hosts           /etc/hosts 		 \
         --ro-bind-try	/etc/nsswitch.conf   /etc/nsswitch.conf	 \
         --ro-bind-try	/etc/hostname        /etc/hostname 		 \
-        --ro-bind-try	\"$SELF_TEMPDIR\"    /app 				 \
+        --ro-bind-try	\"$APPDIR\"          /app 				 \
         --bind-try	    \"${TMPDIR:-/tmp}\"  \"${TMPDIR:-/tmp}\" \
         --bind-try	    /home                /home				 \
         --setenv		SELF                 \"$SELF\" 			 \
-        --setenv		SELF_TEMPDIR         \"$SELF_TEMPDIR\" 	 \
+        --setenv		APPDIR               \"$APPDIR\" 	     \
         --setenv		BWROOTFS             \"$BWROOTFS\" 		 \
         --setenv		ARGV0                \"$ARGV0\" 		 \
         --setenv		ARGS                 \"$SELF_ARGS\" 	 \

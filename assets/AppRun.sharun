@@ -4,7 +4,7 @@
 [ -n "$DEBUG" ] && set -$DEBUG
 
 SELF="$(readlink -f "$0")" && export SELF
-SELF_TEMPDIR="${SELF%/*}" && export SELF_TEMPDIR
+APPDIR="${SELF%/*}" && export APPDIR
 
 _sh_cat() {
     while IFS= read -r line; do
@@ -12,7 +12,7 @@ _sh_cat() {
     done < "$1"
 }
 
-FALLBACK="$(_sh_cat "$SELF_TEMPDIR/entrypoint")"
+FALLBACK="$(_sh_cat "$APPDIR/entrypoint")"
 FALLBACK="${FALLBACK##*/}"
 [ -z "$ARGV0" ] && {
     ARGV0="${0##*/}"
@@ -21,7 +21,7 @@ FALLBACK="${FALLBACK##*/}"
 CMD="$1"
 
 oPATH="$PATH"
-PATH="${SELF_TEMPDIR}/bin"
+PATH="${APPDIR}/bin"
 
 # What command shall we exec?
 if _cmd="$(command -v "${ARGV0#./}")" >/dev/null 2>&1; then
