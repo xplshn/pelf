@@ -75,8 +75,8 @@ The filesystem image within the AppBundle is expected to be an AppDir with at le
 
 - **AppRun**: A shell script that serves as the entrypoint for the application. It sets up the environment and executes the main program.
 - **Optional Files**:
-  - `.DirIcon`: A PNG icon in one or more sizes (512x512, 256x256, or 128x128).
-  - `.DirIcon.svg`: An SVG icon for scalable display.
+  - `.DirIcon`: A PNG icon in a standard size (512x512, 256x256, or 128x128).
+  - `.DirIcon.svg`: An SVG icon
   - `program.desktop`: A desktop entry file for integration with desktop environments.
   - `program.appdata.xml`: An AppStream metadata file for application metadata.
   - `proto` or `rootfs`: A directory containing the application's filesystem, including binaries, libraries, and configuration files.
@@ -85,4 +85,3 @@ The filesystem image within the AppBundle is expected to be an AppDir with at le
 
 - The AppBundle format is designed to be self-contained, requiring no external dependencies for execution in most cases, assuming the necessary tools are embedded or available on the host system.
 - The choice of filesystem (DwarFS or SquashFS) affects the tools included in the `.pbundle_static_tools` section and the runtime behavior.
-- The AppBundle can be customized with flags (e.g., `--pbundle_portableHome`, `--pbundle_extract`) to modify its behavior at runtime, as detailed in the runtime documentation.
