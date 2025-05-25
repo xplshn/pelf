@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en-us">
 <head>
-	<meta name="generator" content="Hugo 0.146.0-DEV">
+	<meta name="generator" content="Hugo 0.139.0">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
@@ -127,7 +127,7 @@
     
     
       
-        <li><a href="https://xplshn.github.io/pelf/docs/" title="Documentation Index">&rsaquo; Documentation Index</a></li>
+        <li><a href="https://xplshn.github.io/pelf/docs/" title="Docs">&rsaquo; Docs</a></li>
       
     
     </ul>
@@ -143,7 +143,8 @@
 <h6 id="pelf-now-refers-to-the-tool-used-to-create-appbundles">PELF now refers to the tool used to create .AppBundles</h6>
 <hr>
 <blockquote>
-<p>.AppBundles are an executable <em>packaging format</em> designed to pack applications, toolchains, window managers, and multiple programs into a <em>single portable file</em>.</p></blockquote>
+<p>.AppBundles are an executable <em>packaging format</em> designed to pack applications, toolchains, window managers, and multiple programs into a <em>single portable file</em>.</p>
+</blockquote>
 <p>AppBundles can serve as a drop-in replacement for AppImages. Both AppBundles and AppImages utilize the AppDir specification, making it easy to unpack an AppImage and re-package it as an AppBundle, gaining many features, such as faster start-up times, better compression and file de-duplication, and faster build-time. A completely customizable and flexible format.</p>
 <h4 id="advantages">Advantages</h4>
 <ul>
@@ -170,7 +171,8 @@
 </ol>
 <h3 id="usage-of-the-resulting-appbundle">Usage of the Resulting <code>.AppBundle</code></h3>
 <blockquote>
-<p>By using the <code>--pbundle_link</code> option, you can access files contained within the <code>./bin</code> or <code>./usr/bin</code> directories of an <code>.AppBundle</code>, inheriting environment variables like <code>PATH</code>. This allows multiple AppBundles to stack on top of each other, sharing libraries and binaries across &ldquo;parent&rdquo; bundles.</p></blockquote>
+<p>By using the <code>--pbundle_link</code> option, you can access files contained within the <code>./bin</code> or <code>./usr/bin</code> directories of an <code>.AppBundle</code>, inheriting environment variables like <code>PATH</code>. This allows multiple AppBundles to stack on top of each other, sharing libraries and binaries across &ldquo;parent&rdquo; bundles.</p>
+</blockquote>
 <h4 id="explanation">Explanation</h4>
 <p>You specify an <code>AppDir</code> to be packed and an ID for the app. This ID will be used when mounting the <code>.AppBundle</code> and should include the packing date, the project or program name, and the maintainer&rsquo;s information. While you can choose an arbitrary name, it’s not recommended.</p>
 <p>Additionally, we embed the tools used for mounting and unmounting the <code>.AppBundle</code>, such as <code>dwarfs</code> when using <code>pelf</code>.</p>
