@@ -1,6 +1,6 @@
 #!/bin/sh
 
-# DATE OF LAST REVISION: 10-04-2025
+# DATE OF LAST REVISION: 26-05-2025
 
 # shellcheck disable=SC2086
 [ -n "$DEBUG" ] && set -$DEBUG
@@ -197,6 +197,10 @@ build_bwrap_options() {
 
     if [ "$UID0_GID0" = "1" ]; then
         BWRAP_OPTIONS="$BWRAP_OPTIONS --uid 0 --gid 0"
+    fi
+
+    if [ -d "/Users/$USER" ]; then
+        BWRAP_OPTIONS="$BWRAP_OPTIONS --ro-bind-try /Users /Users"
     fi
 
     printf '%s\n' "$BWRAP_OPTIONS"

@@ -695,11 +695,18 @@ func setupSandboxFiles(protoDir string) error {
 		"etc/machine-id", "etc/hostname", "etc/localtime", "etc/passwd", "etc/group",
 		"etc/hosts", "etc/nsswitch.conf", "etc/resolv.conf", "etc/asound.conf",
 	}
-
-	// TODO: Do not create the file if it already exists
+	dirsToCreate := []string{
+		"Users",
+	}
 	for _, file := range filesToTouch {
 		if err := os.WriteFile(filepath.Join(protoDir, file), []byte{}, 0644); err != nil {
 			log.Printf("Unable to create empty file: %v\n", err)
+			//return err
+		}
+	}
+	for _, dir := range dirsToCreate {
+		if err := os.MkdirAll(filepath.Join(protoDir, dir), 0644); err != nil {
+			log.Printf("Unable to create empty directory: %v\n", err)
 			//return err
 		}
 	}
