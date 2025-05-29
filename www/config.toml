@@ -1,5 +1,5 @@
 title = "AppBundle Documentation & Implementation Details"
-baseURL = "https://xplshn.github.io/pelf"
+baseURL = "https://pelf.xplshn.com.ar/"
 languageCode = "en-us"
 theme = "werx"
 publishDir = "pub"
