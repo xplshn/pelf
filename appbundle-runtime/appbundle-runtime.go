@@ -739,4 +739,3 @@ func getDwarfsWorkers(cachesize *string) string {
         return "1"
     }
 }
-
