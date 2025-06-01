@@ -390,13 +390,13 @@ func setSelfEnvs(cfg *RuntimeConfig) error {
 		return nil
 	}
 
-	setEnvIfExists("." + cfg.selfPath + ".home", "HOME", "OLD_HOME")
-	setEnvIfExists("." + cfg.selfPath + ".share", "XDG_DATA_HOME", "OLD_XDG_DATA_HOME")
-	setEnvIfExists("." + cfg.selfPath + ".config", "XDG_CONFIG_HOME", "OLD_XDG_CONFIG_HOME")
+	setEnvIfExists(hiddenPath(cfg.selfPath, ".home"), "HOME", "OLD_HOME")
+	setEnvIfExists(hiddenPath(cfg.selfPath, ".share"), "XDG_DATA_HOME", "OLD_XDG_DATA_HOME")
+	setEnvIfExists(hiddenPath(cfg.selfPath, ".config"), "XDG_CONFIG_HOME", "OLD_XDG_CONFIG_HOME")
 
-	selfEnvFile := "." + cfg.selfPath + ".env"
-	if _, err := os.Stat(selfEnvFile); err == nil {
-		if envs, err := godotenv.Read(selfEnvFile); err == nil {
+	envFile := hiddenPath(cfg.selfPath, ".env")
+	if _, err := os.Stat(envFile); err == nil {
+		if envs, err := godotenv.Read(envFile); err == nil {
 			for key, value := range envs {
 				globalEnv = append(globalEnv, fmt.Sprintf("%s=%s", key, value))
 			}
@@ -699,12 +699,14 @@ func mountOrExtract(cfg *RuntimeConfig, fh *fileHandler) {
 	}
 }
 
+// --- General purpose utility functions ---
 func T[T any](cond bool, vtrue, vfalse T) T {
 	if cond {
 		return vtrue
 	}
 	return vfalse
 }
+func hiddenPath(base string, suffix string) string { return filepath.Join(filepath.Dir(base), "."+filepath.Base(base)+suffix) }
 
 // --- DWARFS ---
 func getDwarfsCacheSize() string {
