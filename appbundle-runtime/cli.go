@@ -72,13 +72,13 @@ func handleRuntimeFlags(fh *fileHandler, args *[]string, cfg *RuntimeConfig) err
 		return fmt.Errorf("!no_return")
 
 	case "--pbundle_portableHome":
-		if err := os.MkdirAll("." + cfg.selfPath + ".home", 0755); err != nil {
+		if err := os.MkdirAll(hiddenPath(cfg.selfPath, ".home"), 0755); err != nil {
 			return err
 		}
 		return fmt.Errorf("!no_return")
 
 	case "--pbundle_portableConfig":
-		if err := os.MkdirAll("." + cfg.selfPath + ".config", 0755); err != nil {
+		if err := os.MkdirAll(hiddenPath(cfg.selfPath, ".config"), 0755); err != nil {
 			return err
 		}
 		return fmt.Errorf("!no_return")

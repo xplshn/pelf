@@ -706,7 +706,8 @@ func T[T any](cond bool, vtrue, vfalse T) T {
 	}
 	return vfalse
 }
-func hiddenPath(base string, suffix string) string { return filepath.Join(filepath.Dir(base), "."+filepath.Base(base)+suffix) }
+//func hiddenPath(base string, suffix string) string { return filepath.Join(filepath.Dir(base), "."+filepath.Base(base)+suffix) }
+func hiddenPath(base string, suffix string) string { return base+suffix }
 
 // --- DWARFS ---
 func getDwarfsCacheSize() string {
