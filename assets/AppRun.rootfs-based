@@ -146,7 +146,7 @@ build_bwrap_options() {
         --ro-bind-try	/etc/hostname        /etc/hostname 		 \
         --ro-bind-try	\"$APPDIR\"          /app 				 \
         --bind-try	    \"${TMPDIR:-/tmp}\"  \"${TMPDIR:-/tmp}\" \
-        --bind-try	    /home                /home				 \
+        --bind-try	    $HOME                $HOME				 \
         --setenv		SELF                 \"$SELF\" 			 \
         --setenv		APPDIR               \"$APPDIR\" 	     \
         --setenv		BWROOTFS             \"$BWROOTFS\" 		 \
@@ -179,7 +179,7 @@ build_bwrap_options() {
     [ -z "$XDG_RUNTIME_DIR" ] && [ -d "/run/user/$fUID" ] && XDG_RUNTIME_DIR="/run/user/$fUID"
 
     # Add optional XDG_RUNTIME_DIR binding if enabled
-    [ "$SHARE_XDG_RUNTIME_DIR" = "1" ] && [ -n "$XDG_RUNTIME_DIR" ] && BWRAP_OPTIONS="$BWRAP_OPTIONS --ro-bind-try $XDG_RUNTIME_DIR $XDG_RUNTIME_DIR"
+    [ "$SHARE_XDG_RUNTIME_DIR" = "1" ] && [ -n "$XDG_RUNTIME_DIR" ] && BWRAP_OPTIONS="$BWRAP_OPTIONS --bind-try $XDG_RUNTIME_DIR $XDG_RUNTIME_DIR"
 
     # Add optional audio bindings if enabled
     if [ "$SHARE_AUDIO" = "1" ] && [ -n "$XDG_RUNTIME_DIR" ]; then
@@ -197,10 +197,6 @@ build_bwrap_options() {
 
     if [ "$UID0_GID0" = "1" ]; then
         BWRAP_OPTIONS="$BWRAP_OPTIONS --uid 0 --gid 0"
-    fi
-
-    if [ -d "/Users/$USER" ]; then
-        BWRAP_OPTIONS="$BWRAP_OPTIONS --ro-bind-try /Users /Users"
     fi
 
     printf '%s\n' "$BWRAP_OPTIONS"
