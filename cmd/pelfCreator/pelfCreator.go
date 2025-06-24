@@ -432,7 +432,7 @@ func setupAppRunAndPackages(config Config) error {
 	// The Alpine package manager (apk) calls `chroot` when running package
 	// triggers so we need to enable CAP_SYS_CHROOT. We also have to fake
 	// UID 0 (root) inside the container to avoid permissions errors.
-	cmd := exec.Command(filepath.Join(config.AppDir, "AppRun"), "--Xbwrap", "--uid", "0", "--gid", "0", "--cap-add CAP_SYS_CHROOT", "--", pkgAddPath, config.PkgAdd)
+	cmd := exec.Command(filepath.Join(config.AppDir, "AppRun"), "--Xbwrap", "--uid", "0", "--gid", "0", "--cap-add CAP_SYS_CHROOT", "--", "/app/pkgadd.sh", config.PkgAdd) //cmd := exec.Command(filepath.Join(config.AppDir, "AppRun"), "--Xbwrap", "--uid", "0", "--gid", "0", "--cap-add CAP_SYS_CHROOT", "--", pkgAddPath, config.PkgAdd)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
@@ -568,14 +568,11 @@ func findAndCopyIcon(appDir, iconName string) error {
 
 func setupLib4bin(config Config) error {
 	l4bCmdPath := filepath.Join(config.AppDir, ".l4bCmd")
-	script := fmt.Sprintf(`#!/bin/sh
-export PATH="%s:%s"
-export LD_LIBRARY_PATH="%s/proto/lib:%s/proto/usr/lib:%s/proto/lib64:%s/proto/usr/lib64:%s/proto/lib32:%s/proto/usr/lib32"
-sharun l --with-sharun --gen-lib-path --with-hooks --dst-dir "%s" %s
-`, config.TempDir, os.Getenv("PATH"),
-		config.AppDir, config.AppDir, config.AppDir, config.AppDir, config.AppDir, config.AppDir,
-		config.AppDir, config.Lib4binArgs,
-	)
+
+	script := "#!/bin/sh\n"
+	script += "\"%s/AppRun\" --Xbwrap --gid 0 --uid 0 sharun l --with-sharun --gen-lib-path --with-hooks --dst-dir /app %s\n"
+	script = fmt.Sprintf(script, config.AppDir, config.Lib4binArgs)
+
 	if err := os.WriteFile(l4bCmdPath, []byte(script), 0755); err != nil {
 		return err
 	}
