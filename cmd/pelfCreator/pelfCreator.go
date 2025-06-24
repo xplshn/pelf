@@ -578,8 +578,9 @@ func setupLib4bin(config Config) error {
 	l4bCmdPath := filepath.Join(config.AppDir, ".l4bCmd")
 
 	script := "#!/bin/sh\n"
+	script += "PATH=\"%s:$PATH\"\n"
 	script += "\"%s/AppRun\" --Xbwrap --gid 0 --uid 0 sharun l --with-sharun --gen-lib-path --with-hooks --dst-dir /app %s\n"
-	script = fmt.Sprintf(script, config.AppDir, config.Lib4binArgs)
+	script = fmt.Sprintf(script, config.TempDir, config.AppDir, config.Lib4binArgs)
 
 	if err := os.WriteFile(l4bCmdPath, []byte(script), 0755); err != nil {
 		return err
