@@ -83,8 +83,14 @@ type AppStreamMetadata struct {
 type AppStreamXML struct {
 	XMLName     xml.Name `xml:"component"`
 	ID          string   `xml:"id"`
-	Name        string   `xml:"name"`
-	Summary     string   `xml:"summary"`
+	Names       []struct {
+		Lang string `xml:"lang,attr"`
+		Text string `xml:",chardata"`
+	} `xml:"name"`
+	Summaries []struct {
+		Lang string `xml:"lang,attr"`
+		Text string `xml:",chardata"`
+	} `xml:"summary"`
 	Description struct {
 		InnerXML string `xml:",innerxml"`
 	} `xml:"description"`
@@ -378,8 +384,8 @@ func main() {
 			if err != nil {
 				log.Printf("Warning: %s does not have an AppStream AppData.xml\n", path)
 			} else {
-				if appStreamXML.Name != "" {
-					item.Name = appStreamXML.Name
+				if getText(appStreamXML.Names) != "" {
+					item.Name = getText(appStreamXML.Names)
 				}
 
 				if appStreamXML.Icon != "" {
@@ -392,8 +398,8 @@ func main() {
 					}
 				}
 
-				if appStreamXML.Summary != "" {
-					item.Description = appStreamXML.Summary
+				if getText(appStreamXML.Summaries) != "" {
+					item.Description = getText(appStreamXML.Summaries)
 				}
 
 				if appStreamXML.Description.InnerXML != "" {
@@ -486,9 +492,36 @@ func main() {
 	}
 }
 
+func getText(elements []struct {
+	Lang string `xml:"lang,attr"`
+	Text string `xml:",chardata"`
+}) string {
+	// First, try to find explicit English
+	for _, elem := range elements {
+		if elem.Lang == "en" || elem.Lang == "en_US" || elem.Lang == "en_GB" {
+			return elem.Text
+		}
+	}
+
+	// If no explicit English, look for elements without lang attribute (default)
+	for _, elem := range elements {
+		if elem.Lang == "" {
+			return elem.Text
+		}
+	}
+
+	// If still nothing, return the first element
+	if len(elements) > 0 {
+		return elements[0].Text
+	}
+
+	return ""
+}
+
 func ternary[T any](cond bool, vtrue, vfalse T) T {
 	if cond {
 		return vtrue
 	}
 	return vfalse
 }
+
