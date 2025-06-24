@@ -14,6 +14,7 @@ import (
 	"time"
 	"slices"
 
+	"github.com/go-ini/ini"
 	"github.com/mholt/archives"
 	"github.com/urfave/cli/v3"
 	"github.com/zeebo/blake3"
@@ -30,24 +31,24 @@ const (
 )
 
 type Config struct {
-	Maintainer    string
-	Name          string
-	AppBundleID   string
-	PkgAdd        string
-	Entrypoint    string
-	DontPack      bool
-	Sharun        bool
-	Sandbox       bool
+	Maintainer          string
+	Name                string
+	AppBundleID         string
+	PkgAdd              string
+	Entrypoint          string
+	DontPack            bool
+	Sharun              bool
+	Sandbox             bool
 	PreservePermissions bool
-	Lib4binArgs   string
-	ToBeKeptFiles string
-	GetridFiles   string
-	AppBundleFS   string
-	OutputTo      string
-	LocalResources string // Renamed from LocalDir to LocalResources
-	AppDir        string
-	Date          string
-	TempDir       string
+	Lib4binArgs         string
+	ToBeKeptFiles       string
+	GetridFiles         string
+	AppBundleFS         string
+	OutputTo            string
+	LocalResources      string
+	AppDir              string
+	Date                string
+	TempDir             string
 }
 
 func main() {
@@ -118,13 +119,13 @@ func main() {
 			&cli.StringFlag{
 				Name:        "local",
 				Usage:       "A directory from which to pick up files such as 'AppRun.sharun', 'rootfs.tgz', 'pelf', 'bwrap', etc",
-				Sources: cli.EnvVars("PELFCREATOR_RESOURCES"),
+				Sources:     cli.EnvVars("PELFCREATOR_RESOURCES"),
 				Destination: &config.LocalResources,
 			},
 			&cli.BoolFlag{
-			    Name:        "preserve-rootfs-permissions",
-			    Usage:       "Preserve the original permissions from the rootfs",
-			    Destination: &config.PreservePermissions,
+				Name:        "preserve-rootfs-permissions",
+				Usage:       "Preserve the original permissions from the rootfs",
+				Destination: &config.PreservePermissions,
 			},
 			&cli.BoolFlag{
 				Name:        "dontpack",
@@ -246,7 +247,7 @@ func runPelfCreator(config Config) error {
 
 	// Handle the three structures based on configuration
 	if config.Sandbox {
-		// Sandbox mode - uses AppRun.rootfs-based
+		// Shallow mode - uses AppRun.rootfs-based
 		if err := setupSandboxMode(config); err != nil {
 			return err
 		}
@@ -432,7 +433,7 @@ func setupAppRunAndPackages(config Config) error {
 	// The Alpine package manager (apk) calls `chroot` when running package
 	// triggers so we need to enable CAP_SYS_CHROOT. We also have to fake
 	// UID 0 (root) inside the container to avoid permissions errors.
-	cmd := exec.Command(filepath.Join(config.AppDir, "AppRun"), "--Xbwrap", "--uid", "0", "--gid", "0", "--cap-add CAP_SYS_CHROOT", "--", "/app/pkgadd.sh", config.PkgAdd) //cmd := exec.Command(filepath.Join(config.AppDir, "AppRun"), "--Xbwrap", "--uid", "0", "--gid", "0", "--cap-add CAP_SYS_CHROOT", "--", pkgAddPath, config.PkgAdd)
+	cmd := exec.Command(filepath.Join(config.AppDir, "AppRun"), "--Xbwrap", "--uid", "0", "--gid", "0", "--cap-add CAP_SYS_CHROOT", "--", "/app/pkgadd.sh", config.PkgAdd)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
@@ -468,38 +469,45 @@ func handleDesktopFile(config Config) error {
 	}
 
 	appDirDesktopPath := filepath.Join(config.AppDir, config.Entrypoint)
-	//if err := os.Symlink(filepath.Join("proto", "usr", "share", "applications", config.Entrypoint), appDirDesktopPath); err != nil {
-	//	// Fallback to copy if symlink fails
 	if err := copyFile(desktopFilePath, appDirDesktopPath); err != nil {
-		return fmt.Errorf("failed to link/copy desktop file: %v", err)
+		return fmt.Errorf("failed to copy desktop file: %v", err)
 	}
-	//}
 
-	desktopContent, err := os.ReadFile(appDirDesktopPath)
+	// Parse the desktop file using ini library
+	cfg, err := ini.Load(appDirDesktopPath)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to parse desktop file: %v", err)
 	}
 
-	var iconName, executable string
-	for _, line := range strings.Split(string(desktopContent), "\n") {
-		if strings.HasPrefix(line, "Icon=") {
-			iconName = strings.TrimPrefix(line, "Icon=")
-		} else if strings.HasPrefix(line, "Exec=") {
-			execParts := strings.SplitN(strings.TrimPrefix(line, "Exec="), " ", 2)
-			executable = execParts[0]
-		}
+	// Get the [Desktop Entry] section
+	section, err := cfg.GetSection("Desktop Entry")
+	if err != nil {
+		return fmt.Errorf("no [Desktop Entry] section in desktop file: %v", err)
 	}
 
+	// Extract the Exec entry
+	executable := section.Key("Exec").String()
 	if executable == "" {
 		return fmt.Errorf("no Exec entry in desktop file")
 	}
+	// Take the first part of Exec (before arguments)
+	execParts := strings.Fields(executable)
+	if len(execParts) == 0 {
+		return fmt.Errorf("invalid Exec entry in desktop file")
+	}
+	executable = execParts[0]
 
+	// Extract the Icon entry
+	iconName := section.Key("Icon").String()
+
+	// Update entrypoint with the executable
 	newConfig := config
 	newConfig.Entrypoint = executable
 	if err := createEntrypoint(newConfig); err != nil {
 		return err
 	}
 
+	// Handle icon if present
 	if iconName != "" {
 		if err := findAndCopyIcon(config.AppDir, iconName); err != nil {
 			log.Printf("Warning: Failed to handle icon: %v", err)
@@ -582,22 +590,6 @@ func setupLib4bin(config Config) error {
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
 }
-
-/* BROKEN
-func setupLib4bin(config Config) error {
-	l4bCmdPath := filepath.Join(config.AppDir, ".l4bCmd")
-	script := fmt.Sprintf(`sharun l --with-sharun --gen-lib-path --with-hooks --verbose --dst-dir "%s" --verbose %s`, config.AppDir, config.Lib4binArgs)
-	if err := os.WriteFile(l4bCmdPath+"\n", []byte(script), 0755); err != nil {
-		return err
-	}
-	args := append([]string{"--Xbwrap", "--"}, strings.Fields(script)...)
-	args[2] = filepath.Join(config.TempDir, "sharun") // [2] is the first argument in the script variable
-	cmd := exec.Command(filepath.Join(config.AppDir, "AppRun"), args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
-}
-*/
 
 func trimProtoDir(config Config) error {
 	protoTrimmedDir := filepath.Join(config.AppDir, "proto_trimmed")
@@ -698,13 +690,11 @@ func setupSandboxFiles(protoDir string) error {
 	for _, file := range filesToTouch {
 		if err := os.WriteFile(filepath.Join(protoDir, file), []byte{}, 0644); err != nil {
 			log.Printf("Unable to create empty file: %v\n", err)
-			//return err
 		}
 	}
 	for _, dir := range dirsToCreate {
 		if err := os.MkdirAll(filepath.Join(protoDir, dir), 0644); err != nil {
 			log.Printf("Unable to create empty directory: %v\n", err)
-			//return err
 		}
 	}
 
@@ -720,7 +710,6 @@ func createBundle(config Config) error {
 		"--add-appdir", config.AppDir,
 		"--appbundle-id", config.AppBundleID,
 		"--output-to", config.OutputTo,
-	//	"--add-runtime-info-section", fmt.Sprintf(`'.build_date:%s'`, config.Date),
 	)
 
 	cmd.Stdout = os.Stdout
@@ -782,32 +771,32 @@ func calculateB3Sum(filePath string) (string, error) {
 }
 
 func handleFile(f archives.FileInfo, dst string, config *Config) error {
-    dstPath, pathErr := securePath(dst, f.NameInArchive)
-    if pathErr != nil {
-        return pathErr
-    }
+	dstPath, pathErr := securePath(dst, f.NameInArchive)
+	if pathErr != nil {
+		return pathErr
+	}
 
-    parentDir := filepath.Dir(dstPath)
-    if dirErr := os.MkdirAll(parentDir, dirPermissions); dirErr != nil {
-        return dirErr
-    }
+	parentDir := filepath.Dir(dstPath)
+	if dirErr := os.MkdirAll(parentDir, dirPermissions); dirErr != nil {
+		return dirErr
+	}
 
-    mode := f.Mode()
-    if !config.PreservePermissions {
-        if f.IsDir() {
-            mode = dirPermissions
-        } else {
-            mode = filePermissions
-        }
-    }
+	mode := f.Mode()
+	if !config.PreservePermissions {
+		if f.IsDir() {
+			mode = dirPermissions
+		} else {
+			mode = filePermissions
+		}
+	}
 
-    if f.IsDir() {
-        return os.MkdirAll(dstPath, mode)
-    }
+	if f.IsDir() {
+		return os.MkdirAll(dstPath, mode)
+	}
 
-    if f.LinkTarget != "" {
-        return os.Symlink(f.LinkTarget, dstPath)
-    }
+	if f.LinkTarget != "" {
+		return os.Symlink(f.LinkTarget, dstPath)
+	}
 
 	if f.Mode()&os.ModeNamedPipe != 0 {
 		return syscall.Mkfifo(dstPath, uint32(f.Mode().Perm()))
