@@ -98,5 +98,12 @@ footnotereturnlinkcontents = "↩"
 hardWraps = false
 unsafe = true
 
+[markup.goldmark.extensions]
+  [markup.goldmark.extensions.passthrough]
+    enable = true
+    [markup.goldmark.extensions.passthrough.delimiters]
+      block = [['\[', '\]'], ['$$', '$$']]
+      inline = [['\(', '\)']]
+
 [markup.goldmark.renderHooks.image]
 enableDefault = true
