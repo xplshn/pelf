@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"debug/elf"
 	"encoding/base64"
@@ -15,16 +14,15 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 
-	"github.com/fxamacker/cbor/v2"
-	"github.com/shamaton/msgpack/v2"
-
-	"github.com/goccy/go-json"
+	"github.com/shamaton/msgpack/v2" //"github.com/fxamacker/cbor/v2"
 	"github.com/klauspost/compress/zstd"
+	"github.com/goccy/go-json"
 	"github.com/zeebo/blake3"
+
+	"github.com/xplshn/pelf/pkg/utils"
 )
 
 func init() {
@@ -115,7 +113,7 @@ func loadAppStreamMetadata() error {
 	}
 
 	log.Println("Loading AppStream metadata from remote source")
-	resp, err := http.Get("https://github.com/xplshn/dbin-metadata/raw/refs/heads/master/misc/cmd/flatpakAppStreamScrapper/appstream_metadata.cbor.zst")
+	resp, err := http.Get("https://github.com/xplshn/dbin-metadata/raw/refs/heads/master/misc/cmd/flatpakAppStreamScrapper/appstream_metadata.msgp.zst")
 	if err != nil {
 		return err
 	}
@@ -126,18 +124,18 @@ func loadAppStreamMetadata() error {
 		return err
 	}
 
-	zstdReader, err := zstd.NewReader(bytes.NewReader(body))
+	zstdReader, err := zstd.NewReader(nil, zstd.WithDecoderConcurrency(1))
 	if err != nil {
 		return fmt.Errorf("error creating zstd reader: %v", err)
 	}
 	defer zstdReader.Close()
 
-	decompressed, err := io.ReadAll(zstdReader)
+	decompressed, err := zstdReader.DecodeAll(body, nil)
 	if err != nil {
 		return fmt.Errorf("error decompressing data: %v", err)
 	}
 
-	err = cbor.Unmarshal(decompressed, &appStreamMetadata)
+	err = msgpack.Unmarshal(decompressed, &appStreamMetadata)
 	if err != nil {
 		return err
 	}
@@ -156,46 +154,45 @@ func findAppStreamMetadataForAppId(appId string) *AppStreamMetadata {
 	return nil
 }
 
-func extractAppBundleInfo(filename string) (RuntimeInfo, string, error) {
+func extractAppBundleInfo(filename string) (utils.AppBundleID, string, error) {
 	file, err := elf.Open(filename)
 	if err != nil {
-		return RuntimeInfo{}, "", err
+		return utils.AppBundleID{}, "", err
 	}
 	defer file.Close()
+
 	section := file.Section(".pbundle_runtime_info")
 	if section == nil {
-		return RuntimeInfo{}, "", fmt.Errorf("section .pbundle_runtime_info not found")
+		return utils.AppBundleID{}, "", fmt.Errorf("section .pbundle_runtime_info not found")
 	}
 	data, err := section.Data()
 	if err != nil {
-		return RuntimeInfo{}, "", err
+		return utils.AppBundleID{}, "", err
 	}
+
 	var runtimeInfo RuntimeInfo
 	if err := msgpack.Unmarshal(data, &runtimeInfo); err != nil {
-		return RuntimeInfo{}, "", err
+		return utils.AppBundleID{}, "", err
 	}
 	if runtimeInfo.AppBundleID == "" {
-		return RuntimeInfo{}, "", fmt.Errorf("appBundleID not found")
+		return utils.AppBundleID{}, "", fmt.Errorf("appBundleID not found")
 	}
 
-	parts := strings.Split(runtimeInfo.AppBundleID, "-")
-	if len(parts) < 3 {
-		buildDate := "unknown"
-		return runtimeInfo, buildDate, nil
+	// Parse the AppBundleID using utils.ParseAppBundleID
+	appBundleID, err := utils.ParseAppBundleID(runtimeInfo.AppBundleID)
+	if err != nil {
+		return utils.AppBundleID{}, "", fmt.Errorf("invalid AppBundleID: %v", err)
 	}
-	buildDate := parts[len(parts)-2]
-	re := regexp.MustCompile(`^(\d{2})_(\d{2})_(\d{4})$`)
-	matches := re.FindStringSubmatch(buildDate)
-	if len(matches) != 4 {
-		return RuntimeInfo{}, "", fmt.Errorf("invalid build date format")
+
+	// Extract build date if present
+	var buildDate string
+	if appBundleID.IsDated() {
+		buildDate = appBundleID.Date.Format("2006-01-02") // Format as YYYY-MM-DD
+	} else {
+		buildDate = "unknown"
 	}
-	formattedBuildDate := fmt.Sprintf("%s-%s-%s", matches[3], matches[2], matches[1])
 
-	dateIndex := strings.LastIndex(runtimeInfo.AppBundleID, buildDate) - 1
-	actualAppStreamId := runtimeInfo.AppBundleID[:dateIndex]
-	runtimeInfo.AppBundleID = actualAppStreamId
-
-	return runtimeInfo, formattedBuildDate, nil
+	return *appBundleID, buildDate, nil
 }
 
 func getFileSize(path string) string {
@@ -233,6 +230,16 @@ func computeHashes(path string) (string, string, error) {
 	return b3Sum, shaSum, nil
 }
 
+func isExecutable(path string) (bool, error) {
+	fileInfo, err := os.Stat(path)
+	if err != nil {
+		return false, err
+	}
+	// Check if the file has executable permissions (e.g., -r-x------, -rwxr-xr-x)
+	mode := fileInfo.Mode()
+	return mode&0111 != 0, nil
+}
+
 func extractAppStreamXML(filename string) (*AppStreamXML, error) {
 	cmd := exec.Command(filename, "--pbundle_appstream")
 	output, err := cmd.Output()
@@ -255,7 +262,7 @@ func extractAppStreamXML(filename string) (*AppStreamXML, error) {
 }
 
 func generateMarkdown(dbinMetadata DbinMetadata) (string, error) {
-	var mdBuffer bytes.Buffer
+	var mdBuffer strings.Builder
 	mdBuffer.WriteString("| appname | description | site | download | version |\n")
 	mdBuffer.WriteString("|---------|-------------|------|----------|---------|\n")
 
@@ -265,7 +272,7 @@ func generateMarkdown(dbinMetadata DbinMetadata) (string, error) {
 	}
 
 	sort.Slice(allEntries, func(i, j int) bool {
-		return strings.ToLower(allEntries[i].Name) < strings.ToLower(allEntries[j].Pkg)
+		return strings.ToLower(allEntries[i].Name) < strings.ToLower(allEntries[j].Name)
 	})
 
 	for _, entry := range allEntries {
@@ -332,7 +339,7 @@ func main() {
 		}
 
 		if !info.IsDir() && strings.HasSuffix(path, ".AppBundle") {
-			runtimeInfo, buildDate, err := extractAppBundleInfo(path)
+			appBundleID, buildDate, err := extractAppBundleInfo(path)
 			if err != nil {
 				log.Printf("Error extracting runtime info from %s: %v\n", path, err)
 				return nil
@@ -346,104 +353,91 @@ func main() {
 
 			var pkg, pkgId string
 			baseFilename := filepath.Base(path)
-			re := regexp.MustCompile(`^(.+)-(\d{2}_\d{2}_\d{4})-(.+)(\..+)$`)
-			matches := re.FindStringSubmatch(baseFilename)
-			if len(matches) == 5 {
-				pkgId = matches[1]
-				pkg = matches[1] + "." + strings.Split(matches[3], ".")[1] + matches[4]
-
-				log.Printf("Adding %s to repository index\n", baseFilename)
-				log.Println(".pkg: " + pkg)
-
-				pkgId = "github.com.xplshn.appbundlehub." + pkgId
+			if appBundleID.Compliant() == nil {
+				// New format: name#repo:version[@dd_mm_yyyy]
+				pkg = appBundleID.Name
+				pkgId = "github.com.xplshn.appbundlehub." + appBundleID.Name
 			} else {
-				pkgId = strings.TrimSuffix(baseFilename, filepath.Ext(baseFilename))
-				pkgId = strings.TrimSuffix(pkgId, ".dwfs")
-				pkgId = strings.TrimSuffix(pkgId, ".sqfs")
-				pkg = baseFilename
-
-				log.Printf("Adding %s to repository index\n", baseFilename)
-				log.Println(".pkg: " + pkg)
-
-				pkgId = "github.com.xplshn.appbundlehub." + pkgId
+				// Legacy format: name-dd_mm_yyyy-maintainer
+				pkg = appBundleID.Name
+				pkgId = "github.com.xplshn.appbundlehub." + appBundleID.Name
 			}
+
+			log.Printf("Adding %s to repository index\n", baseFilename)
+			log.Println(".pkg: " + pkg)
 
 			item := binaryEntry{
-				Pkg:        pkg,
-				Name:       strings.Title(strings.ReplaceAll(runtimeInfo.AppBundleID, "-", " ")),
-				PkgId:      pkgId,
-				BuildDate:  buildDate,
-				Size:       getFileSize(path),
-				Bsum:       b3sum,
-				Shasum:     shasum,
+				Pkg:         pkg,
+				Name:        strings.Title(strings.ReplaceAll(appBundleID.Name, "-", " ")),
+				PkgId:       pkgId,
+				BuildDate:   buildDate,
+				Size:        getFileSize(path),
+				Bsum:        b3sum,
+				Shasum:      shasum,
 				DownloadURL: *downloadPrefix + filepath.Base(path),
-				RepoName:   *repoName,
+				RepoName:    *repoName,
 			}
 
-			appStreamXML, err := extractAppStreamXML(path)
+			// Check if the file is executable before attempting AppStream extraction
+			isExec, err := isExecutable(path)
 			if err != nil {
-				log.Printf("Warning: %s does not have an AppStream AppData.xml\n", path)
-			} else {
-				if getText(appStreamXML.Names) != "" {
-					item.Name = getText(appStreamXML.Names)
-				}
-
-				if appStreamXML.Icon != "" {
-					item.Icon = appStreamXML.Icon
-				}
-
-				if len(appStreamXML.Screenshots.Screenshot) > 0 {
-					for _, screenshot := range appStreamXML.Screenshots.Screenshot {
-						item.Screenshots = append(item.Screenshots, screenshot.Image)
-					}
-				}
-
-				if getText(appStreamXML.Summaries) != "" {
-					item.Description = getText(appStreamXML.Summaries)
-				}
-
-				if appStreamXML.Description.InnerXML != "" {
-					item.LongDescription = appStreamXML.Description.InnerXML
-				}
-
-				item.AppstreamId = runtimeInfo.AppBundleID
+				log.Printf("Error checking if %s is executable: %v\n", path, err)
+				return nil
 			}
 
-			if item.AppstreamId == "" {
-				appData := findAppStreamMetadataForAppId(runtimeInfo.AppBundleID)
-				if appData != nil {
-					log.Printf("Adding %s to repository index\n", baseFilename)
-					log.Println(".pkg: " + pkg)
+			if isExec {
+				appStreamXML, err := extractAppStreamXML(path)
+				if err != nil {
+					log.Printf("Warning: %s does not have an AppStream AppData.xml\n", path)
+				} else {
+					if getText(appStreamXML.Names) != "" {
+						item.Name = getText(appStreamXML.Names)
+					}
+					if appStreamXML.Icon != "" {
+						item.Icon = appStreamXML.Icon
+					}
+					if len(appStreamXML.Screenshots.Screenshot) > 0 {
+						for _, screenshot := range appStreamXML.Screenshots.Screenshot {
+							item.Screenshots = append(item.Screenshots, screenshot.Image)
+						}
+					}
+					if getText(appStreamXML.Summaries) != "" {
+						item.Description = getText(appStreamXML.Summaries)
+					}
+					if appStreamXML.Description.InnerXML != "" {
+						item.LongDescription = appStreamXML.Description.InnerXML
+					}
+					item.AppstreamId = appBundleID.ShortName()
+				}
+			}
 
+			// If no AppStream data was found or the file is not executable, use flatpakAppStreamScrapper data
+			if item.AppstreamId == "" {
+				appData := findAppStreamMetadataForAppId(appBundleID.ShortName())
+				if appData != nil {
+					log.Printf("Using flatpakAppStreamScrapper data for %s\n", baseFilename)
 					if appData.Name != "" {
 						item.Name = appData.Name
 					}
-
 					if len(appData.Icons) > 0 {
 						item.Icon = appData.Icons[0]
 					}
-
 					if len(appData.Screenshots) > 0 {
 						item.Screenshots = appData.Screenshots
 					}
-
 					if appData.Summary != "" {
 						item.Description = appData.Summary
 					}
-
 					if appData.RichDescription != "" {
 						item.LongDescription = appData.RichDescription
 					}
-
 					if appData.Categories != "" {
 						item.Categories = appData.Categories
 					}
-
 					if appData.Version != "" {
 						item.Version = appData.Version
 					}
-
-					item.AppstreamId = runtimeInfo.AppBundleID
+					item.AppstreamId = appBundleID.ShortName()
 				}
 			}
 
@@ -458,8 +452,8 @@ func main() {
 	}
 
 	if *outputJSON != "" {
-		buffer := &bytes.Buffer{}
-		encoder := json.NewEncoder(buffer)
+		var buffer strings.Builder
+		encoder := json.NewEncoder(&buffer)
 		encoder.SetEscapeHTML(false)
 		encoder.SetIndent("", "  ")
 
@@ -468,7 +462,7 @@ func main() {
 			return
 		}
 
-		if err := os.WriteFile(*outputJSON, buffer.Bytes(), 0644); err != nil {
+		if err := os.WriteFile(*outputJSON, []byte(buffer.String()), 0644); err != nil {
 			log.Println("Error writing JSON file:", err)
 			return
 		}
@@ -524,4 +518,3 @@ func ternary[T any](cond bool, vtrue, vfalse T) T {
 	}
 	return vfalse
 }
-

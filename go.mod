@@ -1,4 +1,4 @@
-module pelf
+module github.com/xplshn/pelf //module pelf
 
 go 1.24
 
@@ -6,6 +6,7 @@ require (
 	fyne.io/fyne/v2 v2.5.5
 	github.com/adrg/xdg v0.5.3
 	github.com/emmansun/base64 v0.7.0
+	github.com/fxamacker/cbor/v2 v2.8.0
 	github.com/go-ini/ini v1.67.0
 	github.com/goccy/go-json v0.10.5
 	github.com/joho/godotenv v1.5.1
@@ -14,7 +15,7 @@ require (
 	github.com/liamg/tml v0.7.0
 	github.com/mholt/archives v0.1.2
 	github.com/minio/md5-simd v1.1.2
-	github.com/pkg/xattr v0.4.10
+	github.com/pkg/xattr v0.4.11
 	github.com/shamaton/msgpack/v2 v2.2.3
 	github.com/shirou/gopsutil/v4 v4.25.4
 	github.com/u-root/u-root v0.14.0
@@ -52,7 +53,7 @@ require (
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/jeandeaual/go-locale v0.0.0-20240223122105-ce5225dcaa49 // indirect
 	github.com/jsummers/gobmp v0.0.0-20151104160322-e2ba15ffa76e // indirect
-	github.com/klauspost/cpuid/v2 v2.2.10 // indirect
+	github.com/klauspost/cpuid/v2 v2.2.11 // indirect
 	github.com/klauspost/pgzip v1.2.6 // indirect
 	github.com/lufia/plan9stats v0.0.0-20250317134145-8bc96cf8fc35 // indirect
 	github.com/minio/minlz v1.0.1 // indirect
@@ -72,6 +73,7 @@ require (
 	github.com/tklauser/go-sysconf v0.3.15 // indirect
 	github.com/tklauser/numcpus v0.10.0 // indirect
 	github.com/ulikunitz/xz v0.5.12 // indirect
+	github.com/x448/float16 v0.8.4 // indirect
 	github.com/yuin/goldmark v1.7.1 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go4.org v0.0.0-20230225012048-214862532bf5 // indirect
