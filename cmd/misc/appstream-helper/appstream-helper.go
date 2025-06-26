@@ -540,7 +540,7 @@ func nameToPkg(appBundleIDName string) string {
 	// If Name were: org.xfce.mousepad, get the "mousepad"
 	idParts := strings.Split(appBundleIDName, ".")
 	if len(idParts) > 0 {
-		return idParts[len(idParts)-1]
+		return strings.ToLower(idParts[len(idParts)-1])
 	}
 	// else, return name as-is
 	return appBundleIDName
