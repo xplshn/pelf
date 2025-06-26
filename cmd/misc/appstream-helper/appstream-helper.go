@@ -17,9 +17,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/shamaton/msgpack/v2" //"github.com/fxamacker/cbor/v2"
-	"github.com/klauspost/compress/zstd"
 	"github.com/goccy/go-json"
+	"github.com/klauspost/compress/zstd"
+	"github.com/shamaton/msgpack/v2" //"github.com/fxamacker/cbor/v2"
 	"github.com/zeebo/blake3"
 
 	"github.com/xplshn/pelf/pkg/utils"
@@ -79,9 +79,9 @@ type AppStreamMetadata struct {
 }
 
 type AppStreamXML struct {
-	XMLName     xml.Name `xml:"component"`
-	ID          string   `xml:"id"`
-	Names       []struct {
+	XMLName xml.Name `xml:"component"`
+	ID      string   `xml:"id"`
+	Names   []struct {
 		Lang string `xml:"lang,attr"`
 		Text string `xml:",chardata"`
 	} `xml:"name"`
@@ -92,7 +92,7 @@ type AppStreamXML struct {
 	Description struct {
 		InnerXML string `xml:",innerxml"`
 	} `xml:"description"`
-	Icon        string   `xml:"icon"`
+	Icon        string `xml:"icon"`
 	Screenshots struct {
 		Screenshot []struct {
 			Image string `xml:"image"`
@@ -384,35 +384,13 @@ func main() {
 				log.Printf("Error checking if %s is executable: %v\n", path, err)
 				return nil
 			}
-
-			if isExec {
-				appStreamXML, err := extractAppStreamXML(path)
-				if err != nil {
-					log.Printf("Warning: %s does not have an AppStream AppData.xml\n", path)
-				} else {
-					if getText(appStreamXML.Names) != "" {
-						item.Name = getText(appStreamXML.Names)
-					}
-					if appStreamXML.Icon != "" {
-						item.Icon = appStreamXML.Icon
-					}
-					if len(appStreamXML.Screenshots.Screenshot) > 0 {
-						for _, screenshot := range appStreamXML.Screenshots.Screenshot {
-							item.Screenshots = append(item.Screenshots, screenshot.Image)
-						}
-					}
-					if getText(appStreamXML.Summaries) != "" {
-						item.Description = getText(appStreamXML.Summaries)
-					}
-					if appStreamXML.Description.InnerXML != "" {
-						item.LongDescription = appStreamXML.Description.InnerXML
-					}
-					item.AppstreamId = appBundleID.ShortName()
-				}
+			if !isExec {
+				log.Printf("warning: %s is not executable\n", filepath.Base(path))
 			}
 
-			// If no AppStream data was found or the file is not executable, use flatpakAppStreamScrapper data
-			if item.AppstreamId == "" {
+			appStreamXML, err := extractAppStreamXML(path)
+			if err != nil {
+				// If no AppStream data was found or the file is not executable, use flatpakAppStreamScrapper data
 				appData := findAppStreamMetadataForAppId(appBundleID.ShortName())
 				if appData != nil {
 					log.Printf("Using flatpakAppStreamScrapper data for %s\n", baseFilename)
@@ -439,6 +417,25 @@ func main() {
 					}
 					item.AppstreamId = appBundleID.ShortName()
 				}
+			} else {
+				if getText(appStreamXML.Names) != "" {
+					item.Name = getText(appStreamXML.Names)
+				}
+				if appStreamXML.Icon != "" {
+					item.Icon = appStreamXML.Icon
+				}
+				if len(appStreamXML.Screenshots.Screenshot) > 0 {
+					for _, screenshot := range appStreamXML.Screenshots.Screenshot {
+						item.Screenshots = append(item.Screenshots, screenshot.Image)
+					}
+				}
+				if getText(appStreamXML.Summaries) != "" {
+					item.Description = getText(appStreamXML.Summaries)
+				}
+				if appStreamXML.Description.InnerXML != "" {
+					item.LongDescription = appStreamXML.Description.InnerXML
+				}
+				item.AppstreamId = appBundleID.Name
 			}
 
 			dbinMetadata[*repoName] = append(dbinMetadata[*repoName], item)
