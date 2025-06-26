@@ -22,6 +22,8 @@ import (
 	"github.com/shamaton/msgpack/v2"
 	"github.com/zeebo/blake3"
 
+	"github.com/jaytaylor/html2text"
+
 	"github.com/xplshn/pelf/pkg/utils"
 )
 
@@ -371,7 +373,7 @@ func main() {
 			appBundleID, err := utils.ParseAppBundleID(appBundleInfo.AppBundleID)
 			if err == nil && appBundleID.Compliant() == nil {
 				pkg = appBundleID.Name + "." + appBundleInfo.FilesystemType + ".AppBundle"
-				pkgId = ternary(appBundleID.Repo != "", appBundleID.Repo, "github.com.xplshn.appbundlehub." + appBundleID.ShortName())
+				pkgId = ternary(appBundleID.Repo != "", appBundleID.Repo, "github.com.xplshn.appbundlehub."+appBundleID.ShortName())
 			} else {
 				pkgId = strings.TrimSuffix(baseFilename, filepath.Ext(baseFilename+"."+appBundleInfo.FilesystemType))
 				pkg = baseFilename
@@ -416,10 +418,24 @@ func main() {
 						item.Screenshots = appData.Screenshots
 					}
 					if appData.Summary != "" {
-						item.Description = appData.Summary
+						// Convert Summary to plain text
+						summaryText, err := html2text.FromString(appData.Summary, html2text.Options{PrettyTables: true})
+						if err != nil {
+							log.Printf("%swarning%s failed to convert Summary to plain text for %s%s%s: %v", warningColor, resetColor, blueColor, path, resetColor, err)
+							item.Description = appData.Summary // Fallback to raw summary
+						} else {
+							item.Description = summaryText
+						}
 					}
 					if appData.RichDescription != "" {
-						item.LongDescription = appData.RichDescription
+						// Convert RichDescription to plain text
+						richDescText, err := html2text.FromString(appData.RichDescription, html2text.Options{PrettyTables: true})
+						if err != nil {
+							log.Printf("%swarning%s failed to convert RichDescription to plain text for %s%s%s: %v", warningColor, resetColor, blueColor, path, resetColor, err)
+							item.LongDescription = appData.RichDescription // Fallback to raw HTML
+						} else {
+							item.LongDescription = richDescText
+						}
 					}
 					if appData.Categories != "" {
 						item.Categories = appData.Categories
@@ -442,10 +458,24 @@ func main() {
 					}
 				}
 				if summary := getText(appStreamXML.Summaries); summary != "" {
-					item.Description = summary
+					// Convert Summary to plain text
+					summaryText, err := html2text.FromString(summary, html2text.Options{PrettyTables: true})
+					if err != nil {
+						log.Printf("%swarning%s failed to convert Summary to plain text for %s%s%s: %v", warningColor, resetColor, blueColor, path, resetColor, err)
+						item.Description = summary // Fallback to raw summary
+					} else {
+						item.Description = summaryText
+					}
 				}
 				if appStreamXML.Description.InnerXML != "" {
-					item.LongDescription = appStreamXML.Description.InnerXML
+					// Convert Description.InnerXML to plain text
+					descText, err := html2text.FromString(appStreamXML.Description.InnerXML, html2text.Options{PrettyTables: true})
+					if err != nil {
+						log.Printf("%swarning%s failed to convert Description to plain text for %s%s%s: %v", warningColor, resetColor, blueColor, path, resetColor, err)
+						item.LongDescription = appStreamXML.Description.InnerXML // Fallback to raw HTML
+					} else {
+						item.LongDescription = descText
+					}
 				}
 				item.AppstreamId = appBundleID.Name
 			}
