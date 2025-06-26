@@ -19,10 +19,17 @@ import (
 
 	"github.com/goccy/go-json"
 	"github.com/klauspost/compress/zstd"
-	"github.com/shamaton/msgpack/v2" //"github.com/fxamacker/cbor/v2"
+	"github.com/shamaton/msgpack/v2"
 	"github.com/zeebo/blake3"
 
 	"github.com/xplshn/pelf/pkg/utils"
+)
+
+const (
+	warningColor = "\x1b[0;33m"
+	errorColor   = "\x1b[0;31m"
+	blueColor    = "\x1b[0;34m"
+	resetColor   = "\x1b[0m"
 )
 
 func init() {
@@ -104,7 +111,10 @@ var appStreamMetadata []AppStreamMetadata
 var appStreamMetadataLoaded bool
 
 type RuntimeInfo struct {
-	AppBundleID string `json:"AppBundleID"`
+	AppBundleID    string `json:"AppBundleID"`
+	FilesystemType string `json:"FilesystemType"`
+	Hash           string `json:"Hash"`
+	BuildDate      string `json:"build_date,omitempty"`
 }
 
 func loadAppStreamMetadata() error {
@@ -126,13 +136,13 @@ func loadAppStreamMetadata() error {
 
 	zstdReader, err := zstd.NewReader(nil, zstd.WithDecoderConcurrency(1))
 	if err != nil {
-		return fmt.Errorf("error creating zstd reader: %v", err)
+		return fmt.Errorf("%serror%s creating zstd reader: %v", errorColor, resetColor, err)
 	}
 	defer zstdReader.Close()
 
 	decompressed, err := zstdReader.DecodeAll(body, nil)
 	if err != nil {
-		return fmt.Errorf("error decompressing data: %v", err)
+		return fmt.Errorf("%serror%s decompressing data: %v", errorColor, resetColor, err)
 	}
 
 	err = msgpack.Unmarshal(decompressed, &appStreamMetadata)
@@ -154,50 +164,55 @@ func findAppStreamMetadataForAppId(appId string) *AppStreamMetadata {
 	return nil
 }
 
-func extractAppBundleInfo(filename string) (utils.AppBundleID, string, error) {
+func extractAppBundleInfo(filename string) (RuntimeInfo, error) {
 	file, err := elf.Open(filename)
 	if err != nil {
-		return utils.AppBundleID{}, "", err
+		return RuntimeInfo{}, fmt.Errorf("%serror%s opening ELF file %s%s%s: %v", errorColor, resetColor, blueColor, filename, resetColor, err)
 	}
 	defer file.Close()
 
 	section := file.Section(".pbundle_runtime_info")
 	if section == nil {
-		return utils.AppBundleID{}, "", fmt.Errorf("section .pbundle_runtime_info not found")
+		return RuntimeInfo{}, fmt.Errorf("%serror%s section .pbundle_runtime_info not found in %s%s%s", errorColor, resetColor, blueColor, filename, resetColor)
 	}
 	data, err := section.Data()
 	if err != nil {
-		return utils.AppBundleID{}, "", err
+		return RuntimeInfo{}, fmt.Errorf("%serror%s reading section data from %s%s%s: %v", errorColor, resetColor, blueColor, filename, resetColor, err)
 	}
 
-	var runtimeInfo RuntimeInfo
+	var runtimeInfo map[string]interface{}
 	if err := msgpack.Unmarshal(data, &runtimeInfo); err != nil {
-		return utils.AppBundleID{}, "", err
-	}
-	if runtimeInfo.AppBundleID == "" {
-		return utils.AppBundleID{}, "", fmt.Errorf("appBundleID not found")
+		return RuntimeInfo{}, fmt.Errorf("%serror%s parsing .pbundle_runtime_info MessagePack in %s%s%s: %v", errorColor, resetColor, blueColor, filename, resetColor, err)
 	}
 
-	// Parse the AppBundleID using utils.ParseAppBundleID
-	appBundleID, err := utils.ParseAppBundleID(runtimeInfo.AppBundleID)
+	cfg := RuntimeInfo{
+		AppBundleID:    runtimeInfo["AppBundleID"].(string),
+		FilesystemType: runtimeInfo["FilesystemType"].(string),
+		Hash:           runtimeInfo["Hash"].(string),
+	}
+
+	if cfg.AppBundleID == "" {
+		return RuntimeInfo{}, fmt.Errorf("%serror%s appBundleID not found in %s%s%s", errorColor, resetColor, blueColor, filename, resetColor)
+	}
+
+	appBundleID, err := utils.ParseAppBundleID(cfg.AppBundleID)
 	if err != nil {
-		return utils.AppBundleID{}, "", fmt.Errorf("invalid AppBundleID: %v", err)
+		return RuntimeInfo{}, fmt.Errorf("%serror%s invalid AppBundleID in %s%s%s: %v", errorColor, resetColor, blueColor, filename, resetColor, err)
 	}
 
-	// Extract build date if present
-	var buildDate string
 	if appBundleID.IsDated() {
-		buildDate = appBundleID.Date.Format("2006-01-02") // Format as YYYY-MM-DD
+		cfg.BuildDate = appBundleID.Date.Format("2006-01-02")
 	} else {
-		buildDate = "unknown"
+		cfg.BuildDate = "unknown"
 	}
 
-	return *appBundleID, buildDate, nil
+	return cfg, nil
 }
 
 func getFileSize(path string) string {
 	fileInfo, err := os.Stat(path)
 	if err != nil {
+		log.Printf("%swarning%s unable to get file size for %s%s%s: %v", warningColor, resetColor, blueColor, path, resetColor, err)
 		return "0 MB"
 	}
 	sizeMB := float64(fileInfo.Size()) / (1024 * 1024)
@@ -207,23 +222,23 @@ func getFileSize(path string) string {
 func computeHashes(path string) (string, string, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return "", "", err
+		return "", "", fmt.Errorf("%serror%s opening file %s%s%s for hashing: %v", errorColor, resetColor, blueColor, path, resetColor, err)
 	}
 	defer file.Close()
 
 	shaHasher := sha256.New()
 	if _, err := io.Copy(shaHasher, file); err != nil {
-		return "", "", err
+		return "", "", fmt.Errorf("%serror%s computing SHA256 for %s%s%s: %v", errorColor, resetColor, blueColor, path, resetColor, err)
 	}
 	shaSum := hex.EncodeToString(shaHasher.Sum(nil))
 
 	_, err = file.Seek(0, 0)
 	if err != nil {
-		return "", "", err
+		return "", "", fmt.Errorf("%serror%s seeking file %s%s%s for Blake3: %v", errorColor, resetColor, blueColor, path, resetColor, err)
 	}
 	b3Hasher := blake3.New()
 	if _, err := io.Copy(b3Hasher, file); err != nil {
-		return "", "", err
+		return "", "", fmt.Errorf("%serror%s computing Blake3 for %s%s%s: %v", errorColor, resetColor, blueColor, path, resetColor, err)
 	}
 	b3Sum := hex.EncodeToString(b3Hasher.Sum(nil))
 
@@ -233,9 +248,8 @@ func computeHashes(path string) (string, string, error) {
 func isExecutable(path string) (bool, error) {
 	fileInfo, err := os.Stat(path)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("%serror%s checking executable status for %s%s%s: %v", errorColor, resetColor, blueColor, path, resetColor, err)
 	}
-	// Check if the file has executable permissions (e.g., -r-x------, -rwxr-xr-x)
 	mode := fileInfo.Mode()
 	return mode&0111 != 0, nil
 }
@@ -244,18 +258,18 @@ func extractAppStreamXML(filename string) (*AppStreamXML, error) {
 	cmd := exec.Command(filename, "--pbundle_appstream")
 	output, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("error extracting AppStream XML: %v", err)
+		return nil, fmt.Errorf("%serror%s extracting AppStream XML from %s%s%s: %v", errorColor, resetColor, blueColor, filename, resetColor, err)
 	}
 
 	decodedOutput, err := base64.StdEncoding.DecodeString(string(output))
 	if err != nil {
-		return nil, fmt.Errorf("error decoding base64 output: %v", err)
+		return nil, fmt.Errorf("%serror%s decoding base64 output from %s%s%s: %v", errorColor, resetColor, blueColor, filename, resetColor, err)
 	}
 
 	var appStreamXML AppStreamXML
 	err = xml.Unmarshal(decodedOutput, &appStreamXML)
 	if err != nil {
-		return nil, fmt.Errorf("error unmarshalling XML: %v", err)
+		return nil, fmt.Errorf("%serror%s unmarshalling XML from %s%s%s: %v", errorColor, resetColor, blueColor, filename, resetColor, err)
 	}
 
 	return &appStreamXML, nil
@@ -327,7 +341,7 @@ func main() {
 	}
 
 	if err := loadAppStreamMetadata(); err != nil {
-		log.Printf("Error loading AppStream metadata: %v\n", err)
+		log.Printf("%serror%s loading AppStream metadata: %v", errorColor, resetColor, err)
 		return
 	}
 
@@ -335,42 +349,41 @@ func main() {
 
 	err := filepath.Walk(*inputDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
+			log.Printf("%serror%s walking directory at %s%s%s: %v", errorColor, resetColor, blueColor, path, resetColor, err)
 			return err
 		}
 
 		if !info.IsDir() && strings.HasSuffix(path, ".AppBundle") {
-			appBundleID, buildDate, err := extractAppBundleInfo(path)
+			appBundleInfo, err := extractAppBundleInfo(path)
 			if err != nil {
-				log.Printf("Error extracting runtime info from %s: %v\n", path, err)
+				log.Printf("%serror%s extracting runtime info from %s%s%s: %v", errorColor, resetColor, blueColor, path, resetColor, err)
 				return nil
 			}
 
 			b3sum, shasum, err := computeHashes(path)
 			if err != nil {
-				log.Printf("Error computing hashes for %s: %v\n", path, err)
+				log.Printf("%serror%s computing hashes for %s%s%s: %v", errorColor, resetColor, blueColor, path, resetColor, err)
 				return nil
 			}
 
 			var pkg, pkgId string
 			baseFilename := filepath.Base(path)
-			if appBundleID.Compliant() == nil {
-				// New format: name#repo:version[@dd_mm_yyyy]
-				pkg = appBundleID.Name
-				pkgId = "github.com.xplshn.appbundlehub." + appBundleID.Name
+			appBundleID, err := utils.ParseAppBundleID(appBundleInfo.AppBundleID)
+			if err == nil && appBundleID.Compliant() == nil {
+				pkg = appBundleID.Name + "." + appBundleInfo.FilesystemType + ".AppBundle"
+				pkgId = ternary(appBundleID.Repo != "", appBundleID.Repo, "github.com.xplshn.appbundlehub." + appBundleID.ShortName())
 			} else {
-				// Legacy format: name-dd_mm_yyyy-maintainer
-				pkg = appBundleID.Name
-				pkgId = "github.com.xplshn.appbundlehub." + appBundleID.Name
+				pkgId = strings.TrimSuffix(baseFilename, filepath.Ext(baseFilename+"."+appBundleInfo.FilesystemType))
+				pkg = baseFilename
+				pkgId = "github.com.xplshn.appbundlehub." + pkgId
 			}
-
-			log.Printf("Adding %s to repository index\n", baseFilename)
-			log.Println(".pkg: " + pkg)
+			log.Printf("Adding [%s%s%s](%s) to repository index", blueColor, baseFilename, resetColor, appBundleID.String())
 
 			item := binaryEntry{
 				Pkg:         pkg,
 				Name:        strings.Title(strings.ReplaceAll(appBundleID.Name, "-", " ")),
 				PkgId:       pkgId,
-				BuildDate:   buildDate,
+				BuildDate:   appBundleID.Date.String(),
 				Size:        getFileSize(path),
 				Bsum:        b3sum,
 				Shasum:      shasum,
@@ -378,22 +391,21 @@ func main() {
 				RepoName:    *repoName,
 			}
 
-			// Check if the file is executable before attempting AppStream extraction
 			isExec, err := isExecutable(path)
 			if err != nil {
-				log.Printf("Error checking if %s is executable: %v\n", path, err)
+				log.Printf("%serror%s checking if %s%s%s is executable: %v", errorColor, resetColor, blueColor, path, resetColor, err)
 				return nil
 			}
 			if !isExec {
-				log.Printf("warning: %s is not executable\n", filepath.Base(path))
+				log.Printf("%swarning%s %s%s%s is not executable", warningColor, resetColor, blueColor, filepath.Base(path), resetColor)
 			}
 
 			appStreamXML, err := extractAppStreamXML(path)
 			if err != nil {
-				// If no AppStream data was found or the file is not executable, use flatpakAppStreamScrapper data
-				appData := findAppStreamMetadataForAppId(appBundleID.ShortName())
+				log.Printf("%swarning%s %s%s%s does not have an AppStream AppData.xml", warningColor, resetColor, blueColor, path, resetColor)
+				appData := findAppStreamMetadataForAppId(appBundleID.Name)
 				if appData != nil {
-					log.Printf("Using flatpakAppStreamScrapper data for %s\n", baseFilename)
+					log.Printf("Using flatpakAppStreamScrapper data for %s%s%s", blueColor, baseFilename, resetColor)
 					if appData.Name != "" {
 						item.Name = appData.Name
 					}
@@ -415,11 +427,11 @@ func main() {
 					if appData.Version != "" {
 						item.Version = appData.Version
 					}
-					item.AppstreamId = appBundleID.ShortName()
+					item.AppstreamId = appBundleID.Name
 				}
 			} else {
-				if getText(appStreamXML.Names) != "" {
-					item.Name = getText(appStreamXML.Names)
+				if name := getText(appStreamXML.Names); name != "" {
+					item.Name = name
 				}
 				if appStreamXML.Icon != "" {
 					item.Icon = appStreamXML.Icon
@@ -429,8 +441,8 @@ func main() {
 						item.Screenshots = append(item.Screenshots, screenshot.Image)
 					}
 				}
-				if getText(appStreamXML.Summaries) != "" {
-					item.Description = getText(appStreamXML.Summaries)
+				if summary := getText(appStreamXML.Summaries); summary != "" {
+					item.Description = summary
 				}
 				if appStreamXML.Description.InnerXML != "" {
 					item.LongDescription = appStreamXML.Description.InnerXML
@@ -444,7 +456,7 @@ func main() {
 	})
 
 	if err != nil {
-		log.Println("Error processing files:", err)
+		log.Printf("%serror%s processing files: %v", errorColor, resetColor, err)
 		return
 	}
 
@@ -455,31 +467,31 @@ func main() {
 		encoder.SetIndent("", "  ")
 
 		if err := encoder.Encode(dbinMetadata); err != nil {
-			log.Println("Error creating JSON:", err)
+			log.Printf("%serror%s creating JSON: %v", errorColor, resetColor, err)
 			return
 		}
 
 		if err := os.WriteFile(*outputJSON, []byte(buffer.String()), 0644); err != nil {
-			log.Println("Error writing JSON file:", err)
+			log.Printf("%serror%s writing JSON file: %v", errorColor, resetColor, err)
 			return
 		}
 
-		log.Printf("Successfully wrote JSON output to %s\n", *outputJSON)
+		log.Printf("Successfully wrote JSON output to %s", *outputJSON)
 	}
 
 	if *outputMarkdown != "" {
 		markdownContent, err := generateMarkdown(dbinMetadata)
 		if err != nil {
-			log.Println("Error generating Markdown:", err)
+			log.Printf("%serror%s generating Markdown: %v", errorColor, resetColor, err)
 			return
 		}
 
 		if err := os.WriteFile(*outputMarkdown, []byte(markdownContent), 0644); err != nil {
-			log.Println("Error writing Markdown file:", err)
+			log.Printf("%serror%s writing Markdown file: %v", errorColor, resetColor, err)
 			return
 		}
 
-		log.Printf("Successfully wrote Markdown output to %s\n", *outputMarkdown)
+		log.Printf("Successfully wrote Markdown output to %s", *outputMarkdown)
 	}
 }
 
@@ -487,23 +499,20 @@ func getText(elements []struct {
 	Lang string `xml:"lang,attr"`
 	Text string `xml:",chardata"`
 }) string {
-	// First, try to find explicit English
 	for _, elem := range elements {
 		if elem.Lang == "en" || elem.Lang == "en_US" || elem.Lang == "en_GB" {
-			return elem.Text
+			return strings.TrimSpace(elem.Text)
 		}
 	}
 
-	// If no explicit English, look for elements without lang attribute (default)
 	for _, elem := range elements {
 		if elem.Lang == "" {
-			return elem.Text
+			return strings.TrimSpace(elem.Text)
 		}
 	}
 
-	// If still nothing, return the first element
 	if len(elements) > 0 {
-		return elements[0].Text
+		return strings.TrimSpace(elements[0].Text)
 	}
 
 	return ""
