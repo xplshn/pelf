@@ -385,6 +385,17 @@ func TestShortName(t *testing.T) {
 			expected: "tool#main:v5",
 		},
 		{
+			name: "New format with AppStreamID",
+			id: &AppBundleID{
+				Raw:     "org.chromium.Chromium#main:v5@01_06_2025",
+				Name:    "org.chromium.Chromium",
+				Repo:    "main",
+				Version: "v5",
+				Date:    parseTime(t, "01_06_2025"),
+			},
+			expected: "org.chromium.Chromium#main:v5",
+		},
+		{
 			name: "Legacy format",
 			id: &AppBundleID{
 				Raw:        "tool-01_01_2023-user",
@@ -393,6 +404,16 @@ func TestShortName(t *testing.T) {
 				Date:       parseTime(t, "01_01_2023"),
 			},
 			expected: "tool-01_01_2023-user",
+		},
+		{
+			name: "Legacy format with AppStreamID",
+			id: &AppBundleID{
+				Raw:        "org.chromium.Chromium-01_01_2023-user",
+				Name:       "org.chromium.Chromium",
+				Maintainer: "user",
+				Date:       parseTime(t, "01_01_2023"),
+			},
+			expected: "org.chromium.Chromium-01_01_2023-user",
 		},
 	}
 

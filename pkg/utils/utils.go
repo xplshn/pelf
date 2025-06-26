@@ -13,8 +13,8 @@ const (
 	ValidRepoSubstr    = `^[A-Za-z0-9.\-_/]+$`
 	ValidNameSubstr    = `^[A-Za-z0-9.\-/]+$`
 	LegacyFormat       = `^(.+)-(\d{2}_\d{2}_\d{4})-([^-]+)$` // legacy: name-dd_mm_yyyy-maintainer
-	NewBaseFormat      = `^([^#]+)#([^:]+):([^@]+)$`      // encouraged: name#repo:version
-	DateFormat         = `^(\d{2})_(\d{2})_(\d{4})$`      // for optional @dd_mm_yyyy
+	NewBaseFormat      = `^([^#]+)#([^:@]+)(?::([^@]+))?(@\d{2}_\d{2}_\d{4})?$` // name#repo[:version][@date]
+	DateFormat         = `^(\d{2})_(\d{2})_(\d{4})$`
 	TimeLayout         = "02_01_2006"
 )
 
@@ -67,6 +67,7 @@ func ParseAppBundleID(raw string) (*AppBundleID, error) {
 		return nil, fmt.Errorf("AppBundleID is empty")
 	}
 
+	// Handle legacy format
 	if legacyRe.MatchString(raw) {
 		m := legacyRe.FindStringSubmatch(raw)
 		t, err := time.Parse(TimeLayout, m[2])
@@ -89,32 +90,33 @@ func ParseAppBundleID(raw string) (*AppBundleID, error) {
 		}, nil
 	}
 
-	parts := strings.Split(raw, "@")
-	base := parts[0]
-
-	match := baseRe.FindStringSubmatch(base)
+	// Handle new formats
+	match := baseRe.FindStringSubmatch(raw)
 	if match == nil {
-		return nil, fmt.Errorf("invalid AppBundleID base format: %s", base)
+		return nil, fmt.Errorf("invalid AppBundleID base format: %s", raw)
 	}
 
-	repo, err := validateField(match[2], "repo")
-	if err != nil {
-		return nil, err
-	}
 	name, err := validateField(match[1], "name")
 	if err != nil {
 		return nil, err
 	}
-	version, err := validateField(match[3], "version")
+	repo, err := validateField(match[2], "repo")
 	if err != nil {
 		return nil, err
 	}
-
-	var tPtr *time.Time
-	if len(parts) == 2 {
-		t, err := time.Parse(TimeLayout, parts[1])
+	var version string
+	if match[3] != "" {
+		version, err = validateField(match[3], "version")
 		if err != nil {
-			return nil, fmt.Errorf("invalid date in AppBundleID: %s. %v", parts[1], err)
+			return nil, err
+		}
+	}
+	var tPtr *time.Time
+	if match[4] != "" {
+		dateStr := strings.TrimPrefix(match[4], "@")
+		t, err := time.Parse(TimeLayout, dateStr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid date in AppBundleID: %s. %v", dateStr, err)
 		}
 		tPtr = &t
 	}
@@ -133,8 +135,16 @@ func (a *AppBundleID) String() string {
 	if a == nil {
 		return ""
 	}
-	if a.Repo != "" && a.Version != "" {
-		base := fmt.Sprintf("%s#%s:%s", a.Name, a.Repo, a.Version)
+	if a.Repo != "" {
+		if a.Version != "" {
+			base := fmt.Sprintf("%s#%s:%s", a.Name, a.Repo, a.Version)
+			if a.Date != nil {
+				return base + "@" + a.Date.Format(TimeLayout)
+			}
+			return base
+		}
+		// Handle name#repo@date format
+		base := fmt.Sprintf("%s#%s", a.Name, a.Repo)
 		if a.Date != nil {
 			return base + "@" + a.Date.Format(TimeLayout)
 		}
@@ -156,8 +166,11 @@ func (a *AppBundleID) ShortName() string {
 	if a == nil {
 		return ""
 	}
-	if a.Repo != "" && a.Version != "" {
-		return fmt.Sprintf("%s#%s:%s", a.Name, a.Repo, a.Version)
+	if a.Repo != "" {
+		if a.Version != "" {
+			return fmt.Sprintf("%s#%s:%s", a.Name, a.Repo, a.Version)
+		}
+		return fmt.Sprintf("%s#%s", a.Name, a.Repo)
 	}
 	if a.Maintainer != "" && a.Date != nil {
 		return fmt.Sprintf("%s-%s-%s", a.Name, a.Date.Format(TimeLayout), a.Maintainer)
@@ -174,8 +187,8 @@ func (a *AppBundleID) MarshalText() ([]byte, error) {
 		// Legacy format: name-dd_mm_yyyy-maintainer
 		return []byte(fmt.Sprintf("%s-%s-%s", a.Name, a.Date.Format(TimeLayout), a.Maintainer)), nil
 	}
-	if a.Name != "" && a.Repo != "" && a.Version != "" {
-		// Encouraged format: name#repo:version[@dd_mm_yyyy]
+	if a.Name != "" && a.Repo != "" {
+		// Encouraged format: name#repo[:version][@dd_mm_yyyy]
 		return []byte(a.String()), nil
 	}
 	return nil, fmt.Errorf("insufficient fields to marshal AppBundleID")
@@ -206,7 +219,7 @@ func (a *AppBundleID) Compliant() error {
 		return fmt.Errorf("nil AppBundleID")
 	}
 	if a.Maintainer != "" {
-		return fmt.Errorf("non-compliant AppBundleID format: %s. Expected 'name#repo:version' or 'name#repo:version@dd_mm_yyyy'", a.Raw)
+		return fmt.Errorf("non-compliant AppBundleID format: %s. Expected 'name#repo:version', 'name#repo@date', or 'name#repo:version@date'", a.Raw)
 	}
 	return nil
 }
