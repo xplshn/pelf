@@ -6,7 +6,6 @@ require (
 	fyne.io/fyne/v2 v2.5.5
 	github.com/adrg/xdg v0.5.3
 	github.com/emmansun/base64 v0.7.0
-	github.com/fxamacker/cbor/v2 v2.8.0
 	github.com/go-ini/ini v1.67.0
 	github.com/goccy/go-json v0.10.5
 	github.com/joho/godotenv v1.5.1
@@ -73,7 +72,6 @@ require (
 	github.com/tklauser/go-sysconf v0.3.15 // indirect
 	github.com/tklauser/numcpus v0.10.0 // indirect
 	github.com/ulikunitz/xz v0.5.12 // indirect
-	github.com/x448/float16 v0.8.4 // indirect
 	github.com/yuin/goldmark v1.7.1 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go4.org v0.0.0-20230225012048-214862532bf5 // indirect

@@ -1,3 +1,9 @@
+// Implements the AppBundle builder
+// A package format that can be used to wrap AppDirs into an executable
+// run `./cbuild.sh pelf` to get a working `pelf` binary
+//
+// github.com/xplshn/pelf
+//
 package main
 
 import (
@@ -14,15 +20,24 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/shamaton/msgpack/v2" //"github.com/fxamacker/cbor/v2"
 	"github.com/klauspost/compress/zstd"
 	"github.com/pkg/xattr"
+	"github.com/shamaton/msgpack/v2"
 	"github.com/urfave/cli/v3"
+	"github.com/xplshn/pelf/pkg/utils"
 	"github.com/zeebo/blake3"
 	"golang.org/x/sys/unix"
 )
 
-const pelfVersion = "3.0"
+
+const (
+	pelfVersion = "3.0"
+	// colors
+	warningColor = "\x1b[0;33m"
+	errorColor   = "\x1b[0;31m"
+	blueColor    = "\x1b[0;34m"
+	resetColor   = "\x1b[0m"
+)
 
 var globalPath = os.Getenv("PATH")
 
@@ -252,10 +267,42 @@ func getFilesystemTypeFromOutputFile(outputFile string) string {
 	return "squashfs"
 }
 
-func validateRunBehavior(ctx context.Context, cmd *cli.Command, value uint) error {
+func validateRunBehavior(_ context.Context, _ *cli.Command, value uint) error {
 	if value > 3 {
 		return fmt.Errorf("run-behavior must be one of 0, 1, 2, or 3")
 	}
+	return nil
+}
+
+func checkAppDir(appDir string) error {
+	if _, err := os.Stat(appDir); os.IsNotExist(err) {
+		return fmt.Errorf("AppDir does not exist: %s", appDir)
+	}
+
+	filesToCheck := []struct {
+		name      string
+		globs     []string
+		mustExist bool
+	}{
+		{name: ".xml file", globs: []string{"*.xml"}},
+		{name: ".desktop file", globs: []string{"*.desktop"}},
+		{name: ".DirIcon file", globs: []string{"*.desktop"}},
+		{name: "AppRun", globs: []string{"AppRun"}, mustExist: true},
+	}
+
+	for _, fileCheck := range filesToCheck {
+		path, err := utils.FindFiles(appDir, 1, fileCheck.globs)
+		if err != nil {
+			return fmt.Errorf("failed to check for %s in AppDir: %w", fileCheck.name, err)
+		}
+		if path == "" {
+			if fileCheck.mustExist {
+				return fmt.Errorf("error: %s does not exist in %s at depth %d", fileCheck.name, filepath.Base(appDir), 1)
+			}
+			fmt.Fprintf(os.Stderr, "%swarning%s: No %s found in the top-level of AppDir: %s\n", warningColor, resetColor, fileCheck.name, appDir)
+		}
+	}
+
 	return nil
 }
 
@@ -281,20 +328,35 @@ func main() {
 			&cli.StringSliceFlag{Name: "add-elf-section", Usage: "Add custom ELF sections from an .elfS file (e.g. --add-elf-section=./foo.elfS); section name is file name without .elfS extension, section contents are file contents"},
 			&cli.StringFlag{Name: "add-updinfo", Usage: "Add an ELF section named upd_info, with a string as its contents"},
 		},
-		Action: func(ctx context.Context, c *cli.Command) error {
+		Action: func(_ context.Context, c *cli.Command) error {
 			config := &Config{
-				AppDir:                c.String("add-appdir"),
-				AppBundleID:           c.String("appbundle-id"),
-				OutputFile:            c.String("output-to"),
-				CompressionArgs:       c.String("compression"),
-				CustomEmbedDir:        c.String("static-tools-dir"),
-				Runtime:               c.String("runtime"),
-				UseUPX:                c.Bool("upx"),
-				PreferToolsInPath:     c.Bool("prefer-tools-in-path"),
-				DisableRandomWorkDir:  c.Bool("disable-use-random-workdir"),
-				AppImageCompat:        c.Bool("appimage-compat"),
-				CustomSections:        c.StringSlice("add-runtime-info-section"),
-				RunBehavior:           uint8(c.Uint("run-behavior")),
+				AppDir:               c.String("add-appdir"),
+				AppBundleID:          c.String("appbundle-id"),
+				OutputFile:           c.String("output-to"),
+				CompressionArgs:      c.String("compression"),
+				CustomEmbedDir:       c.String("static-tools-dir"),
+				Runtime:              c.String("runtime"),
+				UseUPX:               c.Bool("upx"),
+				PreferToolsInPath:    c.Bool("prefer-tools-in-path"),
+				DisableRandomWorkDir: c.Bool("disable-use-random-workdir"),
+				AppImageCompat:       c.Bool("appimage-compat"),
+				CustomSections:       c.StringSlice("add-runtime-info-section"),
+				RunBehavior:          uint8(c.Uint("run-behavior")),
+			}
+
+			// warn if using legacy/non-verified AppBundleID
+			if config.AppBundleID != "" {
+				appBundleID, err := utils.ParseAppBundleID(config.AppBundleID)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "warning: Invalid AppBundleID format: %v\n", err)
+				} else {
+					if err := appBundleID.Verify(); err != nil {
+						fmt.Fprintf(os.Stderr, "warning: AppBundleID does not follow verified format: %v\n", err)
+					}
+					if appBundleID.Maintainer != "" {
+						fmt.Fprintf(os.Stderr, "warning: AppBundleID is in legacy format (%s). Recommended format is 'name#repo[:version][@date]'\n", appBundleID.Raw)
+					}
+				}
 			}
 
 			addSectionFiles := c.StringSlice("add-elf-section")
@@ -448,26 +510,11 @@ func run(config *Config) error {
 	defer os.RemoveAll(workDir)
 
 	config.ArchivePath = filepath.Join(workDir, "archive."+fsType)
-	if err := createArchive(config, fs, config.ArchivePath); err != nil {
+	if err := createArchive(config, fs); err != nil {
 		return err
 	}
 
-	var staticToolsSize, archiveSize int64
-	if !config.DoNotEmbedStaticTools {
-		if err := embedStaticTools(config, workDir, fs); err != nil {
-			return err
-		}
-		staticToolsSize = getFileSize(filepath.Join(workDir, "static.tar.zst"))
-	}
-
-	archiveSize = getFileSize(config.ArchivePath)
-
-	buildInfo := BuildInfo{
-		StaticToolsSize: staticToolsSize,
-		ArchiveSize:     archiveSize,
-	}
-
-	if err := createSelfExtractingArchive(config, workDir, buildInfo); err != nil {
+	if err := createSelfExtractingArchive(config, workDir); err != nil {
 		return err
 	}
 
@@ -501,14 +548,7 @@ func addMagic(path, magic string) error {
 	return nil
 }
 
-func checkAppDir(appDir string) error {
-	if _, err := os.Stat(appDir); os.IsNotExist(err) {
-		return fmt.Errorf("AppDir does not exist: %s", appDir)
-	}
-	return nil
-}
-
-func createArchive(config *Config, fs *Filesystem, archivePath string) error {
+func createArchive(config *Config, fs *Filesystem) error {
 	cmd := fs.CmdBuilder(config)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -680,7 +720,7 @@ func copyFile(src, dest string) error {
 	return err
 }
 
-func createSelfExtractingArchive(config *Config, workDir string, buildInfo BuildInfo) error {
+func createSelfExtractingArchive(config *Config, workDir string) error {
 	runtimePath := config.Runtime
 	if runtimePath == "" {
 		runtimePath = filepath.Join(config.BinDepDir, "appbundle-runtime_"+config.FilesystemType)
@@ -712,7 +752,7 @@ func createSelfExtractingArchive(config *Config, workDir string, buildInfo Build
 
 	runtimeInfoData, err := msgpack.Marshal(config.RuntimeInfo)
 	if err != nil {
-		return fmt.Errorf("failed to marshal RuntimeInfe: %w", err)
+		return fmt.Errorf("failed to marshal RuntimeInfo: %w", err)
 	}
 
 	if len(config.CustomSections) > 0 {

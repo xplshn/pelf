@@ -5,9 +5,63 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"path/filepath"
+	"os"
 )
 
-// Constants for regex patterns and time format
+// --- FS-Related functions --
+
+// findFiles searches for files matching the given glob patterns in the directory up to the specified walk depth.
+// If walkDepth is 0, it searches all subdirectories. Returns the path of the first matching file or an empty string if none found.
+func FindFiles(dir string, walkDepth uint, globs []string) (string, error) {
+	var foundPath string
+	currentDepth := 0
+
+	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// Calculate depth by counting path separators relative to dir
+		relPath, err := filepath.Rel(dir, path)
+		if err != nil {
+			return err
+		}
+		if relPath == "." {
+			currentDepth = 0
+		} else {
+			currentDepth = len(strings.Split(relPath, string(os.PathSeparator)))
+		}
+
+		// Skip if beyond walkDepth (unless walkDepth is 0)
+		if walkDepth != 0 && currentDepth > int(walkDepth) {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
+		// Check if the file matches any glob pattern
+		if !d.IsDir() {
+			for _, glob := range globs {
+				if match, _ := filepath.Match(glob, d.Name()); match {
+					foundPath = path
+					return filepath.SkipAll // Stop walking26 walking once a match is found
+				}
+			}
+		}
+		return nil
+	})
+
+	if err != nil {
+		return "", fmt.Errorf("failed to walk directory %s: %w", dir, err)
+	}
+
+	return foundPath, nil
+}
+
+// --- AppBundleID-related code ---
+
 const (
 	ValidSubstr        = `^[A-Za-z0-9.\-/]+$`
 	ValidRepoSubstr    = `^[A-Za-z0-9.\-_/]+$`
