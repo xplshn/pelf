@@ -193,6 +193,13 @@ func extractAppBundleInfo(filename string) (RuntimeInfo, error) {
 		Hash:           runtimeInfo["Hash"].(string),
 	}
 
+	switch cfg.FilesystemType {
+	case "dwarfs":
+		cfg.FilesystemType = "dwfs"
+	case "squashfs":
+		cfg.FilesystemType = "sqfs"
+	}
+
 	if cfg.AppBundleID == "" {
 		return RuntimeInfo{}, fmt.Errorf("%serror%s appBundleID not found in %s%s%s", errorColor, resetColor, blueColor, filename, resetColor)
 	}
@@ -371,13 +378,17 @@ func main() {
 			var pkg, pkgId string
 			baseFilename := filepath.Base(path)
 			appBundleID, err := utils.ParseAppBundleID(appBundleInfo.AppBundleID)
-			if err == nil && appBundleID.Compliant() == nil {
-				pkg = appBundleID.Name + "." + appBundleInfo.FilesystemType + ".AppBundle"
+			if err == nil && appBundleID.Verify() == nil {
+				pkg = nameToPkg(appBundleID.Name)
+				pkg +=  "." + appBundleInfo.FilesystemType + ".AppBundle"
 				pkgId = ternary(appBundleID.Repo != "", appBundleID.Repo, "github.com.xplshn.appbundlehub."+appBundleID.ShortName())
 			} else {
-				pkgId = strings.TrimSuffix(baseFilename, filepath.Ext(baseFilename+"."+appBundleInfo.FilesystemType))
-				pkg = baseFilename
+				pkg = strings.TrimSuffix(baseFilename, filepath.Ext(baseFilename+"."+appBundleInfo.FilesystemType))
+				appBundleID, err = utils.ParseAppBundleID(pkg)
+				pkg = nameToPkg(appBundleID.Name)
+				pkg +=  "." + appBundleInfo.FilesystemType + ".AppBundle"
 				pkgId = "github.com.xplshn.appbundlehub." + pkgId
+
 			}
 			log.Printf("Adding [%s%s%s](%s) to repository index", blueColor, baseFilename, resetColor, appBundleID.String())
 
@@ -523,6 +534,16 @@ func main() {
 
 		log.Printf("Successfully wrote Markdown output to %s", *outputMarkdown)
 	}
+}
+
+func nameToPkg(appBundleIDName string) string {
+	// If Name were: org.xfce.mousepad, get the "mousepad"
+	idParts := strings.Split(appBundleIDName, ".")
+	if len(idParts) > 0 {
+		return idParts[len(idParts)-1]
+	}
+	// else, return name as-is
+	return appBundleIDName
 }
 
 func getText(elements []struct {
