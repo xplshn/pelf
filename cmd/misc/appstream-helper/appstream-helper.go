@@ -21,12 +21,11 @@ import (
 	"github.com/klauspost/compress/zstd"
 	"github.com/shamaton/msgpack/v2"
 	"github.com/zeebo/blake3"
-
 	"github.com/jaytaylor/html2text"
-
 	"github.com/xplshn/pelf/pkg/utils"
 )
 
+// ANSI color codes for logging
 const (
 	warningColor = "\x1b[0;33m"
 	errorColor   = "\x1b[0;31m"
@@ -34,11 +33,8 @@ const (
 	resetColor   = "\x1b[0m"
 )
 
-func init() {
-	log.SetFlags(0)
-}
-
-type binaryEntry struct {
+// BinaryEntry represents metadata for an AppBundle
+type BinaryEntry struct {
 	Pkg             string     `json:"pkg,omitempty"`
 	Name            string     `json:"pkg_name,omitempty"`
 	PkgId           string     `json:"pkg_id,omitempty"`
@@ -58,7 +54,7 @@ type binaryEntry struct {
 	BuildScript     string     `json:"build_script,omitempty"`
 	BuildLog        string     `json:"build_log,omitempty"`
 	Categories      string     `json:"categories,omitempty"`
-	Snapshots       []snapshot `json:"snapshots,omitempty"`
+	Snapshots       []Snapshot `json:"snapshots,omitempty"`
 	Provides        string     `json:"provides,omitempty"`
 	License         []string   `json:"license,omitempty"`
 	Notes           []string   `json:"notes,omitempty"`
@@ -69,13 +65,16 @@ type binaryEntry struct {
 	RepoName        string     `json:"-"`
 }
 
-type snapshot struct {
+// Snapshot holds version and commit information
+type Snapshot struct {
 	Commit  string `json:"commit,omitempty"`
 	Version string `json:"version,omitempty"`
 }
 
-type DbinMetadata map[string][]binaryEntry
+// DbinMetadata maps repository names to a slice of BinaryEntry
+type DbinMetadata map[string][]BinaryEntry
 
+// AppStreamMetadata holds parsed AppStream data
 type AppStreamMetadata struct {
 	AppId           string   `json:"app_id"`
 	Name            string   `json:"name,omitempty"`
@@ -87,6 +86,7 @@ type AppStreamMetadata struct {
 	Screenshots     []string `json:"screenshots"`
 }
 
+// AppStreamXML represents the structure of AppStream XML data
 type AppStreamXML struct {
 	XMLName xml.Name `xml:"component"`
 	ID      string   `xml:"id"`
@@ -109,9 +109,7 @@ type AppStreamXML struct {
 	} `xml:"screenshots"`
 }
 
-var appStreamMetadata []AppStreamMetadata
-var appStreamMetadataLoaded bool
-
+// RuntimeInfo holds runtime metadata from ELF sections
 type RuntimeInfo struct {
 	AppBundleID    string `json:"AppBundleID"`
 	FilesystemType string `json:"FilesystemType"`
@@ -119,6 +117,17 @@ type RuntimeInfo struct {
 	BuildDate      string `json:"build_date,omitempty"`
 }
 
+var (
+	appStreamMetadata      []AppStreamMetadata
+	appStreamMetadataLoaded bool
+)
+
+// init sets up logging
+func init() {
+	log.SetFlags(0)
+}
+
+// loadAppStreamMetadata fetches and decodes AppStream metadata from a remote source
 func loadAppStreamMetadata() error {
 	if appStreamMetadataLoaded {
 		return nil
@@ -127,29 +136,29 @@ func loadAppStreamMetadata() error {
 	log.Println("Loading AppStream metadata from remote source")
 	resp, err := http.Get("https://github.com/xplshn/dbin-metadata/raw/refs/heads/master/misc/cmd/flatpakAppStreamScrapper/appstream_metadata.msgp.zst")
 	if err != nil {
-		return err
+		return fmt.Errorf("%sfailed to fetch AppStream metadata%s: %v", errorColor, resetColor, err)
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return err
+		return fmt.Errorf("%sfailed to read response body%s: %v", errorColor, resetColor, err)
 	}
 
 	zstdReader, err := zstd.NewReader(nil, zstd.WithDecoderConcurrency(1))
 	if err != nil {
-		return fmt.Errorf("%serror%s creating zstd reader: %v", errorColor, resetColor, err)
+		return fmt.Errorf("%sfailed to create zstd reader%s: %v", errorColor, resetColor, err)
 	}
 	defer zstdReader.Close()
 
 	decompressed, err := zstdReader.DecodeAll(body, nil)
 	if err != nil {
-		return fmt.Errorf("%serror%s decompressing data: %v", errorColor, resetColor, err)
+		return fmt.Errorf("%sfailed to decompress data%s: %v", errorColor, resetColor, err)
 	}
 
 	err = msgpack.Unmarshal(decompressed, &appStreamMetadata)
 	if err != nil {
-		return err
+		return fmt.Errorf("%sfailed to unmarshal AppStream metadata%s: %v", errorColor, resetColor, err)
 	}
 
 	log.Printf("Successfully loaded %d AppStream metadata entries", len(appStreamMetadata))
@@ -157,6 +166,7 @@ func loadAppStreamMetadata() error {
 	return nil
 }
 
+// findAppStreamMetadataForAppId searches for AppStream metadata by app ID
 func findAppStreamMetadataForAppId(appId string) *AppStreamMetadata {
 	for i := range appStreamMetadata {
 		if appStreamMetadata[i].AppId == appId {
@@ -166,25 +176,26 @@ func findAppStreamMetadataForAppId(appId string) *AppStreamMetadata {
 	return nil
 }
 
+// extractAppBundleInfo extracts runtime info from an ELF file
 func extractAppBundleInfo(filename string) (RuntimeInfo, error) {
 	file, err := elf.Open(filename)
 	if err != nil {
-		return RuntimeInfo{}, fmt.Errorf("%serror%s opening ELF file %s%s%s: %v", errorColor, resetColor, blueColor, filename, resetColor, err)
+		return RuntimeInfo{}, fmt.Errorf("%sfailed to open ELF file %s%s%s: %v", errorColor, blueColor, filename, resetColor, err)
 	}
 	defer file.Close()
 
 	section := file.Section(".pbundle_runtime_info")
 	if section == nil {
-		return RuntimeInfo{}, fmt.Errorf("%serror%s section .pbundle_runtime_info not found in %s%s%s", errorColor, resetColor, blueColor, filename, resetColor)
+		return RuntimeInfo{}, fmt.Errorf("%ssection .pbundle_runtime_info not found in %s%s%s", errorColor, blueColor, filename, resetColor)
 	}
 	data, err := section.Data()
 	if err != nil {
-		return RuntimeInfo{}, fmt.Errorf("%serror%s reading section data from %s%s%s: %v", errorColor, resetColor, blueColor, filename, resetColor, err)
+		return RuntimeInfo{}, fmt.Errorf("%sfailed to read section data from %s%s%s: %v", errorColor, blueColor, filename, resetColor, err)
 	}
 
 	var runtimeInfo map[string]interface{}
 	if err := msgpack.Unmarshal(data, &runtimeInfo); err != nil {
-		return RuntimeInfo{}, fmt.Errorf("%serror%s parsing .pbundle_runtime_info MessagePack in %s%s%s: %v", errorColor, resetColor, blueColor, filename, resetColor, err)
+		return RuntimeInfo{}, fmt.Errorf("%sfailed to parse .pbundle_runtime_info MessagePack in %s%s%s: %v", errorColor, blueColor, filename, resetColor, err)
 	}
 
 	cfg := RuntimeInfo{
@@ -201,12 +212,12 @@ func extractAppBundleInfo(filename string) (RuntimeInfo, error) {
 	}
 
 	if cfg.AppBundleID == "" {
-		return RuntimeInfo{}, fmt.Errorf("%serror%s appBundleID not found in %s%s%s", errorColor, resetColor, blueColor, filename, resetColor)
+		return RuntimeInfo{}, fmt.Errorf("%sappBundleID not found in %s%s%s", errorColor, blueColor, filename, resetColor)
 	}
 
 	appBundleID, err := utils.ParseAppBundleID(cfg.AppBundleID)
 	if err != nil {
-		return RuntimeInfo{}, fmt.Errorf("%serror%s invalid AppBundleID in %s%s%s: %v", errorColor, resetColor, blueColor, filename, resetColor, err)
+		return RuntimeInfo{}, fmt.Errorf("%sinvalid AppBundleID in %s%s%s: %v", errorColor, blueColor, filename, resetColor, err)
 	}
 
 	if appBundleID.IsDated() {
@@ -218,78 +229,81 @@ func extractAppBundleInfo(filename string) (RuntimeInfo, error) {
 	return cfg, nil
 }
 
+// getFileSize returns the file size in MB
 func getFileSize(path string) string {
 	fileInfo, err := os.Stat(path)
 	if err != nil {
-		log.Printf("%swarning%s unable to get file size for %s%s%s: %v", warningColor, resetColor, blueColor, path, resetColor, err)
+		log.Printf("%sfailed to get file size for %s%s%s: %v", warningColor, blueColor, path, resetColor, err)
 		return "0 MB"
 	}
 	sizeMB := float64(fileInfo.Size()) / (1024 * 1024)
 	return fmt.Sprintf("%.2f MB", sizeMB)
 }
 
-func computeHashes(path string) (string, string, error) {
+// computeHashes calculates Blake3 and SHA256 hashes for a file
+func computeHashes(path string) (b3sum, shasum string, err error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return "", "", fmt.Errorf("%serror%s opening file %s%s%s for hashing: %v", errorColor, resetColor, blueColor, path, resetColor, err)
+		return "", "", fmt.Errorf("%sfailed to open file %s%s%s for hashing: %v", errorColor, blueColor, path, resetColor, err)
 	}
 	defer file.Close()
 
 	shaHasher := sha256.New()
 	if _, err := io.Copy(shaHasher, file); err != nil {
-		return "", "", fmt.Errorf("%serror%s computing SHA256 for %s%s%s: %v", errorColor, resetColor, blueColor, path, resetColor, err)
+		return "", "", fmt.Errorf("%sfailed to compute SHA256 for %s%s%s: %v", errorColor, blueColor, path, resetColor, err)
 	}
 	shaSum := hex.EncodeToString(shaHasher.Sum(nil))
 
-	_, err = file.Seek(0, 0)
-	if err != nil {
-		return "", "", fmt.Errorf("%serror%s seeking file %s%s%s for Blake3: %v", errorColor, resetColor, blueColor, path, resetColor, err)
+	if _, err = file.Seek(0, 0); err != nil {
+		return "", "", fmt.Errorf("%sfailed to seek file %s%s%s for Blake3: %v", errorColor, blueColor, path, resetColor, err)
 	}
 	b3Hasher := blake3.New()
 	if _, err := io.Copy(b3Hasher, file); err != nil {
-		return "", "", fmt.Errorf("%serror%s computing Blake3 for %s%s%s: %v", errorColor, resetColor, blueColor, path, resetColor, err)
+		return "", "", fmt.Errorf("%sfailed to compute Blake3 for %s%s%s: %v", errorColor, blueColor, path, resetColor, err)
 	}
 	b3Sum := hex.EncodeToString(b3Hasher.Sum(nil))
 
 	return b3Sum, shaSum, nil
 }
 
+// isExecutable checks if a file is executable
 func isExecutable(path string) (bool, error) {
 	fileInfo, err := os.Stat(path)
 	if err != nil {
-		return false, fmt.Errorf("%serror%s checking executable status for %s%s%s: %v", errorColor, resetColor, blueColor, path, resetColor, err)
+		return false, fmt.Errorf("%sfailed to check executable status for %s%s%s: %v", errorColor, blueColor, path, resetColor, err)
 	}
-	mode := fileInfo.Mode()
-	return mode&0111 != 0, nil
+	return fileInfo.Mode()&0111 != 0, nil
 }
 
+// extractAppStreamXML extracts and parses AppStream XML from an AppBundle
 func extractAppStreamXML(filename string) (*AppStreamXML, error) {
 	cmd := exec.Command(filename, "--pbundle_appstream")
 	output, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("%serror%s extracting AppStream XML from %s%s%s: %v", errorColor, resetColor, blueColor, filename, resetColor, err)
+		return nil, fmt.Errorf("%sfailed to extract AppStream XML from %s%s%s: %v", errorColor, blueColor, filename, resetColor, err)
 	}
 
 	decodedOutput, err := base64.StdEncoding.DecodeString(string(output))
 	if err != nil {
-		return nil, fmt.Errorf("%serror%s decoding base64 output from %s%s%s: %v", errorColor, resetColor, blueColor, filename, resetColor, err)
+		return nil, fmt.Errorf("%sfailed to decode base64 output from %s%s%s: %v", errorColor, blueColor, filename, resetColor, err)
 	}
 
 	var appStreamXML AppStreamXML
 	err = xml.Unmarshal(decodedOutput, &appStreamXML)
 	if err != nil {
-		return nil, fmt.Errorf("%serror%s unmarshalling XML from %s%s%s: %v", errorColor, resetColor, blueColor, filename, resetColor, err)
+		return nil, fmt.Errorf("%sfailed to unmarshal XML from %s%s%s: %v", errorColor, blueColor, filename, resetColor, err)
 	}
 
 	return &appStreamXML, nil
 }
 
+// generateMarkdown creates a Markdown table from DbinMetadata
 func generateMarkdown(dbinMetadata DbinMetadata) (string, error) {
 	var mdBuffer strings.Builder
 	mdBuffer.WriteString("| appname | description | site | download | version |\n")
 	mdBuffer.WriteString("|---------|-------------|------|----------|---------|\n")
 
-	var allEntries []binaryEntry
+	var allEntries []BinaryEntry
 	for _, entries := range dbinMetadata {
 		allEntries = append(allEntries, entries...)
 	}
@@ -300,15 +314,6 @@ func generateMarkdown(dbinMetadata DbinMetadata) (string, error) {
 
 	for _, entry := range allEntries {
 		siteURL := ""
-
-		pkg := strings.TrimSuffix(entry.Pkg, filepath.Ext(entry.Pkg))
-		pkg = strings.TrimSuffix(pkg, ".dwfs")
-		pkg = strings.TrimSuffix(pkg, ".sqfs")
-
-		if pkg != "" {
-			entry.Pkg = pkg
-		}
-
 		if len(entry.SrcURLs) > 0 {
 			siteURL = entry.SrcURLs[0]
 		} else if len(entry.WebURLs) > 0 {
@@ -326,7 +331,7 @@ func generateMarkdown(dbinMetadata DbinMetadata) (string, error) {
 		}
 
 		mdBuffer.WriteString(fmt.Sprintf("| %s | %s | %s | %s | %s |\n",
-			pkg,
+			entry.Pkg,
 			ternary(entry.Description != "", entry.Description, "not_available"),
 			ternary(siteURL != "", siteURL, "not_available"),
 			entry.DownloadURL,
@@ -336,6 +341,7 @@ func generateMarkdown(dbinMetadata DbinMetadata) (string, error) {
 	return mdBuffer.String(), nil
 }
 
+// main processes AppBundle files and generates JSON and Markdown outputs
 func main() {
 	inputDir := flag.String("input-dir", "", "Path to the input directory containing .AppBundle files")
 	outputJSON := flag.String("output-file", "", "Path to the output JSON file")
@@ -346,159 +352,171 @@ func main() {
 
 	if *inputDir == "" || *repoName == "" {
 		log.Println("Usage: --input-dir <input_directory> --output-file <output_file.json> --download-prefix <url> --repo-name <repo_name> [--output-markdown <output_file.md>]")
-		return
+		os.Exit(1)
 	}
 
 	if err := loadAppStreamMetadata(); err != nil {
-		log.Printf("%serror%s loading AppStream metadata: %v", errorColor, resetColor, err)
-		return
+		log.Printf("%sfailed to load AppStream metadata%s: %v", errorColor, resetColor, err)
+		os.Exit(1)
 	}
 
 	dbinMetadata := make(DbinMetadata)
 
 	err := filepath.Walk(*inputDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			log.Printf("%serror%s walking directory at %s%s%s: %v", errorColor, resetColor, blueColor, path, resetColor, err)
+			log.Printf("%sfailed to walk directory at %s%s%s: %v", errorColor, blueColor, path, resetColor, err)
 			return err
 		}
 
-		if !info.IsDir() && strings.HasSuffix(path, ".AppBundle") {
-			appBundleInfo, err := extractAppBundleInfo(path)
-			if err != nil {
-				log.Printf("%serror%s extracting runtime info from %s%s%s: %v", errorColor, resetColor, blueColor, path, resetColor, err)
-				return nil
-			}
+		if info.IsDir() || !strings.HasSuffix(path, ".AppBundle") {
+			return nil
+		}
 
-			b3sum, shasum, err := computeHashes(path)
-			if err != nil {
-				log.Printf("%serror%s computing hashes for %s%s%s: %v", errorColor, resetColor, blueColor, path, resetColor, err)
-				return nil
-			}
+		appBundleInfo, err := extractAppBundleInfo(path)
+		if err != nil {
+			log.Printf("%sfailed to extract runtime info from %s%s%s: %v", errorColor, blueColor, path, resetColor, err)
+			return nil
+		}
 
-			var pkg, pkgId string
-			baseFilename := filepath.Base(path)
-			appBundleID, err := utils.ParseAppBundleID(appBundleInfo.AppBundleID)
-			if err == nil && appBundleID.Verify() == nil {
-				pkg = nameToPkg(appBundleID.Name)
-				pkg +=  "." + appBundleInfo.FilesystemType + ".AppBundle"
-				pkgId = ternary(appBundleID.Repo != "", appBundleID.Repo, "github.com.xplshn.appbundlehub."+appBundleID.ShortName())
-			} else {
-				pkg = strings.TrimSuffix(baseFilename, filepath.Ext(baseFilename+"."+appBundleInfo.FilesystemType))
-				appBundleID, err = utils.ParseAppBundleID(pkg)
-				pkg = nameToPkg(appBundleID.Name)
-				pkg +=  "." + appBundleInfo.FilesystemType + ".AppBundle"
-				pkgId = "github.com.xplshn.appbundlehub." + pkgId
+		b3sum, shasum, err := computeHashes(path)
+		if err != nil {
+			log.Printf("%sfailed to compute hashes for %s%s%s: %v", errorColor, blueColor, path, resetColor, err)
+			return nil
+		}
 
-			}
-			log.Printf("Adding [%s%s%s](%s) to repository index", blueColor, baseFilename, resetColor, appBundleID.String())
+		appBundleID, err := utils.ParseAppBundleID(appBundleInfo.AppBundleID)
+		if err != nil {
+			log.Printf("%sfailed to parse AppBundleID for %s%s%s: %v", errorColor, blueColor, path, resetColor, err)
+			return nil
+		}
 
-			item := binaryEntry{
-				Pkg:         pkg,
-				Name:        strings.Title(strings.ReplaceAll(appBundleID.Name, "-", " ")),
-				PkgId:       pkgId,
-				BuildDate:   appBundleID.Date.String(),
-				Size:        getFileSize(path),
-				Bsum:        b3sum,
-				Shasum:      shasum,
-				DownloadURL: *downloadPrefix + filepath.Base(path),
-				RepoName:    *repoName,
-			}
+		// Initialize package name and ID
+		var pkg, pkgId string
+		baseFilename := filepath.Base(path)
+		appStreamXML, err := extractAppStreamXML(path)
+		name := ""
 
-			isExec, err := isExecutable(path)
-			if err != nil {
-				log.Printf("%serror%s checking if %s%s%s is executable: %v", errorColor, resetColor, blueColor, path, resetColor, err)
-				return nil
-			}
-			if !isExec {
-				log.Printf("%swarning%s %s%s%s is not executable", warningColor, resetColor, blueColor, filepath.Base(path), resetColor)
-			}
+		// Try to get name from AppStream XML
+		if err == nil && appStreamXML != nil {
+			name = getText(appStreamXML.Names)
+		}
 
-			appStreamXML, err := extractAppStreamXML(path)
-			if err != nil {
-				log.Printf("%swarning%s %s%s%s does not have an AppStream AppData.xml", warningColor, resetColor, blueColor, path, resetColor)
-				appData := findAppStreamMetadataForAppId(appBundleID.Name)
-				if appData != nil {
-					log.Printf("Using flatpakAppStreamScrapper data for %s%s%s", blueColor, baseFilename, resetColor)
-					if appData.Name != "" {
-						item.Name = appData.Name
-					}
-					if len(appData.Icons) > 0 {
-						item.Icon = appData.Icons[0]
-					}
-					if len(appData.Screenshots) > 0 {
-						item.Screenshots = appData.Screenshots
-					}
-					if appData.Summary != "" {
-						// Convert Summary to plain text
-						summaryText, err := html2text.FromString(appData.Summary, html2text.Options{PrettyTables: true})
-						if err != nil {
-							log.Printf("%swarning%s failed to convert Summary to plain text for %s%s%s: %v", warningColor, resetColor, blueColor, path, resetColor, err)
-							item.Description = appData.Summary // Fallback to raw summary
-						} else {
-							item.Description = summaryText
-						}
-					}
-					if appData.RichDescription != "" {
-						// Convert RichDescription to plain text
-						richDescText, err := html2text.FromString(appData.RichDescription, html2text.Options{PrettyTables: true})
-						if err != nil {
-							log.Printf("%swarning%s failed to convert RichDescription to plain text for %s%s%s: %v", warningColor, resetColor, blueColor, path, resetColor, err)
-							item.LongDescription = appData.RichDescription // Fallback to raw HTML
-						} else {
-							item.LongDescription = richDescText
-						}
-					}
-					if appData.Categories != "" {
-						item.Categories = appData.Categories
-					}
-					if appData.Version != "" {
-						item.Version = appData.Version
-					}
-					item.AppstreamId = appBundleID.Name
+		// Fallback to AppStream metadata if no XML name
+		if name == "" {
+			appData := findAppStreamMetadataForAppId(appBundleID.Name)
+			if appData != nil && appData.Name != "" {
+				name = appData.Name
+			}
+		}
+
+		// Sanitize name if found, otherwise fallback to nameToPkg
+		if name != "" {
+			name = sanitizeName(name)
+		} else {
+			name = nameToPkg(appBundleID.Name)
+		}
+
+		// Construct package name and ID
+		pkg = name + "." + appBundleInfo.FilesystemType + ".AppBundle"
+		pkgId = ternary(appBundleID.Repo != "", appBundleID.Repo, "github.com.xplshn.appbundlehub."+appBundleID.ShortName())
+
+		log.Printf("Adding [%s%s%s](%s) to repository index", blueColor, baseFilename, resetColor, appBundleID.String())
+
+		item := BinaryEntry{
+			Pkg:         pkg,
+			Name:        strings.Title(strings.ReplaceAll(name, "-", " ")),
+			PkgId:       pkgId,
+			BuildDate:   appBundleInfo.BuildDate,
+			Size:        getFileSize(path),
+			Bsum:        b3sum,
+			Shasum:      shasum,
+			DownloadURL: *downloadPrefix + filepath.Base(path),
+			RepoName:    *repoName,
+		}
+
+		isExec, err := isExecutable(path)
+		if err != nil {
+			log.Printf("%sfailed to check executable status for %s%s%s: %v", errorColor, blueColor, path, resetColor, err)
+			return nil
+		}
+		if !isExec {
+			log.Printf("%s%s%s is not executable%s", warningColor, blueColor, filepath.Base(path), resetColor)
+		}
+
+		if appStreamXML != nil {
+			if appStreamXML.Icon != "" {
+				item.Icon = appStreamXML.Icon
+			}
+			for _, screenshot := range appStreamXML.Screenshots.Screenshot {
+				item.Screenshots = append(item.Screenshots, screenshot.Image)
+			}
+			if summary := getText(appStreamXML.Summaries); summary != "" {
+				summaryText, err := html2text.FromString(summary, html2text.Options{PrettyTables: true})
+				if err != nil {
+					log.Printf("%sfailed to convert summary to plain text for %s%s%s: %v", warningColor, blueColor, path, resetColor, err)
+					item.Description = summary
+				} else {
+					item.Description = summaryText
 				}
-			} else {
-				if name := getText(appStreamXML.Names); name != "" {
-					item.Name = name
+			}
+			if appStreamXML.Description.InnerXML != "" {
+				descText, err := html2text.FromString(appStreamXML.Description.InnerXML, html2text.Options{PrettyTables: true})
+				if err != nil {
+					log.Printf("%sfailed to convert description to plain text for %s%s%s: %v", warningColor, blueColor, path, resetColor, err)
+					item.LongDescription = appStreamXML.Description.InnerXML
+				} else {
+					item.LongDescription = descText
 				}
-				if appStreamXML.Icon != "" {
-					item.Icon = appStreamXML.Icon
+			}
+			item.AppstreamId = appBundleID.Name
+		} else {
+			appData := findAppStreamMetadataForAppId(appBundleID.Name)
+			if appData != nil {
+				log.Printf("Using flatpakAppStreamScrapper data for %s%s%s", blueColor, baseFilename, resetColor)
+				if appData.Name != "" {
+					item.Name = appData.Name
 				}
-				if len(appStreamXML.Screenshots.Screenshot) > 0 {
-					for _, screenshot := range appStreamXML.Screenshots.Screenshot {
-						item.Screenshots = append(item.Screenshots, screenshot.Image)
-					}
+				if len(appData.Icons) > 0 {
+					item.Icon = appData.Icons[0]
 				}
-				if summary := getText(appStreamXML.Summaries); summary != "" {
-					// Convert Summary to plain text
-					summaryText, err := html2text.FromString(summary, html2text.Options{PrettyTables: true})
+				if len(appData.Screenshots) > 0 {
+					item.Screenshots = appData.Screenshots
+				}
+				if appData.Summary != "" {
+					summaryText, err := html2text.FromString(appData.Summary, html2text.Options{PrettyTables: true})
 					if err != nil {
-						log.Printf("%swarning%s failed to convert Summary to plain text for %s%s%s: %v", warningColor, resetColor, blueColor, path, resetColor, err)
-						item.Description = summary // Fallback to raw summary
+						log.Printf("%sfailed to convert summary to plain text for %s%s%s: %v", warningColor, blueColor, path, resetColor, err)
+						item.Description = appData.Summary
 					} else {
 						item.Description = summaryText
 					}
 				}
-				if appStreamXML.Description.InnerXML != "" {
-					// Convert Description.InnerXML to plain text
-					descText, err := html2text.FromString(appStreamXML.Description.InnerXML, html2text.Options{PrettyTables: true})
+				if appData.RichDescription != "" {
+					richDescText, err := html2text.FromString(appData.RichDescription, html2text.Options{PrettyTables: true})
 					if err != nil {
-						log.Printf("%swarning%s failed to convert Description to plain text for %s%s%s: %v", warningColor, resetColor, blueColor, path, resetColor, err)
-						item.LongDescription = appStreamXML.Description.InnerXML // Fallback to raw HTML
+						log.Printf("%sfailed to convert rich description to plain text for %s%s%s: %v", warningColor, blueColor, path, resetColor, err)
+						item.LongDescription = appData.RichDescription
 					} else {
-						item.LongDescription = descText
+						item.LongDescription = richDescText
 					}
+				}
+				if appData.Categories != "" {
+					item.Categories = appData.Categories
+				}
+				if appData.Version != "" {
+					item.Version = appData.Version
 				}
 				item.AppstreamId = appBundleID.Name
 			}
-
-			dbinMetadata[*repoName] = append(dbinMetadata[*repoName], item)
 		}
+
+		dbinMetadata[*repoName] = append(dbinMetadata[*repoName], item)
 		return nil
 	})
 
 	if err != nil {
-		log.Printf("%serror%s processing files: %v", errorColor, resetColor, err)
-		return
+		log.Printf("%sfailed to process files%s: %v", errorColor, resetColor, err)
+		os.Exit(1)
 	}
 
 	if *outputJSON != "" {
@@ -508,13 +526,13 @@ func main() {
 		encoder.SetIndent("", "  ")
 
 		if err := encoder.Encode(dbinMetadata); err != nil {
-			log.Printf("%serror%s creating JSON: %v", errorColor, resetColor, err)
-			return
+			log.Printf("%sfailed to encode JSON%s: %v", errorColor, resetColor, err)
+			os.Exit(1)
 		}
 
 		if err := os.WriteFile(*outputJSON, []byte(buffer.String()), 0644); err != nil {
-			log.Printf("%serror%s writing JSON file: %v", errorColor, resetColor, err)
-			return
+			log.Printf("%sfailed to write JSON file%s: %v", errorColor, resetColor, err)
+			os.Exit(1)
 		}
 
 		log.Printf("Successfully wrote JSON output to %s", *outputJSON)
@@ -523,29 +541,39 @@ func main() {
 	if *outputMarkdown != "" {
 		markdownContent, err := generateMarkdown(dbinMetadata)
 		if err != nil {
-			log.Printf("%serror%s generating Markdown: %v", errorColor, resetColor, err)
-			return
+			log.Printf("%sfailed to generate Markdown%s: %v", errorColor, resetColor, err)
+			os.Exit(1)
 		}
 
 		if err := os.WriteFile(*outputMarkdown, []byte(markdownContent), 0644); err != nil {
-			log.Printf("%serror%s writing Markdown file: %v", errorColor, resetColor, err)
-			return
+			log.Printf("%sfailed to write Markdown file%s: %v", errorColor, resetColor, err)
+			os.Exit(1)
 		}
 
 		log.Printf("Successfully wrote Markdown output to %s", *outputMarkdown)
 	}
 }
 
+// sanitizeName cleans a name string for safe use
+func sanitizeName(name string) string {
+	name = strings.ToLower(name)
+	name = strings.TrimSpace(name)
+	name = strings.ReplaceAll(name, "/", "_")
+	name = strings.ReplaceAll(name, "\\", "_")
+	name = strings.ReplaceAll(name, ":", "_")
+	return name
+}
+
+// nameToPkg extracts the package name from an AppBundle ID
 func nameToPkg(appBundleIDName string) string {
-	// If Name were: org.xfce.mousepad, get the "mousepad"
 	idParts := strings.Split(appBundleIDName, ".")
 	if len(idParts) > 0 {
-		return strings.ToLower(idParts[len(idParts)-1])
+		return sanitizeName(idParts[len(idParts)-1])
 	}
-	// else, return name as-is
 	return appBundleIDName
 }
 
+// getText retrieves the most appropriate text from a slice of XML elements
 func getText(elements []struct {
 	Lang string `xml:"lang,attr"`
 	Text string `xml:",chardata"`
@@ -569,6 +597,7 @@ func getText(elements []struct {
 	return ""
 }
 
+// ternary provides a ternary-like operation for any type
 func ternary[T any](cond bool, vtrue, vfalse T) T {
 	if cond {
 		return vtrue
