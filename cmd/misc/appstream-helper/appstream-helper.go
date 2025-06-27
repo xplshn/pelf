@@ -58,7 +58,7 @@ type BinaryEntry struct {
 	Notes           []string   `json:"notes,omitempty"`
 	Appstream       string     `json:"appstream,omitempty"`
 	Rank            uint       `json:"rank,omitempty"`
-	Maintainers     []string   `json:"maintainers,omitempty"`
+	Maintainers     string     `json:"maintainers,omitempty"`
 	RepoURL         string     `json:"-"`
 	RepoGroup       string     `json:"-"`
 	RepoName        string     `json:"-"`
@@ -389,7 +389,7 @@ func main() {
 			item.SrcURLs = append(item.SrcURLs, "https://"+appBundleID.Repo)
 		}
 		if appBundleID.Maintainer != "" {
-			item.Maintainers = append(item.Maintainers, appBundleID.Maintainer)
+			item.Maintainers = appBundleID.Maintainer
 		}
 		if appBundleID.Version != "" {
 			item.Version = appBundleID.Version
