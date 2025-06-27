@@ -46,7 +46,7 @@ func FindFiles(dir string, walkDepth uint, globs []string) (string, error) {
 			for _, glob := range globs {
 				if match, _ := filepath.Match(glob, d.Name()); match {
 					foundPath = path
-					return filepath.SkipAll // Stop walking26 walking once a match is found
+					return filepath.SkipAll
 				}
 			}
 		}
