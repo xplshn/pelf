@@ -18,14 +18,13 @@ import (
 	"strings"
 
 	"github.com/goccy/go-json"
+	"github.com/jaytaylor/html2text"
 	"github.com/klauspost/compress/zstd"
 	"github.com/shamaton/msgpack/v2"
-	"github.com/zeebo/blake3"
-	"github.com/jaytaylor/html2text"
 	"github.com/xplshn/pelf/pkg/utils"
+	"github.com/zeebo/blake3"
 )
 
-// ANSI color codes for logging
 const (
 	warningColor = "\x1b[0;33m"
 	errorColor   = "\x1b[0;31m"
@@ -33,7 +32,6 @@ const (
 	resetColor   = "\x1b[0m"
 )
 
-// BinaryEntry represents metadata for an AppBundle
 type BinaryEntry struct {
 	Pkg             string     `json:"pkg,omitempty"`
 	Name            string     `json:"pkg_name,omitempty"`
@@ -60,21 +58,19 @@ type BinaryEntry struct {
 	Notes           []string   `json:"notes,omitempty"`
 	Appstream       string     `json:"appstream,omitempty"`
 	Rank            uint       `json:"rank,omitempty"`
+	Maintainers     []string   `json:"maintainers,omitempty"`
 	RepoURL         string     `json:"-"`
 	RepoGroup       string     `json:"-"`
 	RepoName        string     `json:"-"`
 }
 
-// Snapshot holds version and commit information
 type Snapshot struct {
 	Commit  string `json:"commit,omitempty"`
 	Version string `json:"version,omitempty"`
 }
 
-// DbinMetadata maps repository names to a slice of BinaryEntry
 type DbinMetadata map[string][]BinaryEntry
 
-// AppStreamMetadata holds parsed AppStream data
 type AppStreamMetadata struct {
 	AppId           string   `json:"app_id"`
 	Name            string   `json:"name,omitempty"`
@@ -86,7 +82,6 @@ type AppStreamMetadata struct {
 	Screenshots     []string `json:"screenshots"`
 }
 
-// AppStreamXML represents the structure of AppStream XML data
 type AppStreamXML struct {
 	XMLName xml.Name `xml:"component"`
 	ID      string   `xml:"id"`
@@ -109,7 +104,6 @@ type AppStreamXML struct {
 	} `xml:"screenshots"`
 }
 
-// RuntimeInfo holds runtime metadata from ELF sections
 type RuntimeInfo struct {
 	AppBundleID    string `json:"AppBundleID"`
 	FilesystemType string `json:"FilesystemType"`
@@ -122,21 +116,19 @@ var (
 	appStreamMetadataLoaded bool
 )
 
-// init sets up logging
 func init() {
 	log.SetFlags(0)
 }
 
-// loadAppStreamMetadata fetches and decodes AppStream metadata from a remote source
 func loadAppStreamMetadata() error {
 	if appStreamMetadataLoaded {
 		return nil
 	}
 
-	log.Println("Loading AppStream metadata from remote source")
+	log.Println("Loading AppStream metadata from Flathub")
 	resp, err := http.Get("https://github.com/xplshn/dbin-metadata/raw/refs/heads/master/misc/cmd/flatpakAppStreamScrapper/appstream_metadata.msgp.zst")
 	if err != nil {
-		return fmt.Errorf("%sfailed to fetch AppStream metadata%s: %v", errorColor, resetColor, err)
+		return fmt.Errorf("%sfailed to fetch Flathub AppStream metadata%s: %v", errorColor, resetColor, err)
 	}
 	defer resp.Body.Close()
 
@@ -158,15 +150,14 @@ func loadAppStreamMetadata() error {
 
 	err = msgpack.Unmarshal(decompressed, &appStreamMetadata)
 	if err != nil {
-		return fmt.Errorf("%sfailed to unmarshal AppStream metadata%s: %v", errorColor, resetColor, err)
+		return fmt.Errorf("%sfailed to unmarshal Flathub AppStream metadata%s: %v", errorColor, resetColor, err)
 	}
 
-	log.Printf("Successfully loaded %d AppStream metadata entries", len(appStreamMetadata))
+	log.Printf("Successfully loaded %d Flathub AppStream metadata entries", len(appStreamMetadata))
 	appStreamMetadataLoaded = true
 	return nil
 }
 
-// findAppStreamMetadataForAppId searches for AppStream metadata by app ID
 func findAppStreamMetadataForAppId(appId string) *AppStreamMetadata {
 	for i := range appStreamMetadata {
 		if appStreamMetadata[i].AppId == appId {
@@ -176,7 +167,6 @@ func findAppStreamMetadataForAppId(appId string) *AppStreamMetadata {
 	return nil
 }
 
-// extractAppBundleInfo extracts runtime info from an ELF file
 func extractAppBundleInfo(filename string) (RuntimeInfo, error) {
 	file, err := elf.Open(filename)
 	if err != nil {
@@ -229,7 +219,6 @@ func extractAppBundleInfo(filename string) (RuntimeInfo, error) {
 	return cfg, nil
 }
 
-// getFileSize returns the file size in MB
 func getFileSize(path string) string {
 	fileInfo, err := os.Stat(path)
 	if err != nil {
@@ -240,7 +229,6 @@ func getFileSize(path string) string {
 	return fmt.Sprintf("%.2f MB", sizeMB)
 }
 
-// computeHashes calculates Blake3 and SHA256 hashes for a file
 func computeHashes(path string) (b3sum, shasum string, err error) {
 	file, err := os.Open(path)
 	if err != nil {
@@ -266,7 +254,6 @@ func computeHashes(path string) (b3sum, shasum string, err error) {
 	return b3Sum, shaSum, nil
 }
 
-// isExecutable checks if a file is executable
 func isExecutable(path string) (bool, error) {
 	fileInfo, err := os.Stat(path)
 	if err != nil {
@@ -275,7 +262,6 @@ func isExecutable(path string) (bool, error) {
 	return fileInfo.Mode()&0111 != 0, nil
 }
 
-// extractAppStreamXML extracts and parses AppStream XML from an AppBundle
 func extractAppStreamXML(filename string) (*AppStreamXML, error) {
 	cmd := exec.Command(filename, "--pbundle_appstream")
 	output, err := cmd.Output()
@@ -297,7 +283,6 @@ func extractAppStreamXML(filename string) (*AppStreamXML, error) {
 	return &appStreamXML, nil
 }
 
-// generateMarkdown creates a Markdown table from DbinMetadata
 func generateMarkdown(dbinMetadata DbinMetadata) (string, error) {
 	var mdBuffer strings.Builder
 	mdBuffer.WriteString("| appname | description | site | download | version |\n")
@@ -341,7 +326,6 @@ func generateMarkdown(dbinMetadata DbinMetadata) (string, error) {
 	return mdBuffer.String(), nil
 }
 
-// main processes AppBundle files and generates JSON and Markdown outputs
 func main() {
 	inputDir := flag.String("input-dir", "", "Path to the input directory containing .AppBundle files")
 	outputJSON := flag.String("output-file", "", "Path to the output JSON file")
@@ -356,7 +340,7 @@ func main() {
 	}
 
 	if err := loadAppStreamMetadata(); err != nil {
-		log.Printf("%sfailed to load AppStream metadata%s: %v", errorColor, resetColor, err)
+		log.Printf("%sfailed to load Flathub AppStream metadata%s: %v", errorColor, resetColor, err)
 		os.Exit(1)
 	}
 
@@ -390,60 +374,34 @@ func main() {
 			return nil
 		}
 
-		// Initialize package name and ID
-		var pkg, pkgId string
 		baseFilename := filepath.Base(path)
-		appStreamXML, err := extractAppStreamXML(path)
-		name := ""
-
-		// Try to get name from AppStream XML
-		if err == nil && appStreamXML != nil {
-			name = getText(appStreamXML.Names)
-		}
-
-		// Fallback to AppStream metadata if no XML name
-		if name == "" {
-			appData := findAppStreamMetadataForAppId(appBundleID.Name)
-			if appData != nil && appData.Name != "" {
-				name = appData.Name
-			}
-		}
-
-		// Sanitize name if found, otherwise fallback to nameToPkg
-		if name != "" {
-			name = sanitizeName(name)
-		} else {
-			name = nameToPkg(appBundleID.Name)
-		}
-
-		// Construct package name and ID
-		pkg = name + "." + appBundleInfo.FilesystemType + ".AppBundle"
-		pkgId = ternary(appBundleID.Repo != "", appBundleID.Repo, "github.com.xplshn.appbundlehub."+appBundleID.ShortName())
-
-		log.Printf("Adding [%s%s%s](%s) to repository index", blueColor, baseFilename, resetColor, appBundleID.String())
-
 		item := BinaryEntry{
-			Pkg:         pkg,
-			Name:        strings.Title(strings.ReplaceAll(name, "-", " ")),
-			PkgId:       pkgId,
+			PkgId:       ternary(appBundleID.Repo != "", appBundleID.Repo, "github.com.xplshn.appbundlehub."+appBundleID.ShortName()),
 			BuildDate:   appBundleInfo.BuildDate,
 			Size:        getFileSize(path),
 			Bsum:        b3sum,
 			Shasum:      shasum,
-			DownloadURL: *downloadPrefix + filepath.Base(path),
+			DownloadURL: *downloadPrefix + baseFilename,
 			RepoName:    *repoName,
 		}
 
-		isExec, err := isExecutable(path)
-		if err != nil {
-			log.Printf("%sfailed to check executable status for %s%s%s: %v", errorColor, blueColor, path, resetColor, err)
-			return nil
+		if appBundleID.Repo != "" {
+			item.SrcURLs = append(item.SrcURLs, "https://"+appBundleID.Repo)
 		}
-		if !isExec {
-			log.Printf("%s%s%s is not executable%s", warningColor, blueColor, filepath.Base(path), resetColor)
+		if appBundleID.Maintainer != "" {
+			item.Maintainers = append(item.Maintainers, appBundleID.Maintainer)
+		}
+		if appBundleID.Version != "" {
+			item.Version = appBundleID.Version
+		}
+		if appBundleID.Date != nil {
+			item.BuildDate = appBundleID.Date.String()
 		}
 
-		if appStreamXML != nil {
+		name := ""
+		appStreamXML, err := extractAppStreamXML(path)
+		if err == nil && appStreamXML != nil {
+			name = getText(appStreamXML.Names)
 			if appStreamXML.Icon != "" {
 				item.Icon = appStreamXML.Icon
 			}
@@ -453,7 +411,7 @@ func main() {
 			if summary := getText(appStreamXML.Summaries); summary != "" {
 				summaryText, err := html2text.FromString(summary, html2text.Options{PrettyTables: true})
 				if err != nil {
-					log.Printf("%sfailed to convert summary to plain text for %s%s%s: %v", warningColor, blueColor, path, resetColor, err)
+					log.Printf("%sfailed to convert embedded AppStream summary to plain text for %s%s%s: %v", warningColor, blueColor, path, resetColor, err)
 					item.Description = summary
 				} else {
 					item.Description = summaryText
@@ -462,39 +420,41 @@ func main() {
 			if appStreamXML.Description.InnerXML != "" {
 				descText, err := html2text.FromString(appStreamXML.Description.InnerXML, html2text.Options{PrettyTables: true})
 				if err != nil {
-					log.Printf("%sfailed to convert description to plain text for %s%s%s: %v", warningColor, blueColor, path, resetColor, err)
+					log.Printf("%sfailed to convert embedded AppStream description to plain text for %s%s%s: %v", warningColor, blueColor, path, resetColor, err)
 					item.LongDescription = appStreamXML.Description.InnerXML
 				} else {
 					item.LongDescription = descText
 				}
 			}
 			item.AppstreamId = appBundleID.Name
-		} else {
+		}
+
+		if name == "" || item.Description == "" || item.LongDescription == "" || item.Icon == "" || len(item.Screenshots) == 0 {
 			appData := findAppStreamMetadataForAppId(appBundleID.Name)
 			if appData != nil {
-				log.Printf("Using flatpakAppStreamScrapper data for %s%s%s", blueColor, baseFilename, resetColor)
-				if appData.Name != "" {
-					item.Name = appData.Name
+				log.Printf("Using Flathub AppStream data for %s%s%s", blueColor, baseFilename, resetColor)
+				if appData.Name != "" && name == "" {
+					name = appData.Name
 				}
-				if len(appData.Icons) > 0 {
+				if len(appData.Icons) > 0 && item.Icon == "" {
 					item.Icon = appData.Icons[0]
 				}
-				if len(appData.Screenshots) > 0 {
+				if len(appData.Screenshots) > 0 && len(item.Screenshots) == 0 {
 					item.Screenshots = appData.Screenshots
 				}
-				if appData.Summary != "" {
+				if appData.Summary != "" && item.Description == "" {
 					summaryText, err := html2text.FromString(appData.Summary, html2text.Options{PrettyTables: true})
 					if err != nil {
-						log.Printf("%sfailed to convert summary to plain text for %s%s%s: %v", warningColor, blueColor, path, resetColor, err)
+						log.Printf("%sfailed to convert Flathub AppStream summary to plain text for %s%s%s: %v", warningColor, blueColor, path, resetColor, err)
 						item.Description = appData.Summary
 					} else {
 						item.Description = summaryText
 					}
 				}
-				if appData.RichDescription != "" {
+				if appData.RichDescription != "" && item.LongDescription == "" {
 					richDescText, err := html2text.FromString(appData.RichDescription, html2text.Options{PrettyTables: true})
 					if err != nil {
-						log.Printf("%sfailed to convert rich description to plain text for %s%s%s: %v", warningColor, blueColor, path, resetColor, err)
+						log.Printf("%sfailed to convert Flathub AppStream rich description to plain text for %s%s%s: %v", warningColor, blueColor, path, resetColor, err)
 						item.LongDescription = appData.RichDescription
 					} else {
 						item.LongDescription = richDescText
@@ -503,13 +463,32 @@ func main() {
 				if appData.Categories != "" {
 					item.Categories = appData.Categories
 				}
-				if appData.Version != "" {
+				if appData.Version != "" && item.Version == "" {
 					item.Version = appData.Version
 				}
 				item.AppstreamId = appBundleID.Name
 			}
 		}
 
+		if name != "" {
+			name = sanitizeName(name)
+		} else {
+			name = nameToPkg(appBundleID.Name)
+		}
+
+		item.Pkg = name + "." + appBundleInfo.FilesystemType + ".AppBundle"
+		item.Name = strings.Title(strings.ReplaceAll(name, "-", " "))
+
+		isExec, err := isExecutable(path)
+		if err != nil {
+			log.Printf("%sfailed to check executable status for %s%s%s: %v", errorColor, blueColor, path, resetColor, err)
+			return nil
+		}
+		if !isExec {
+			log.Printf("%s%s%s is not executable%s", warningColor, blueColor, baseFilename, resetColor)
+		}
+
+		log.Printf("Adding [%s%s%s](%s) to repository index", blueColor, baseFilename, resetColor, appBundleID.String())
 		dbinMetadata[*repoName] = append(dbinMetadata[*repoName], item)
 		return nil
 	})
@@ -554,7 +533,6 @@ func main() {
 	}
 }
 
-// sanitizeName cleans a name string for safe use
 func sanitizeName(name string) string {
 	name = strings.ToLower(name)
 	name = strings.TrimSpace(name)
@@ -564,7 +542,6 @@ func sanitizeName(name string) string {
 	return name
 }
 
-// nameToPkg extracts the package name from an AppBundle ID
 func nameToPkg(appBundleIDName string) string {
 	idParts := strings.Split(appBundleIDName, ".")
 	if len(idParts) > 0 {
@@ -573,7 +550,6 @@ func nameToPkg(appBundleIDName string) string {
 	return appBundleIDName
 }
 
-// getText retrieves the most appropriate text from a slice of XML elements
 func getText(elements []struct {
 	Lang string `xml:"lang,attr"`
 	Text string `xml:",chardata"`
@@ -597,7 +573,6 @@ func getText(elements []struct {
 	return ""
 }
 
-// ternary provides a ternary-like operation for any type
 func ternary[T any](cond bool, vtrue, vfalse T) T {
 	if cond {
 		return vtrue
