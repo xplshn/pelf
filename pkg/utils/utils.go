@@ -78,7 +78,7 @@ const (
 const (
 	ValidSubstr        = `^[A-Za-z0-9.\-/]+$`
 	ValidRepoSubstr    = `^[A-Za-z0-9.\-_/]+$`
-	ValidNameSubstr    = `^[A-Za-z0-9.\-/]+$`
+	ValidNameSubstr    = `^[A-Za-z0-9.\-_/]+$`
 	ValidVersionSubstr = `^[A-Za-z0-9._]+$` // Version cannot contain hyphens
 	TypeIFormat        = `^(.+)-(\d{2}_\d{2}_\d{4})-([^-]+)$`
 	TypeIIFormat       = `^([^#]+)#([^:@]+)(?::([^@]+))?$`
