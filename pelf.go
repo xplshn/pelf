@@ -296,7 +296,7 @@ func checkAppDir(appDir string, appBundleID *utils.AppBundleID) error {
 			}
 			fmt.Fprintf(os.Stderr, "%swarning%s: No %s found in the top-level of the AppDir: %s\n", warningColor, resetColor, fileCheck.name, appDir)
 			if fileCheck.name == ".xml file" && !utils.IsAppStreamID(appBundleID.Name) {
-				fmt.Fprintf(os.Stderr, "%s without an AppStream file and without an AppStreamID as the AppBundleID's name part, this AppBundle will not get metadata that's automatically populated by appstream-helper: %s\n", strings.Repeat(" ", len("warning:")), appDir)
+				fmt.Fprintf(os.Stderr, "%s without an AppStream file and without an AppStreamID as the AppBundleID's name part, this AppBundle will not get metadata that's automatically populated by appstream-helper\n", strings.Repeat(" ", len("warning:")))
 			}
 		}
 	}
@@ -335,7 +335,7 @@ func main() {
 				CustomEmbedDir:       c.String("static-tools-dir"),
 				Runtime:              c.String("runtime"),
 				UseUPX:               c.Bool("upx"),
-				PreferToolsInPath:    c.Bool("prefer-tools-in-Path"),
+				PreferToolsInPath:    c.Bool("prefer-tools-in-path"),
 				DisableRandomWorkDir: c.Bool("disable-use-random-workdir"),
 				AppImageCompat:       c.Bool("appimage-compat"),
 				CustomSections:       c.StringSlice("add-runtime-info-section"),
@@ -348,19 +348,18 @@ func main() {
 			}
 			appBundleID, t, err := utils.ParseAppBundleID(config.AppBundleID)
 			if err != nil {
-				return fmt.Errorf("invalid AppBundleID format: %v", err)
+				fmt.Fprintf(os.Stderr, "%swarning%s: AppBundleID does not follow the spec-compliant format: %v\n", warningColor, resetColor, err)
+			}
+			if appBundleID == nil {
+				appBundleID = &utils.AppBundleID{Raw: config.AppBundleID}
 			}
 			// If output-to is not provided, AppBundleID must be compliant
 			if config.OutputFile == "" {
 				if _, err := appBundleID.Compliant(); err != nil {
 					return fmt.Errorf("AppBundleID must be in a valid format when --output-to is not provided: %v", err)
 				}
-			} else {
-				// If output-to is provided, only warn on non-compliant AppBundleID
-				if _, err := appBundleID.Compliant(); err != nil {
-					fmt.Fprintf(os.Stderr, "%swarning%s: AppBundleID does not follow the spec-compliant format: %v\n", warningColor, resetColor, err)
-				}
 			}
+
 			if t == utils.TypeI {
 				fmt.Fprintf(os.Stderr, "%swarning%s: AppBundleID is type I (%s). Recommended format is type II or type III, while type I shall only be used for filenames. Example: 'name#repo[:version][@date]'\n", warningColor, resetColor, appBundleID.Raw)
 			}
