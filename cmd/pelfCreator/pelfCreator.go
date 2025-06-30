@@ -1,3 +1,4 @@
+//TODO: Cleanup
 package main
 
 import (
@@ -35,13 +36,14 @@ const (
 	errorColor   = "\x1b[0;31m"
 	blueColor    = "\x1b[0;34m"
 	resetColor   = "\x1b[0m"
-	warning      = warningColor+"warning"+resetColor+":"
+	warning      = warningColor + "warning" + resetColor + ":"
 )
 
 type Config struct {
 	Maintainer          string
 	Name                string
 	AppBundleID         string
+	AppStreamID         string
 	PkgAdd              string
 	Entrypoint          string
 	DontPack            bool
@@ -57,6 +59,91 @@ type Config struct {
 	AppDir              string
 	Date                string
 	TempDir             string
+}
+
+// AppBundleIDHandler handles AppBundleID generation and validation
+type AppBundleIDHandler struct {
+	config *Config
+}
+func NewAppBundleIDHandler(config *Config) *AppBundleIDHandler {
+	return &AppBundleIDHandler{config: config}
+}
+func (h *AppBundleIDHandler) ProcessAppBundleID() error {
+	if h.config.AppBundleID == "" {
+		return h.generateDefaultAppBundleID()
+	}
+	return h.validateProvidedAppBundleID()
+}
+func (h *AppBundleIDHandler) generateDefaultAppBundleID() error {
+	name := h.config.AppStreamID
+	if name == "" {
+		name = h.config.Name
+	}
+	id := utils.AppBundleID{
+		Name: name,
+		Repo: h.config.Maintainer,
+		Date: parseTime(h.config.Date),
+	}
+	h.config.AppBundleID = id.String()
+	return nil
+}
+func (h *AppBundleIDHandler) validateProvidedAppBundleID() error {
+	appBundleID, t, err := utils.ParseAppBundleID(h.config.AppBundleID)
+	if err != nil {
+		return fmt.Errorf("invalid AppBundleID: %v", err)
+	}
+	if t == utils.TypeI {
+		fmt.Fprintf(os.Stderr, "%s AppBundleID is type I (%s). Recommended format is type II or type III, while type I shall only be used for filenames. Example: 'name#repo[:version][@date]'\n", warning, appBundleID.Raw)
+	}
+	if h.config.AppStreamID != "" {
+		return fmt.Errorf("do not provide an AppBundleID and an AppStreamID at the same time. You can just put the AppStreamID as the name in the AppBundleID")
+	}
+	h.config.AppBundleID = appBundleID.String()
+	return nil
+}
+func (h *AppBundleIDHandler) GenerateOutputFilename() error {
+	appBundleID, _, err := utils.ParseAppBundleID(h.config.AppBundleID)
+	if err != nil {
+		return fmt.Errorf("invalid AppBundleID format: %v", err)
+	}
+
+	appBundleID.Name = h.config.Name
+
+	if _, err := appBundleID.Compliant(); err != nil {
+		return fmt.Errorf("AppBundleID must be in a valid format when --output-to is not provided: %v", err)
+	}
+
+	name, err := appBundleID.Format(utils.TypeI)
+	if err != nil {
+		return fmt.Errorf("cannot generate output filename: %v", err)
+	}
+
+	h.config.AppDir = fmt.Sprintf("%s.AppDir", name)
+	if h.config.OutputTo == "" {
+		h.config.OutputTo = fmt.Sprintf("%s.%s.AppBundle", name, h.config.AppBundleFS)
+	}
+	return nil
+}
+
+// NameResolver handles name resolution logic
+type NameResolver struct {
+	config *Config
+}
+
+func NewNameResolver(config *Config) *NameResolver {
+	return &NameResolver{config: config}
+}
+
+func (r *NameResolver) ResolveName() error {
+	if r.config.Name == "" && r.config.AppStreamID == "" {
+		return fmt.Errorf("either --name/-n or --appstream-id/-a must be provided")
+	}
+
+	if r.config.Name == "" {
+		r.config.Name = utils.AppStreamIDToName(r.config.AppStreamID)
+	}
+
+	return nil
 }
 
 func main() {
@@ -77,8 +164,15 @@ func main() {
 				Name:        "name",
 				Aliases:     []string{"n"},
 				Usage:       "Set the name of the app",
-				Required:    true,
+				Required:    false,
 				Destination: &config.Name,
+			},
+			&cli.StringFlag{
+				Name:        "appstream-id",
+				Aliases:     []string{"a"},
+				Usage:       "Set the appstream ID of the app",
+				Required:    false,
+				Destination: &config.AppStreamID,
 			},
 			&cli.StringFlag{
 				Name:        "appbundle-id",
@@ -155,53 +249,6 @@ func main() {
 			},
 		},
 		Action: func(ctx context.Context, c *cli.Command) error {
-			config.Date = time.Now().Format("02_01_2006")
-			if config.AppBundleID == "" {
-				id := utils.AppBundleID{
-					Name: config.Name,
-					Repo: config.Maintainer,
-					Date: parseTime(config.Date),
-				}
-				config.AppBundleID = id.String()
-			} else {
-				// Parse provided AppBundleID to ensure it's in the new format (name#repo[@date])
-				appBundleID, t, err := utils.ParseAppBundleID(config.AppBundleID)
-				if err != nil {
-					return fmt.Errorf("invalid AppBundleID: %v", err)
-				}
-				if t == utils.TypeI {
-					fmt.Fprintf(os.Stderr, "%s AppBundleID is type I (%s). Recommended format is type II or type III, while type I shall only be used for filenames. Example: 'name#repo[:version][@date]'\n", warning, appBundleID.Raw)
-				}
-				config.AppBundleID = appBundleID.String()
-			}
-			config.AppDir = fmt.Sprintf("%s.AppDir", config.Name)
-			if config.Lib4binArgs != "" {
-				config.Sharun = true
-				parts := strings.Fields(config.Lib4binArgs)
-				for i, part := range parts {
-					parts[i] = filepath.Join(config.AppDir, "proto", part)
-				}
-				config.Lib4binArgs = strings.Join(parts, " ")
-			}
-
-			var err error
-			config.TempDir, err = os.MkdirTemp("", "pelfCreator-deps")
-			if err != nil {
-				return fmt.Errorf("failed to create temp dir: %v", err)
-			}
-			defer os.RemoveAll(config.TempDir)
-
-			// Check if --local is an archive and overwrite binaryDependencies if true
-			if config.LocalResources != "" {
-				if isArchive(config.LocalResources) {
-					fileContent, err := os.ReadFile(config.LocalResources)
-					if err != nil {
-						return fmt.Errorf("failed to read local archive: %v", err)
-					}
-					binaryDependencies = fileContent
-				}
-			}
-
 			return runPelfCreator(config)
 		},
 	}
@@ -212,6 +259,111 @@ func main() {
 }
 
 func runPelfCreator(config Config) error {
+	// Initialize configuration
+	config.Date = time.Now().Format("02_01_2006")
+
+	// Resolve name
+	nameResolver := NewNameResolver(&config)
+	if err := nameResolver.ResolveName(); err != nil {
+		return err
+	}
+
+	// Handle AppBundleID processing
+	idHandler := NewAppBundleIDHandler(&config)
+	if err := idHandler.ProcessAppBundleID(); err != nil {
+		return err
+	}
+
+	// Configure Sharun if needed
+	if config.Lib4binArgs != "" {
+		config.Sharun = true
+		config.Lib4binArgs = prepareSharunArgs(config)
+	}
+
+	// Setup temp directory
+	var err error
+	config.TempDir, err = os.MkdirTemp("", "pelfCreator-deps")
+	if err != nil {
+		return fmt.Errorf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(config.TempDir)
+
+	// Handle local resources
+	if err := handleLocalResources(&config); err != nil {
+		return err
+	}
+
+	// Generate output filename
+	if err := idHandler.GenerateOutputFilename(); err != nil {
+		return err
+	}
+
+	// Create AppDir structure
+	if err := createAppDirStructure(config); err != nil {
+		return err
+	}
+
+	// Setup dependencies
+	if err := setupDependencies(config); err != nil {
+		return err
+	}
+
+	// Extract rootfs
+	if err := extractRootfs(config); err != nil {
+		return err
+	}
+
+	// Setup AppRun and packages
+	if err := setupAppRunAndPackages(config); err != nil {
+		return err
+	}
+
+	// Handle entrypoint
+	if err := handleEntrypoint(config); err != nil {
+		return err
+	}
+
+	// Setup execution mode
+	if err := setupExecutionMode(config); err != nil {
+		return err
+	}
+
+	// Cleanup
+	if err := tidyUp(config); err != nil {
+		return fmt.Errorf("cleanup failed: %v", err)
+	}
+
+	// Create bundle
+	if !config.DontPack {
+		if err := createBundle(config); err != nil {
+			return fmt.Errorf("bundle creation failed: %v", err)
+		}
+	}
+
+	fmt.Printf("Successfully created %s\n", config.OutputTo)
+	return nil
+}
+
+func prepareSharunArgs(config Config) string {
+	parts := strings.Fields(config.Lib4binArgs)
+	for i, part := range parts {
+		parts[i] = filepath.Join(config.AppDir, "proto", part)
+	}
+	return strings.Join(parts, " ")
+}
+
+func handleLocalResources(config *Config) error {
+	if config.LocalResources != "" && isArchive(config.LocalResources) {
+		fileContent, err := os.ReadFile(config.LocalResources)
+		if err != nil {
+			return fmt.Errorf("failed to read local archive: %v", err)
+		}
+		binaryDependencies = fileContent
+	}
+	return nil
+}
+
+func createAppDirStructure(config Config) error {
 	protoDir := filepath.Join(config.AppDir, "proto")
 	if err := os.MkdirAll(protoDir, 0755); err != nil {
 		return fmt.Errorf("failed to create proto directory: %v", err)
@@ -223,65 +375,50 @@ func runPelfCreator(config Config) error {
 		return fmt.Errorf("failed to create .genSteps: %v", err)
 	}
 
-	if err := setupDependencies(config); err != nil {
-		return err
-	}
+	return nil
+}
 
+func extractRootfs(config Config) error {
 	rootfsPath, err := findRootfs(config)
 	if err != nil {
 		return err
 	}
 
+	protoDir := filepath.Join(config.AppDir, "proto")
 	if err := extractToDirectory(rootfsPath, protoDir, &config); err != nil {
 		return fmt.Errorf("failed to extract rootfs: %v", err)
 	}
 
-	if err := setupAppRunAndPackages(config); err != nil {
-		return err
-	}
-
-	if config.Entrypoint != "" {
-		if err := createEntrypoint(config); err != nil {
-			return fmt.Errorf("entrypoint creation failed: %v", err)
-		}
-
-		if strings.HasSuffix(config.Entrypoint, ".desktop") {
-			if err := handleDesktopFile(config); err != nil {
-				return fmt.Errorf("failed to handle desktop file: %v", err)
-			}
-		}
-	}
-
-	// Handle the three structures based on configuration
-	if config.Sandbox {
-		// Shallow mode - uses AppRun.rootfs-based
-		if err := setupSandboxMode(config); err != nil {
-			return err
-		}
-	} else if config.Sharun {
-		// Sharun or Hybrid mode
-		if err := setupSharunMode(config); err != nil {
-			return err
-		}
-	} else {
-		// Default mode (similar to Hybrid but without Sharun)
-		if err := setupDefaultMode(config); err != nil {
-			return err
-		}
-	}
-
-	if err := tidyUp(config); err != nil {
-		return fmt.Errorf("cleanup failed: %v", err)
-	}
-
-	if !config.DontPack {
-		if err := createBundle(config); err != nil {
-			return fmt.Errorf("bundle creation failed: %v", err)
-		}
-	}
-
-	fmt.Printf("Successfully created %s\n", config.OutputTo)
 	return nil
+}
+
+func handleEntrypoint(config Config) error {
+	if config.Entrypoint == "" {
+		return nil
+	}
+
+	if err := createEntrypoint(config); err != nil {
+		return fmt.Errorf("entrypoint creation failed: %v", err)
+	}
+
+	if strings.HasSuffix(config.Entrypoint, ".desktop") {
+		if err := handleDesktopFile(config); err != nil {
+			return fmt.Errorf("failed to handle desktop file: %v", err)
+		}
+	}
+
+	return nil
+}
+
+func setupExecutionMode(config Config) error {
+	switch {
+	case config.Sandbox:
+		return setupSandboxMode(config)
+	case config.Sharun:
+		return setupSharunMode(config)
+	default:
+		return setupDefaultMode(config)
+	}
 }
 
 func setupSandboxMode(config Config) error {
@@ -457,7 +594,7 @@ func setupAppRunAndPackages(config Config) error {
 			}
 			// Update to the new format: name#repo:version[@date]
 			newAppBundleID := &utils.AppBundleID{
-				Name:    config.Name,
+				Name:    appBundleID.Name,
 				Repo:    appBundleID.Repo,
 				Version: version,
 				Date:    appBundleID.Date,
@@ -732,7 +869,7 @@ func createBundle(config Config) error {
 	cmd := exec.Command(filepath.Join(config.TempDir, "pelf"),
 		"--add-appdir", config.AppDir,
 		"--appbundle-id", config.AppBundleID,
-		T(config.OutputTo != "", "output-to", ""), T(config.OutputTo != "", fmt.Sprintf("%s.%s.AppBundle", config.Name, config.AppBundleFS), ""),
+		"--output-to", config.OutputTo,
 	)
 
 	cmd.Stdout = os.Stdout
@@ -906,7 +1043,10 @@ func extractToDirectory(tarball, dst string, config *Config) error {
 	}
 	defer archiveFile.Close()
 
-	format, input, identifyErr := archives.Identify(context.Background(), tarball, archiveFile)
+	var format archives.Format
+	var input io.Reader
+	var identifyErr error
+	format, input, identifyErr = archives.Identify(context.Background(), tarball, archiveFile)
 	if identifyErr != nil {
 		return fmt.Errorf("identify format: %w", identifyErr)
 	}
