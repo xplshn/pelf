@@ -1,9 +1,3 @@
-// Implements the AppBundle builder
-// A package format that can be used to wrap AppDirs into an executable
-// run `./cbuild.sh pelf` to get a working `pelf` binary
-//
-// github.com/xplshn/pelf
-//
 package main
 
 import (
@@ -28,7 +22,6 @@ import (
 	"github.com/zeebo/blake3"
 	"golang.org/x/sys/unix"
 )
-
 
 const (
 	pelfVersion = "3.0"
@@ -264,7 +257,7 @@ func getFilesystemTypeFromOutputFile(outputFile string) string {
 			return "squashfs"
 		}
 	}
-	return "squashfs"
+	return "dwarfs"
 }
 
 func validateRunBehavior(_ context.Context, _ *cli.Command, value uint) error {
@@ -274,13 +267,15 @@ func validateRunBehavior(_ context.Context, _ *cli.Command, value uint) error {
 	return nil
 }
 
-func checkAppDir(appDir string) error {
+func checkAppDir(appDir string, appBundleID *utils.AppBundleID) error {
+	fsys := os.DirFS(appDir)
 	if _, err := os.Stat(appDir); os.IsNotExist(err) {
 		return fmt.Errorf("AppDir does not exist: %s", appDir)
 	}
 
 	filesToCheck := []struct {
 		name      string
+		warning   string
 		globs     []string
 		mustExist bool
 	}{
@@ -291,7 +286,7 @@ func checkAppDir(appDir string) error {
 	}
 
 	for _, fileCheck := range filesToCheck {
-		path, err := utils.FindFiles(appDir, 1, fileCheck.globs)
+		path, err := utils.FindFiles(fsys, ".", 1, fileCheck.globs)
 		if err != nil {
 			return fmt.Errorf("failed to check for %s in AppDir: %w", fileCheck.name, err)
 		}
@@ -299,7 +294,10 @@ func checkAppDir(appDir string) error {
 			if fileCheck.mustExist {
 				return fmt.Errorf("error: %s does not exist in %s at depth %d", fileCheck.name, filepath.Base(appDir), 1)
 			}
-			fmt.Fprintf(os.Stderr, "%swarning%s: No %s found in the top-level of AppDir: %s\n", warningColor, resetColor, fileCheck.name, appDir)
+			fmt.Fprintf(os.Stderr, "%swarning%s: No %s found in the top-level of the AppDir: %s\n", warningColor, resetColor, fileCheck.name, appDir)
+			if fileCheck.name == ".xml file" && !utils.IsAppStreamID(appBundleID.Name) {
+				fmt.Fprintf(os.Stderr, "%s without an AppStream file and without an AppStreamID as the AppBundleID's name part, this AppBundle will not get metadata that's automatically populated by appstream-helper: %s\n", strings.Repeat(" ", len("warning:")), appDir)
+			}
 		}
 	}
 
@@ -337,26 +335,54 @@ func main() {
 				CustomEmbedDir:       c.String("static-tools-dir"),
 				Runtime:              c.String("runtime"),
 				UseUPX:               c.Bool("upx"),
-				PreferToolsInPath:    c.Bool("prefer-tools-in-path"),
+				PreferToolsInPath:    c.Bool("prefer-tools-in-Path"),
 				DisableRandomWorkDir: c.Bool("disable-use-random-workdir"),
 				AppImageCompat:       c.Bool("appimage-compat"),
 				CustomSections:       c.StringSlice("add-runtime-info-section"),
 				RunBehavior:          uint8(c.Uint("run-behavior")),
 			}
 
-			// warn if using legacy/non-verified AppBundleID
-			if config.AppBundleID != "" {
-				appBundleID, err := utils.ParseAppBundleID(config.AppBundleID)
+			// Validate and process AppBundleID
+			if config.AppBundleID == "" {
+				return fmt.Errorf("--appbundle-id is an obligatory parameter")
+			}
+			appBundleID, t, err := utils.ParseAppBundleID(config.AppBundleID)
+			if err != nil {
+				return fmt.Errorf("invalid AppBundleID format: %v", err)
+			}
+			// If output-to is not provided, AppBundleID must be compliant
+			if config.OutputFile == "" {
+				if _, err := appBundleID.Compliant(); err != nil {
+					return fmt.Errorf("AppBundleID must be in a valid format when --output-to is not provided: %v", err)
+				}
+			} else {
+				// If output-to is provided, only warn on non-compliant AppBundleID
+				if _, err := appBundleID.Compliant(); err != nil {
+					fmt.Fprintf(os.Stderr, "%swarning%s: AppBundleID does not follow the spec-compliant format: %v\n", warningColor, resetColor, err)
+				}
+			}
+			if t == utils.TypeI {
+				fmt.Fprintf(os.Stderr, "%swarning%s: AppBundleID is type I (%s). Recommended format is type II or type III, while type I shall only be used for filenames. Example: 'name#repo[:version][@date]'\n", warningColor, resetColor, appBundleID.Raw)
+			}
+
+			// Handle output file
+			if config.OutputFile == "" {
+				// Craft filename using AppBundleID in Type I format
+				typeIOutput, err := appBundleID.Format(utils.TypeI)
 				if err != nil {
-					fmt.Fprintf(os.Stderr, "warning: Invalid AppBundleID format: %v\n", err)
-				} else {
-					if err := appBundleID.Verify(); err != nil {
-						fmt.Fprintf(os.Stderr, "warning: AppBundleID does not follow verified format: %v\n", err)
-					}
-					if appBundleID.Maintainer != "" {
-						fmt.Fprintf(os.Stderr, "warning: AppBundleID is in legacy format (%s). Recommended format is 'name#repo[:version][@date]'\n", appBundleID.Raw)
+					//// Fallback to Type II if Type I is not possible
+					//typeIOutput, err = appBundleID.Format(utils.TypeII)
+					//if err != nil {
+						return fmt.Errorf("cannot generate output filename: %v", err)
+					//}
+				}
+				fsExt := ".dwfs"
+				if c.IsSet("filesystem") {
+					if c.String("filesystem") == "squashfs" {
+						fsExt = ".sqfs"
 					}
 				}
+				config.OutputFile = typeIOutput + fsExt + ".AppBundle"
 			}
 
 			addSectionFiles := c.StringSlice("add-elf-section")
@@ -398,7 +424,6 @@ func main() {
 
 			config.elfSections = elfSections
 
-			var err error
 			globalPath, err = setupBinaryDependencies(config)
 			if err != nil {
 				if updinfoTempFile != "" {
@@ -417,8 +442,8 @@ func main() {
 				return listStaticTools(config.BinDepDir)
 			}
 
-			if c.String("add-appdir") == "" || c.String("appbundle-id") == "" || c.String("output-to") == "" {
-				return fmt.Errorf("--add-appdir, --appbundle-id and --output-to are obligatory parameters")
+			if c.String("add-appdir") == "" {
+				return fmt.Errorf("--add-appdir is an obligatory parameter")
 			}
 
 			if !c.IsSet("filesystem") && config.OutputFile != "" {
@@ -431,7 +456,7 @@ func main() {
 				return err
 			}
 
-			return run(config)
+			return run(config, appBundleID)
 		},
 	}
 
@@ -478,12 +503,12 @@ func bytesToString(b []byte) string {
 	return string(b[:n])
 }
 
-func run(config *Config) error {
-	if err := checkAppDir(config.AppDir); err != nil {
+func run(cfg *Config, appBundleID *utils.AppBundleID) error {
+	if err := checkAppDir(cfg.AppDir, appBundleID); err != nil {
 		return err
 	}
 
-	fsType := config.FilesystemType
+	fsType := cfg.FilesystemType
 	var fs *Filesystem
 	for _, f := range Filesystems {
 		if _, ok := f.Type[fsType]; ok {
@@ -509,20 +534,20 @@ func run(config *Config) error {
 	}
 	defer os.RemoveAll(workDir)
 
-	config.ArchivePath = filepath.Join(workDir, "archive."+fsType)
-	if err := createArchive(config, fs); err != nil {
+	cfg.ArchivePath = filepath.Join(workDir, " archive."+fsType)
+	if err := createArchive(cfg, fs); err != nil {
 		return err
 	}
 
-	if err := createSelfExtractingArchive(config, workDir); err != nil {
+	if err := createSelfExtractingArchive(cfg, workDir); err != nil {
 		return err
 	}
 
 	magic := "AB"
-	if config.AppImageCompat {
+	if cfg.AppImageCompat {
 		magic = "AI"
 	}
-	if err := addMagic(config.OutputFile, magic); err != nil {
+	if err := addMagic(cfg.OutputFile, magic); err != nil {
 		return fmt.Errorf("failed to add magic bytes: %w", err)
 	}
 
@@ -694,7 +719,7 @@ func createTar(srcDir, tarPath string) error {
 			}
 			defer f.Close()
 
-			if _, err = io.Copy(tw, f); err != nil {
+			if _, err := io.Copy(tw, f); err != nil {
 				return err
 			}
 		}

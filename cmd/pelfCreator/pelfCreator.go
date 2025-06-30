@@ -14,6 +14,8 @@ import (
 	"time"
 	"slices"
 
+	"github.com/xplshn/pelf/pkg/utils"
+
 	"github.com/go-ini/ini"
 	"github.com/mholt/archives"
 	"github.com/urfave/cli/v3"
@@ -28,6 +30,12 @@ const (
 	defaultRootfsURL = "https://github.com/xplshn/filesystems/releases/latest/download/AlpineLinux_edge-%s.tar.zst"
 	dirPermissions   = 0o755
 	filePermissions  = 0o644
+	// colors
+	warningColor = "\x1b[0;33m"
+	errorColor   = "\x1b[0;31m"
+	blueColor    = "\x1b[0;34m"
+	resetColor   = "\x1b[0m"
+	warning      = warningColor+"warning"+resetColor+":"
 )
 
 type Config struct {
@@ -75,7 +83,7 @@ func main() {
 			&cli.StringFlag{
 				Name:        "appbundle-id",
 				Aliases:     []string{"i"},
-				Usage:       "Set the AppBundleID of the app (optional)",
+				Usage:       "Set the AppBundleID of the app (optional, format: name#repo[@date])",
 				Destination: &config.AppBundleID,
 			},
 			&cli.StringFlag{
@@ -113,7 +121,7 @@ func main() {
 			&cli.StringFlag{
 				Name:        "output-to",
 				Aliases:     []string{"o"},
-				Usage:       "Set the output file name (optional, default: <name>-<date>.dwfs.AppBundle)",
+				Usage:       "Set the output file name (optional, default: name#repo:version@date.dwfs.AppBundle or name-date-maintainer.dwfs.AppBundle)",
 				Destination: &config.OutputTo,
 			},
 			&cli.StringFlag{
@@ -149,11 +157,22 @@ func main() {
 		Action: func(ctx context.Context, c *cli.Command) error {
 			config.Date = time.Now().Format("02_01_2006")
 			if config.AppBundleID == "" {
-				config.AppBundleID = fmt.Sprintf("%s-%s-%s", config.Name, config.Date, config.Maintainer)
-				config.Name = config.AppBundleID
+				id := utils.AppBundleID{
+					Name: config.Name,
+					Repo: config.Maintainer,
+					Date: parseTime(config.Date),
+				}
+				config.AppBundleID = id.String()
 			} else {
-				config.AppBundleID = fmt.Sprintf("%s-%s-%s", config.AppBundleID, config.Date, config.Maintainer)
-				config.Name = fmt.Sprintf("%s-%s-%s", config.Name, config.Date, config.Maintainer)
+				// Parse provided AppBundleID to ensure it's in the new format (name#repo[@date])
+				appBundleID, t, err := utils.ParseAppBundleID(config.AppBundleID)
+				if err != nil {
+					return fmt.Errorf("invalid AppBundleID: %v", err)
+				}
+				if t == utils.TypeI {
+					fmt.Fprintf(os.Stderr, "%s AppBundleID is type I (%s). Recommended format is type II or type III, while type I shall only be used for filenames. Example: 'name#repo[:version][@date]'\n", warning, appBundleID.Raw)
+				}
+				config.AppBundleID = appBundleID.String()
 			}
 			config.AppDir = fmt.Sprintf("%s.AppDir", config.Name)
 			if config.Lib4binArgs != "" {
@@ -190,18 +209,6 @@ func main() {
 	if err := app.Run(context.Background(), os.Args); err != nil {
 		log.Fatalf("Error: %v", err)
 	}
-}
-
-func isArchive(filePath string) bool {
-	// Check if the file is an archive by attempting to identify its format
-	archiveFile, err := os.Open(filePath)
-	if err != nil {
-		return false
-	}
-	defer archiveFile.Close()
-
-	_, _, identifyErr := archives.Identify(context.Background(), filePath, archiveFile)
-	return identifyErr == nil
 }
 
 func runPelfCreator(config Config) error {
@@ -430,14 +437,33 @@ func setupAppRunAndPackages(config Config) error {
 		return err
 	}
 
-	// The Alpine package manager (apk) calls `chroot` when running package
-	// triggers so we need to enable CAP_SYS_CHROOT. We also have to fake
-	// UID 0 (root) inside the container to avoid permissions errors.
+	// Run pkgadd.sh
 	cmd := exec.Command(filepath.Join(config.AppDir, "AppRun"), "--Xbwrap", "--uid", "0", "--gid", "0", "--cap-add CAP_SYS_CHROOT", "--", "/app/pkgadd.sh", config.PkgAdd)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to run pkgadd.sh: %v", err)
+	}
+
+	// Check for .version file and update AppBundleID and OutputTo if it exists
+	versionFile := filepath.Join(config.AppDir, ".version")
+	if versionData, err := os.ReadFile(versionFile); err == nil {
+		version := strings.TrimSpace(string(versionData))
+		if version != "" {
+			// Parse the existing AppBundleID
+			appBundleID, _, err := utils.ParseAppBundleID(config.AppBundleID)
+			if err != nil {
+				return fmt.Errorf("failed to parse AppBundleID after pkgadd: %v", err)
+			}
+			// Update to the new format: name#repo:version[@date]
+			newAppBundleID := &utils.AppBundleID{
+				Name:    config.Name,
+				Repo:    appBundleID.Repo,
+				Version: version,
+				Date:    appBundleID.Date,
+			}
+			config.AppBundleID = newAppBundleID.String()
+		}
 	}
 
 	if config.Sandbox {
@@ -510,7 +536,7 @@ func handleDesktopFile(config Config) error {
 	// Handle icon if present
 	if iconName != "" {
 		if err := findAndCopyIcon(config.AppDir, iconName); err != nil {
-			log.Printf("Warning: Failed to handle icon: %v", err)
+			log.Printf("%s failed to handle icon: %v", warning, err)
 		}
 	}
 
@@ -703,14 +729,10 @@ func setupSandboxFiles(protoDir string) error {
 }
 
 func createBundle(config Config) error {
-	if config.OutputTo == "" {
-		config.OutputTo = fmt.Sprintf("%s.%s.AppBundle", config.Name, config.AppBundleFS)
-	}
-
 	cmd := exec.Command(filepath.Join(config.TempDir, "pelf"),
 		"--add-appdir", config.AppDir,
 		"--appbundle-id", config.AppBundleID,
-		"--output-to", config.OutputTo,
+		T(config.OutputTo != "", "output-to", ""), T(config.OutputTo != "", fmt.Sprintf("%s.%s.AppBundle", config.Name, config.AppBundleFS), ""),
 	)
 
 	cmd.Stdout = os.Stdout
@@ -769,6 +791,18 @@ func calculateB3Sum(filePath string) (string, error) {
 	}
 	hash := blake3.Sum256(data)
 	return string(hash[:]), nil
+}
+
+func isArchive(filePath string) bool {
+	// Check if the file is an archive by attempting to identify its format
+	archiveFile, err := os.Open(filePath)
+	if err != nil {
+		return false
+	}
+	defer archiveFile.Close()
+
+	_, _, identifyErr := archives.Identify(context.Background(), filePath, archiveFile)
+	return identifyErr == nil
 }
 
 func handleFile(f archives.FileInfo, dst string, config *Config) error {
@@ -895,4 +929,19 @@ func extractToDirectory(tarball, dst string, config *Config) error {
 	}
 
 	return nil
+}
+
+func parseTime(s string) *time.Time {
+	tm, err := time.Parse(utils.TimeLayout, s)
+	if err != nil {
+		log.Fatalf("Failed to parse time %q: %v", s, err)
+	}
+	return &tm
+}
+
+func T[T any](cond bool, vtrue, vfalse T) T {
+	if cond {
+		return vtrue
+	}
+	return vfalse
 }

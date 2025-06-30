@@ -1,16 +1,27 @@
 package utils
 
 import (
+	"io/fs"
 	"testing"
+	"testing/fstest"
 	"time"
 )
 
+func parseTime(t *testing.T, s string) *time.Time {
+	t.Helper()
+	tm, err := time.Parse(TimeLayout, s)
+	if err != nil {
+		t.Fatalf("Failed to parse time %q: %v", s, err)
+	}
+	return &tm
+}
+
 func TestParseAppBundleID(t *testing.T) {
 	tests := []struct {
-		name       string
-		raw        string
-		shouldErr  bool
-		expected   *AppBundleID
+		name      string
+		raw       string
+		shouldErr bool
+		expected  *AppBundleID
 	}{
 		{
 			name:      "Valid new format without date",
@@ -40,10 +51,10 @@ func TestParseAppBundleID(t *testing.T) {
 			raw:       "some-tool-13_04_2022-xplshn",
 			shouldErr: false,
 			expected: &AppBundleID{
-				Raw:        "some-tool-13_04_2022-xplshn",
-				Name:       "some-tool",
-				Maintainer: "xplshn",
-				Date:       parseTime(t, "13_04_2022"),
+				Raw:  "some-tool-13_04_2022-xplshn",
+				Name: "some-tool",
+				Repo: "xplshn",
+				Date: parseTime(t, "13_04_2022"),
 			},
 		},
 		{
@@ -57,18 +68,8 @@ func TestParseAppBundleID(t *testing.T) {
 			shouldErr: true,
 		},
 		{
-			name:      "Invalid characters in maintainer",
-			raw:       "app-01_01_2023-main_tainer",
-			shouldErr: true,
-		},
-		{
 			name:      "Invalid characters in name",
 			raw:       "app_name#core:v1",
-			shouldErr: true,
-		},
-		{
-			name:      "Invalid characters in version",
-			raw:       "app#core:v1_2",
 			shouldErr: true,
 		},
 		{
@@ -83,52 +84,42 @@ func TestParseAppBundleID(t *testing.T) {
 			},
 		},
 		{
-			name:      "Maintainer with slashes",
-			raw:       "tool-01_01_2023-user/repo",
-			shouldErr: false,
-			expected: &AppBundleID{
-				Raw:        "tool-01_01_2023-user/repo",
-				Name:       "tool",
-				Maintainer: "user.repo",
-				Date:       parseTime(t, "01_01_2023"),
-			},
-		},
-		{
 			name:      "Empty input",
 			raw:       "",
 			shouldErr: true,
 		},
 		{
-			name:      "Underscore in repo (valid)",
-			raw:       "app#core_repo_sub:v1.0",
+			name:      "Complex repo format",
+			raw:       "app#github.com/xplshn/pelf:v1.0",
 			shouldErr: false,
 			expected: &AppBundleID{
-				Raw:     "app#core_repo_sub:v1.0",
+				Raw:     "app#github.com/xplshn/pelf:v1.0",
 				Name:    "app",
-				Repo:    "core_repo_sub",
+				Repo:    "github.com.xplshn.pelf",
 				Version: "v1.0",
 			},
 		},
 		{
-			name:      "Underscore in name (invalid)",
-			raw:       "app_name#core:v1",
-			shouldErr: true,
+			name:      "Version with hyphens",
+			raw:       "app#repo:v1.2.3-beta",
+			shouldErr: false,
+			expected: &AppBundleID{
+				Raw:     "app#repo:v1.2.3-beta",
+				Name:    "app",
+				Repo:    "repo",
+				Version: "v1.2.3_beta",
+			},
 		},
 		{
-			name:      "Underscore in version (invalid)",
-			raw:       "app#core:v1_0",
-			shouldErr: true,
-		},
-		{
-			name:      "Underscore in maintainer (invalid)",
-			raw:       "tool-01_01_2023-user_repo",
+			name:      "Version with invalid characters",
+			raw:       "app#repo:v1.2.3!",
 			shouldErr: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			id, err := ParseAppBundleID(tt.raw)
+			id, _, err := ParseAppBundleID(tt.raw)
 			if tt.shouldErr {
 				if err == nil {
 					t.Errorf("Expected error for %q, got none", tt.raw)
@@ -151,13 +142,135 @@ func TestParseAppBundleID(t *testing.T) {
 			if id.Version != tt.expected.Version {
 				t.Errorf("Version mismatch: got %q, want %q", id.Version, tt.expected.Version)
 			}
-			if id.Maintainer != tt.expected.Maintainer {
-				t.Errorf("Maintainer mismatch: got %q, want %q", id.Maintainer, tt.expected.Maintainer)
-			}
 			if tt.expected.Date == nil && id.Date != nil {
 				t.Errorf("Date mismatch: got %v, want nil", id.Date)
 			} else if tt.expected.Date != nil && (id.Date == nil || !id.Date.Equal(*tt.expected.Date)) {
 				t.Errorf("Date mismatch: got %v, want %v", id.Date, tt.expected.Date)
+			}
+		})
+	}
+}
+
+func TestFormat(t *testing.T) {
+	tests := []struct {
+		name       string
+		id         *AppBundleID
+		formatType int
+		expected   string
+		shouldErr  bool
+	}{
+		{
+			name: "TypeI with date",
+			id: &AppBundleID{
+				Name: "app",
+				Repo: "repo",
+				Date: parseTime(t, "01_01_2023"),
+			},
+			formatType: TypeI,
+			expected:   "app-01_01_2023-repo",
+			shouldErr:  false,
+		},
+		{
+			name: "TypeI with version",
+			id: &AppBundleID{
+				Name:    "app",
+				Repo:    "repo",
+				Version: "v1.0",
+			},
+			formatType: TypeI,
+			expected:   "app-v1.0-repo",
+			shouldErr:  false,
+		},
+		{
+			name: "TypeI without date or version",
+			id: &AppBundleID{
+				Name: "app",
+				Repo: "repo",
+			},
+			formatType: TypeI,
+			expected:   "",
+			shouldErr:  true,
+		},
+		{
+			name: "TypeII with version",
+			id: &AppBundleID{
+				Name:    "app",
+				Repo:    "repo",
+				Version: "v1.0",
+			},
+			formatType: TypeII,
+			expected:   "app#repo:v1.0",
+			shouldErr:  false,
+		},
+		{
+			name: "TypeII without version",
+			id: &AppBundleID{
+				Name: "app",
+				Repo: "repo",
+			},
+			formatType: TypeII,
+			expected:   "app#repo",
+			shouldErr:  false,
+		},
+		{
+			name: "TypeIII with version and date",
+			id: &AppBundleID{
+				Name:    "app",
+				Repo:    "repo",
+				Version: "v1.0",
+				Date:    parseTime(t, "01_01_2023"),
+			},
+			formatType: TypeIII,
+			expected:   "app#repo:v1.0@01_01_2023",
+			shouldErr:  false,
+		},
+		{
+			name: "TypeIII without version with date",
+			id: &AppBundleID{
+				Name: "app",
+				Repo: "repo",
+				Date: parseTime(t, "01_01_2023"),
+			},
+			formatType: TypeIII,
+			expected:   "app#repo@01_01_2023",
+			shouldErr:  false,
+		},
+		{
+			name: "TypeIII without date",
+			id: &AppBundleID{
+				Name: "app",
+				Repo: "repo",
+			},
+			formatType: TypeIII,
+			expected:   "app#repo",
+			shouldErr:  false,
+		},
+		{
+			name: "Invalid format type",
+			id: &AppBundleID{
+				Name: "app",
+				Repo: "repo",
+			},
+			formatType: 999,
+			expected:   "",
+			shouldErr:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.id.Format(tt.formatType)
+			if tt.shouldErr {
+				if err == nil {
+					t.Errorf("Expected error, got none")
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Unexpected error: %v", err)
+				}
+				if got != tt.expected {
+					t.Errorf("Expected %q, got %q", tt.expected, got)
+				}
 			}
 		})
 	}
@@ -173,11 +286,11 @@ func TestMarshalText(t *testing.T) {
 		{
 			name: "Legacy format",
 			id: &AppBundleID{
-				Name:       "tool",
-				Maintainer: "user",
-				Date:       parseTime(t, "01_01_2023"),
+				Name: "tool",
+				Repo: "user",
+				Date: parseTime(t, "01_01_2023"),
 			},
-			expected:  "tool-01_01_2023-user",
+			expected:  "tool#user@01_01_2023",
 			shouldErr: false,
 		},
 		{
@@ -241,63 +354,6 @@ func TestCompliant(t *testing.T) {
 		shouldErr bool
 	}{
 		{
-			name: "Legacy format",
-			id: &AppBundleID{
-				Raw:        "foo-01_01_2023-bar",
-				Name:       "foo",
-				Maintainer: "bar",
-				Date:       parseTime(t, "01_01_2023"),
-			},
-			shouldErr: true,
-		},
-		{
-			name: "New format",
-			id: &AppBundleID{
-				Raw:     "foo#repo:v1",
-				Name:    "foo",
-				Repo:    "repo",
-				Version: "v1",
-			},
-			shouldErr: false,
-		},
-		{
-			name: "New format with date",
-			id: &AppBundleID{
-				Raw:     "foo#repo:v1@01_01_2023",
-				Name:    "foo",
-				Repo:    "repo",
-				Version: "v1",
-				Date:    parseTime(t, "01_01_2023"),
-			},
-			shouldErr: false,
-		},
-		{
-			name:      "Nil AppBundleID",
-			id:        nil,
-			shouldErr: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := tt.id.Compliant()
-			if tt.shouldErr && err == nil {
-				t.Errorf("Expected error, got none")
-			}
-			if !tt.shouldErr && err != nil {
-				t.Errorf("Unexpected error: %v", err)
-			}
-		})
-	}
-}
-
-func TestVerify(t *testing.T) {
-	tests := []struct {
-		name      string
-		id        *AppBundleID
-		shouldErr bool
-	}{
-		{
 			name: "Valid new format",
 			id: &AppBundleID{
 				Raw:     "pkg#repo:v0.9",
@@ -308,17 +364,32 @@ func TestVerify(t *testing.T) {
 			shouldErr: false,
 		},
 		{
+			name: "Valid legacy format",
+			id: &AppBundleID{
+				Raw:  "tool-01_01_2023-user",
+				Name: "tool",
+				Repo: "user",
+				Date: parseTime(t, "01_01_2023"),
+			},
+			shouldErr: false,
+		},
+		{
 			name: "Invalid format",
 			id: &AppBundleID{
 				Raw: "??invalid!",
 			},
 			shouldErr: true,
 		},
+		{
+			name:      "Nil AppBundleID",
+			id:        nil,
+			shouldErr: true,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := tt.id.Verify()
+			_, err := tt.id.Compliant()
 			if tt.shouldErr && err == nil {
 				t.Errorf("Expected error, got none")
 			}
@@ -349,12 +420,26 @@ func TestStringOutput(t *testing.T) {
 		{
 			name: "Legacy format",
 			id: &AppBundleID{
-				Raw:        "tool-01_01_2023-user",
-				Name:       "tool",
-				Maintainer: "user",
-				Date:       parseTime(t, "01_01_2023"),
+				Raw:  "tool-01_01_2023-user",
+				Name: "tool",
+				Repo: "user",
+				Date: parseTime(t, "01_01_2023"),
 			},
-			expected: "tool-01_01_2023-user",
+			expected: "tool#user@01_01_2023",
+		},
+		{
+			name: "New format without date",
+			id: &AppBundleID{
+				Name:    "app",
+				Repo:    "core",
+				Version: "v1.0",
+			},
+			expected: "app#core:v1.0",
+		},
+		{
+			name:     "Nil AppBundleID",
+			id:       nil,
+			expected: "",
 		},
 	}
 
@@ -385,35 +470,19 @@ func TestShortName(t *testing.T) {
 			expected: "tool#main:v5",
 		},
 		{
-			name: "New format with AppStreamID",
-			id: &AppBundleID{
-				Raw:     "org.chromium.Chromium#main:v5@01_06_2025",
-				Name:    "org.chromium.Chromium",
-				Repo:    "main",
-				Version: "v5",
-				Date:    parseTime(t, "01_06_2025"),
-			},
-			expected: "org.chromium.Chromium#main:v5",
-		},
-		{
 			name: "Legacy format",
 			id: &AppBundleID{
-				Raw:        "tool-01_01_2023-user",
-				Name:       "tool",
-				Maintainer: "user",
-				Date:       parseTime(t, "01_01_2023"),
+				Raw:  "tool-01_01_2023-user",
+				Name: "tool",
+				Repo: "user",
+				Date: parseTime(t, "01_01_2023"),
 			},
-			expected: "tool-01_01_2023-user",
+			expected: "tool#user",
 		},
 		{
-			name: "Legacy format with AppStreamID",
-			id: &AppBundleID{
-				Raw:        "org.chromium.Chromium-01_01_2023-user",
-				Name:       "org.chromium.Chromium",
-				Maintainer: "user",
-				Date:       parseTime(t, "01_01_2023"),
-			},
-			expected: "org.chromium.Chromium-01_01_2023-user",
+			name:     "Nil AppBundleID",
+			id:       nil,
+			expected: "",
 		},
 	}
 
@@ -426,11 +495,205 @@ func TestShortName(t *testing.T) {
 	}
 }
 
-// parseTime is a helper to parse time strings for tests.
-func parseTime(t *testing.T, s string) *time.Time {
-	tm, err := time.Parse(TimeLayout, s)
-	if err != nil {
-		t.Fatalf("Failed to parse time %q: %v", s, err)
+func TestIsDated(t *testing.T) {
+	tests := []struct {
+		name     string
+		id       *AppBundleID
+		expected bool
+	}{
+		{
+			name: "With date",
+			id: &AppBundleID{
+				Raw:  "app#core:v1.0@01_01_2023",
+				Date: parseTime(t, "01_01_2023"),
+			},
+			expected: true,
+		},
+		{
+			name: "Without date",
+			id: &AppBundleID{
+				Raw: "app#core:v1.0",
+			},
+			expected: false,
+		},
+		{
+			name:     "Nil AppBundleID",
+			id:       nil,
+			expected: false,
+		},
 	}
-	return &tm
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.id.IsDated(); got != tt.expected {
+				t.Errorf("Expected %v, got %v", tt.expected, got)
+			}
+		})
+	}
+}
+
+func TestAppStreamIDToName(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "Valid AppStream ID",
+			input:    "org.example.App",
+			expected: "app",
+		},
+		{
+			name:     "Single part",
+			input:    "app",
+			expected: "app",
+		},
+		{
+			name:     "Empty input",
+			input:    "",
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := AppStreamIDToName(tt.input); got != tt.expected {
+				t.Errorf("Expected %q, got %q", tt.expected, got)
+			}
+		})
+	}
+}
+
+func TestSanitize(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "Normal string",
+			input:    "MyApp",
+			expected: "myapp",
+		},
+		{
+			name:     "With slashes and colons",
+			input:    "My/App:Test",
+			expected: "my_app_test",
+		},
+		{
+			name:     "With spaces",
+			input:    " My App ",
+			expected: "my_app",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := Sanitize(tt.input); got != tt.expected {
+				t.Errorf("Expected %q, got %q", tt.expected, got)
+			}
+		})
+	}
+}
+
+func TestFindFiles(t *testing.T) {
+	fsys := fstest.MapFS{
+		"root/file1.txt":           {Data: []byte("file1 content")},
+		"root/subdir/file2.conf":   {Data: []byte("file2 content")},
+		"root/subdir/sub/file3.yml": {Data: []byte("file3 content")},
+	}
+
+	tests := []struct {
+		name      string
+		fsys      fs.FS
+		dir       string
+		walkDepth uint
+		globs     []string
+		expected  string
+		shouldErr bool
+	}{
+		{
+			name:      "Find txt file at root",
+			fsys:      fsys,
+			dir:       "root",
+			walkDepth: 1,
+			globs:     []string{"*.txt"},
+			expected:  "root/file1.txt",
+			shouldErr: false,
+		},
+		{
+			name:      "Find conf file in subdir",
+			fsys:      fsys,
+			dir:       "root",
+			walkDepth: 2,
+			globs:     []string{"*2.conf"},
+			expected:  "root/subdir/file2.conf",
+			shouldErr: false,
+		},
+		{
+			name:      "Find yml file in deep subdir",
+			fsys:      fsys,
+			dir:       "root",
+			walkDepth: 0,
+			globs:     []string{"*.yml"},
+			expected:  "root/subdir/sub/file3.yml",
+			shouldErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := FindFiles(tt.fsys, tt.dir, tt.walkDepth, tt.globs)
+			if tt.shouldErr {
+				if err == nil {
+					t.Errorf("Expected error, got none")
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("Unexpected error: %v", err)
+				return
+			}
+			if got != tt.expected {
+				t.Errorf("Expected %q, got %q", tt.expected, got)
+			}
+		})
+	}
+}
+
+func TestIsRepo(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected bool
+	}{
+		{
+			name:     "Valid repo with domain",
+			input:    "github.com/xplshn/pelf",
+			expected: true,
+		},
+		{
+			name:     "Valid repo with custom domain",
+			input:    "git.lol.org/game",
+			expected: true,
+		},
+		{
+			name:     "Invalid repo no dot",
+			input:    "user/repo",
+			expected: false,
+		},
+		{
+			name:     "Invalid repo no slash",
+			input:    "user.name",
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := IsRepo(tt.input); got != tt.expected {
+				t.Errorf("Expected %v, got %v", tt.expected, got)
+			}
+		})
+	}
 }

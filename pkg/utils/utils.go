@@ -6,18 +6,17 @@ import (
 	"strings"
 	"time"
 	"path/filepath"
-	"os"
+	"io/fs"
 )
 
 // --- FS-Related functions --
 
-// findFiles searches for files matching the given glob patterns in the directory up to the specified walk depth.
+// FindFiles searches for files matching the given glob patterns in the filesystem up to the specified walk depth.
 // If walkDepth is 0, it searches all subdirectories. Returns the path of the first matching file or an empty string if none found.
-func FindFiles(dir string, walkDepth uint, globs []string) (string, error) {
+func FindFiles(fsys fs.FS, dir string, walkDepth uint, globs []string) (string, error) {
 	var foundPath string
-	currentDepth := 0
 
-	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+	err := fs.WalkDir(fsys, dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -27,16 +26,18 @@ func FindFiles(dir string, walkDepth uint, globs []string) (string, error) {
 		if err != nil {
 			return err
 		}
+
+		var currentDepth int
 		if relPath == "." {
 			currentDepth = 0
 		} else {
-			currentDepth = len(strings.Split(relPath, string(os.PathSeparator)))
+			currentDepth = len(strings.Split(relPath, string(filepath.Separator)))
 		}
 
 		// Skip if beyond walkDepth (unless walkDepth is 0)
 		if walkDepth != 0 && currentDepth > int(walkDepth) {
 			if d.IsDir() {
-				return filepath.SkipDir
+				return fs.SkipDir
 			}
 			return nil
 		}
@@ -46,7 +47,7 @@ func FindFiles(dir string, walkDepth uint, globs []string) (string, error) {
 			for _, glob := range globs {
 				if match, _ := filepath.Match(glob, d.Name()); match {
 					foundPath = path
-					return filepath.SkipAll
+					return fs.SkipAll
 				}
 			}
 		}
@@ -60,25 +61,41 @@ func FindFiles(dir string, walkDepth uint, globs []string) (string, error) {
 	return foundPath, nil
 }
 
+// IsRepo returns true if the string contains both a dot (.) and a slash (/)
+func IsRepo(s string) bool {
+	return strings.Contains(s, ".") && strings.Contains(s, "/")
+}
+
 // --- AppBundleID-related code ---
+
+// AppBundleID format types
+const (
+	TypeI   = iota + 1 // name-dd_mm_yyyy-maintainer OR name-versionString-maintainer OR name-dd_mm_yyyy-repo OR name-versionString-repo
+	TypeII             // name#repo[:version]
+	TypeIII            // name#repo[:version][@date]
+)
 
 const (
 	ValidSubstr        = `^[A-Za-z0-9.\-/]+$`
 	ValidRepoSubstr    = `^[A-Za-z0-9.\-_/]+$`
 	ValidNameSubstr    = `^[A-Za-z0-9.\-/]+$`
-	LegacyFormat       = `^(.+)-(\d{2}_\d{2}_\d{4})-([^-]+)$` // legacy: name-dd_mm_yyyy-maintainer
-	NewBaseFormat      = `^([^#]+)#([^:@]+)(?::([^@]+))?(@\d{2}_\d{2}_\d{4})?$` // name#repo[:version][@date]
+	ValidVersionSubstr = `^[A-Za-z0-9._]+$` // Version cannot contain hyphens
+	TypeIFormat        = `^(.+)-(\d{2}_\d{2}_\d{4})-([^-]+)$`
+	TypeIIFormat       = `^([^#]+)#([^:@]+)(?::([^@]+))?$`
+	TypeIIIFormat      = `^([^#]+)#([^:@]+)(?::([^@]+))?(@\d{2}_\d{2}_\d{4})$`
 	DateFormat         = `^(\d{2})_(\d{2})_(\d{4})$`
 	TimeLayout         = "02_01_2006"
 )
 
 var (
-	legacyRe          = regexp.MustCompile(LegacyFormat)
-	baseRe            = regexp.MustCompile(NewBaseFormat)
-	dateRe            = regexp.MustCompile(DateFormat)
-	validSubstrRe     = regexp.MustCompile(ValidSubstr)
-	validRepoSubstrRe = regexp.MustCompile(ValidRepoSubstr)
-	validNameSubstrRe = regexp.MustCompile(ValidNameSubstr)
+	typeIRe              = regexp.MustCompile(TypeIFormat)
+	typeIIRe             = regexp.MustCompile(TypeIIFormat)
+	typeIIIRe            = regexp.MustCompile(TypeIIIFormat)
+	dateRe               = regexp.MustCompile(DateFormat)
+	validSubstrRe        = regexp.MustCompile(ValidSubstr)
+	validRepoSubstrRe    = regexp.MustCompile(ValidRepoSubstr)
+	validNameSubstrRe    = regexp.MustCompile(ValidNameSubstr)
+	validVersionSubstrRe = regexp.MustCompile(ValidVersionSubstr)
 )
 
 // validateField checks if the field matches the appropriate regex and replaces '/' with '.' for repo and maintainer.
@@ -86,19 +103,24 @@ func validateField(field, fieldName string) (string, error) {
 	if field == "" {
 		return "", nil
 	}
-	var re *regexp.Regexp
 
-	if fieldName == "repo" {
+	var re *regexp.Regexp
+	switch fieldName {
+	case "repo":
 		re = validRepoSubstrRe
-	} else if fieldName == "name" {
+	case "name":
 		re = validNameSubstrRe
-	} else {
+	case "version":
+		field = strings.ReplaceAll(field, "-", "_")
+		re = validVersionSubstrRe
+	default:
 		re = validSubstrRe
 	}
 
 	if !re.MatchString(field) {
 		return "", fmt.Errorf("invalid characters in %s: %s", fieldName, field)
 	}
+
 	if fieldName == "repo" || fieldName == "maintainer" {
 		return strings.ReplaceAll(field, "/", "."), nil
 	}
@@ -106,108 +128,223 @@ func validateField(field, fieldName string) (string, error) {
 }
 
 type AppBundleID struct {
-	Raw        string
-	Name       string
-	Repo       string
-	Version    string
-	Date       *time.Time
-	Maintainer string
+	Raw     string
+	Name    string
+	Repo    string
+	Version string
+	Date    *time.Time
 }
 
 // ParseAppBundleID parses the input into a structured AppBundleID.
-// It supports both legacy and encouraged formats.
-func ParseAppBundleID(raw string) (*AppBundleID, error) {
+// It supports type I, type II, and type III formats.
+func ParseAppBundleID(raw string) (*AppBundleID, int, error) {
 	if raw == "" {
-		return nil, fmt.Errorf("AppBundleID is empty")
+		return nil, -1, fmt.Errorf("AppBundleID is empty")
 	}
 
-	// Handle legacy format
-	if legacyRe.MatchString(raw) {
-		m := legacyRe.FindStringSubmatch(raw)
-		t, err := time.Parse(TimeLayout, m[2])
-		if err != nil {
-			return nil, fmt.Errorf("invalid legacy date: %v", err)
-		}
-		maintainer, err := validateField(m[3], "maintainer")
-		if err != nil {
-			return nil, err
-		}
+	// Try type III format first (most specific)
+	if m := typeIIIRe.FindStringSubmatch(raw); m != nil {
 		name, err := validateField(m[1], "name")
 		if err != nil {
-			return nil, err
+			return nil, -1, err
 		}
-		return &AppBundleID{
-			Raw:        raw,
-			Name:       name,
-			Date:       &t,
-			Maintainer: maintainer,
-		}, nil
-	}
-
-	// Handle new formats
-	match := baseRe.FindStringSubmatch(raw)
-	if match == nil {
-		return nil, fmt.Errorf("invalid AppBundleID base format: %s", raw)
-	}
-
-	name, err := validateField(match[1], "name")
-	if err != nil {
-		return nil, err
-	}
-	repo, err := validateField(match[2], "repo")
-	if err != nil {
-		return nil, err
-	}
-	var version string
-	if match[3] != "" {
-		version, err = validateField(match[3], "version")
+		repo, err := validateField(m[2], "repo")
 		if err != nil {
-			return nil, err
+			return nil, -1, err
 		}
-	}
-	var tPtr *time.Time
-	if match[4] != "" {
-		dateStr := strings.TrimPrefix(match[4], "@")
+
+		var version string
+		if m[3] != "" {
+			if version, err = validateField(m[3], "version"); err != nil {
+				return nil, -1, err
+			}
+		}
+
+		dateStr := strings.TrimPrefix(m[4], "@")
 		t, err := time.Parse(TimeLayout, dateStr)
 		if err != nil {
-			return nil, fmt.Errorf("invalid date in AppBundleID: %s. %v", dateStr, err)
+			return nil, -1, fmt.Errorf("invalid date in AppBundleID: %s: %w", dateStr, err)
 		}
-		tPtr = &t
+
+		return &AppBundleID{
+			Raw:     raw,
+			Name:    name,
+			Repo:    repo,
+			Version: version,
+			Date:    &t,
+		}, TypeIII, nil
 	}
 
-	return &AppBundleID{
-		Raw:     raw,
-		Name:    name,
-		Repo:    repo,
-		Version: version,
-		Date:    tPtr,
-	}, nil
+	// Try type II format
+	if m := typeIIRe.FindStringSubmatch(raw); m != nil {
+		name, err := validateField(m[1], "name")
+		if err != nil {
+			return nil, -1, err
+		}
+		repo, err := validateField(m[2], "repo")
+		if err != nil {
+			return nil, -1, err
+		}
+
+		var version string
+		if m[3] != "" {
+			if version, err = validateField(m[3], "version"); err != nil {
+				return nil, -1, err
+			}
+		}
+
+		return &AppBundleID{
+			Raw:     raw,
+			Name:    name,
+			Repo:    repo,
+			Version: version,
+		}, TypeII, nil
+	}
+
+	// Handle type I format
+	if m := typeIRe.FindStringSubmatch(raw); m != nil {
+		name, err := validateField(m[1], "name")
+		if err != nil {
+			return nil, -1, err
+		}
+
+		var version string
+		var t *time.Time
+
+		// Check if second part is a date or version
+		if dateRe.MatchString(m[2]) {
+			parsedTime, err := time.Parse(TimeLayout, m[2])
+			if err != nil {
+				return nil, -1, fmt.Errorf("invalid date: %w", err)
+			}
+			t = &parsedTime
+		} else {
+			// It's a version string
+			version, err = validateField(m[2], "version")
+			if err != nil {
+				return nil, -1, err
+			}
+		}
+
+		repo, err := validateField(m[3], "maintainer")
+		if err != nil {
+			return nil, -1, err
+		}
+
+		return &AppBundleID{
+			Raw:     raw,
+			Name:    name,
+			Repo:    repo,
+			Version: version,
+			Date:    t,
+		}, TypeI, nil
+	}
+
+	return nil, -1, fmt.Errorf("invalid AppBundleID format: %s", raw)
 }
 
-// String returns the properly formatted canonical form (NewBaseFormat, possibly with @date).
+// Format returns the string representation of the AppBundleID in the specified format type.
+func (a *AppBundleID) Format(formatType int) (string, error) {
+	if a == nil {
+		return "", fmt.Errorf("nil AppBundleID")
+	}
+
+	switch formatType {
+	case TypeI:
+		if a.Name == "" || a.Repo == "" {
+			return "", fmt.Errorf("insufficient fields for type I format")
+		}
+		if a.Date != nil {
+			return fmt.Sprintf("%s-%s-%s", a.Name, a.Date.Format(TimeLayout), a.Repo), nil
+		}
+		if a.Version != "" {
+			return fmt.Sprintf("%s-%s-%s", a.Name, a.Version, a.Repo), nil
+		}
+		return "", fmt.Errorf("type I format requires date or version")
+
+	case TypeII:
+		if a.Name == "" || a.Repo == "" {
+			return "", fmt.Errorf("insufficient fields for type II format")
+		}
+		if a.Version != "" {
+			return fmt.Sprintf("%s#%s:%s", a.Name, a.Repo, a.Version), nil
+		}
+		return fmt.Sprintf("%s#%s", a.Name, a.Repo), nil
+
+	case TypeIII:
+		if a.Name == "" || a.Repo == "" {
+			return "", fmt.Errorf("insufficient fields for type III format")
+		}
+		base := fmt.Sprintf("%s#%s", a.Name, a.Repo)
+		if a.Version != "" {
+			base = fmt.Sprintf("%s#%s:%s", a.Name, a.Repo, a.Version)
+		}
+		if a.Date != nil {
+			return base + "@" + a.Date.Format(TimeLayout), nil
+		}
+		// Fall back to type II if no date
+		return base, nil
+
+	default:
+		return "", fmt.Errorf("invalid format type: %d", formatType)
+	}
+}
+
+// String returns the canonical string representation.
+// Prefers type III if possible, falls back to type II, then type I.
 func (a *AppBundleID) String() string {
 	if a == nil {
 		return ""
 	}
-	if a.Repo != "" {
-		if a.Version != "" {
-			base := fmt.Sprintf("%s#%s:%s", a.Name, a.Repo, a.Version)
-			if a.Date != nil {
-				return base + "@" + a.Date.Format(TimeLayout)
-			}
-			return base
-		}
-		// Handle name#repo@date format
-		base := fmt.Sprintf("%s#%s", a.Name, a.Repo)
-		if a.Date != nil {
-			return base + "@" + a.Date.Format(TimeLayout)
-		}
-		return base
+
+	// Try type III first
+	if s, err := a.Format(TypeIII); err == nil {
+		return s
 	}
-	if a.Maintainer != "" && a.Date != nil {
-		return fmt.Sprintf("%s-%s-%s", a.Name, a.Date.Format(TimeLayout), a.Maintainer)
+
+	// Try type II
+	if s, err := a.Format(TypeII); err == nil {
+		return s
 	}
+
+	// Try type I
+	if s, err := a.Format(TypeI); err == nil {
+		return s
+	}
+
+	// Fallback to raw if all else fails
 	return a.Raw
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (a *AppBundleID) MarshalText() ([]byte, error) {
+	if a == nil {
+		return nil, nil
+	}
+
+	// Try to marshal in preferred order: III, II, I
+	for _, formatType := range []int{TypeIII, TypeII, TypeI} {
+		if s, err := a.Format(formatType); err == nil {
+			return []byte(s), nil
+		}
+	}
+
+	return nil, fmt.Errorf("insufficient fields to marshal AppBundleID")
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (a *AppBundleID) UnmarshalText(text []byte) error {
+	if len(text) == 0 {
+		return fmt.Errorf("empty text for AppBundleID")
+	}
+
+	parsed, _, err := ParseAppBundleID(string(text))
+	if err != nil {
+		return fmt.Errorf("failed to parse AppBundleID: %w", err)
+	}
+
+	*a = *parsed
+	return nil
 }
 
 // IsDated returns true if a date is present.
@@ -215,65 +352,63 @@ func (a *AppBundleID) IsDated() bool {
 	return a != nil && a.Date != nil
 }
 
-// ShortName returns only the base part.
+// ShortName returns only the base part without date.
 func (a *AppBundleID) ShortName() string {
 	if a == nil {
 		return ""
 	}
+
 	if a.Repo != "" {
 		if a.Version != "" {
 			return fmt.Sprintf("%s#%s:%s", a.Name, a.Repo, a.Version)
 		}
 		return fmt.Sprintf("%s#%s", a.Name, a.Repo)
 	}
-	if a.Maintainer != "" && a.Date != nil {
-		return fmt.Sprintf("%s-%s-%s", a.Name, a.Date.Format(TimeLayout), a.Maintainer)
-	}
+
 	return a.Raw
 }
 
-// MarshalText serializes the AppBundleID as text based on available fields.
-func (a *AppBundleID) MarshalText() ([]byte, error) {
+// Compliant returns an error if the ID doesn't follow any valid format.
+func (a *AppBundleID) Compliant() (int, error) {
 	if a == nil {
-		return nil, nil
+		return -1, fmt.Errorf("nil AppBundleID")
 	}
-	if a.Name != "" && a.Maintainer != "" && a.Date != nil {
-		// Legacy format: name-dd_mm_yyyy-maintainer
-		return []byte(fmt.Sprintf("%s-%s-%s", a.Name, a.Date.Format(TimeLayout), a.Maintainer)), nil
-	}
-	if a.Name != "" && a.Repo != "" {
-		// Encouraged format: name#repo[:version][@dd_mm_yyyy]
-		return []byte(a.String()), nil
-	}
-	return nil, fmt.Errorf("insufficient fields to marshal AppBundleID")
+
+	_, t, err := ParseAppBundleID(a.Raw)
+	return t, err
 }
 
-// UnmarshalText sets the AppBundleID by parsing text.
-func (a *AppBundleID) UnmarshalText(text []byte) error {
-	parsed, err := ParseAppBundleID(string(text))
-	if err != nil {
-		return err
+// --- Appstream-related stuff ---
+
+// AppStreamIDToName extracts the application name from an AppStream ID.
+func AppStreamIDToName(appStreamID string) string {
+	if appStreamID == "" {
+		return ""
 	}
-	*a = *parsed
-	return nil
+	parts := strings.Split(appStreamID, ".")
+	if len(parts) > 0 {
+		return Sanitize(parts[len(parts)-1])
+	}
+	return appStreamID
 }
 
-// Verify returns an error if the ID doesn't follow legacy or new base format.
-func (a *AppBundleID) Verify() error {
-	if a == nil {
-		return fmt.Errorf("nil AppBundleID")
+func IsAppStreamID(s string) bool {
+	parts := strings.Split(s, ".")
+	if len(parts) == 3 {
+		return true
 	}
-	_, err := ParseAppBundleID(a.Raw)
-	return err
+	return false
 }
 
-// Compliant returns an error if the ID is *not* in the encouraged new format.
-func (a *AppBundleID) Compliant() error {
-	if a == nil {
-		return fmt.Errorf("nil AppBundleID")
-	}
-	if a.Maintainer != "" {
-		return fmt.Errorf("non-compliant AppBundleID format: %s. Expected 'name#repo:version', 'name#repo@date', or 'name#repo:version@date'", a.Raw)
-	}
-	return nil
+// --- Misc stuff ---
+
+// Sanitize cleans up a name string by normalizing case and replacing problematic characters.
+func Sanitize(name string) string {
+	name = strings.ToLower(name)
+	name = strings.TrimSpace(name)
+	name = strings.ReplaceAll(name, " ", "_")
+	name = strings.ReplaceAll(name, "/", "_")
+	name = strings.ReplaceAll(name, "\\", "_")
+	name = strings.ReplaceAll(name, ":", "_")
+	return name
 }

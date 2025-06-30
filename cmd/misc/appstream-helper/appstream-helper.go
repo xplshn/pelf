@@ -205,7 +205,7 @@ func extractAppBundleInfo(filename string) (RuntimeInfo, error) {
 		return RuntimeInfo{}, fmt.Errorf("%sappBundleID not found in %s%s%s", errorColor, blueColor, filename, resetColor)
 	}
 
-	appBundleID, err := utils.ParseAppBundleID(cfg.AppBundleID)
+	appBundleID, _, err := utils.ParseAppBundleID(cfg.AppBundleID)
 	if err != nil {
 		return RuntimeInfo{}, fmt.Errorf("%sinvalid AppBundleID in %s%s%s: %v", errorColor, blueColor, filename, resetColor, err)
 	}
@@ -368,7 +368,7 @@ func main() {
 			return nil
 		}
 
-		appBundleID, err := utils.ParseAppBundleID(appBundleInfo.AppBundleID)
+		appBundleID, _, err := utils.ParseAppBundleID(appBundleInfo.AppBundleID)
 		if err != nil {
 			log.Printf("%sfailed to parse AppBundleID for %s%s%s: %v", errorColor, blueColor, path, resetColor, err)
 			return nil
@@ -385,11 +385,10 @@ func main() {
 			RepoName:    *repoName,
 		}
 
-		if appBundleID.Repo != "" {
+		if len(appBundleID.Repo) != 0 && utils.IsRepo(appBundleID.Repo) {
 			item.SrcURLs = append(item.SrcURLs, "https://"+appBundleID.Repo)
-		}
-		if appBundleID.Maintainer != "" {
-			item.Maintainers = appBundleID.Maintainer
+		} else {
+			item.Maintainers = appBundleID.Repo
 		}
 		if appBundleID.Version != "" {
 			item.Version = appBundleID.Version
@@ -471,9 +470,9 @@ func main() {
 		}
 
 		if name != "" {
-			name = sanitizeName(name)
+			name = utils.Sanitize(name)
 		} else {
-			name = nameToPkg(appBundleID.Name)
+			name = utils.AppStreamIDToName(appBundleID.Name)
 		}
 
 		item.Pkg = name + "." + appBundleInfo.FilesystemType + ".AppBundle"
@@ -531,23 +530,6 @@ func main() {
 
 		log.Printf("Successfully wrote Markdown output to %s", *outputMarkdown)
 	}
-}
-
-func sanitizeName(name string) string {
-	name = strings.ToLower(name)
-	name = strings.TrimSpace(name)
-	name = strings.ReplaceAll(name, "/", "_")
-	name = strings.ReplaceAll(name, "\\", "_")
-	name = strings.ReplaceAll(name, ":", "_")
-	return name
-}
-
-func nameToPkg(appBundleIDName string) string {
-	idParts := strings.Split(appBundleIDName, ".")
-	if len(idParts) > 0 {
-		return sanitizeName(idParts[len(idParts)-1])
-	}
-	return appBundleIDName
 }
 
 func getText(elements []struct {
