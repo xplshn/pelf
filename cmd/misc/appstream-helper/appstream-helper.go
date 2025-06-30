@@ -376,7 +376,7 @@ func main() {
 
 		baseFilename := filepath.Base(path)
 		item := BinaryEntry{
-			PkgId:       "github.com.xplshn.appbundlehub."+appBundleID.Name,
+			PkgId:       "github.com.xplshn.appbundlehub."+strings.ToLower(appBundleID.Name),
 			BuildDate:   appBundleInfo.BuildDate,
 			Size:        getFileSize(path),
 			Bsum:        b3sum,
@@ -387,6 +387,7 @@ func main() {
 
 		if len(appBundleID.Repo) != 0 && utils.IsRepo(appBundleID.Repo) {
 			item.SrcURLs = append(item.SrcURLs, "https://"+appBundleID.Repo)
+			item.PkgId = strings.ToLower(appBundleID.Repo)
 		} else {
 			item.Maintainers = appBundleID.Repo
 		}
