@@ -376,7 +376,7 @@ func main() {
 
 		baseFilename := filepath.Base(path)
 		item := BinaryEntry{
-			PkgId:       ternary(appBundleID.Repo != "", appBundleID.Repo, "github.com.xplshn.appbundlehub."+appBundleID.ShortName()),
+			PkgId:       "github.com.xplshn.appbundlehub."+appBundleID.Name,
 			BuildDate:   appBundleInfo.BuildDate,
 			Size:        getFileSize(path),
 			Bsum:        b3sum,
