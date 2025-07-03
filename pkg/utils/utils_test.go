@@ -9,11 +9,18 @@ import (
 
 func parseTime(t *testing.T, s string) *time.Time {
 	t.Helper()
-	tm, err := time.Parse(TimeLayout, s)
-	if err != nil {
-		t.Fatalf("Failed to parse time %q: %v", s, err)
+	layouts := []string{
+		TimeLayoutDDMMYYYY,   // DD_MM_YYYY
+		TimeLayoutYYYYMMDD,   // YYYYMMDD
+		TimeLayoutYYYY_MM_DD, // YYYY_MM_DD
 	}
-	return &tm
+	for _, layout := range layouts {
+		if tm, err := time.Parse(layout, s); err == nil {
+			return &tm
+		}
+	}
+	t.Fatalf("Failed to parse time %q", s)
+	return nil
 }
 
 func TestParseAppBundleID(t *testing.T) {
@@ -69,7 +76,7 @@ func TestParseAppBundleID(t *testing.T) {
 		},
 		{
 			name:      "Invalid characters in name",
-			raw:       "app_name#core:v1",
+			raw:       "app name#core:v1",
 			shouldErr: true,
 		},
 		{
@@ -116,7 +123,6 @@ func TestParseAppBundleID(t *testing.T) {
 			shouldErr: true,
 		},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			id, _, err := ParseAppBundleID(tt.raw)
@@ -256,7 +262,6 @@ func TestFormat(t *testing.T) {
 			shouldErr:  true,
 		},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := tt.id.Format(tt.formatType)
@@ -326,7 +331,6 @@ func TestMarshalText(t *testing.T) {
 			shouldErr: false,
 		},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			b, err := tt.id.MarshalText()
@@ -386,7 +390,6 @@ func TestCompliant(t *testing.T) {
 			shouldErr: true,
 		},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := tt.id.Compliant()
@@ -442,7 +445,6 @@ func TestStringOutput(t *testing.T) {
 			expected: "",
 		},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := tt.id.String(); got != tt.expected {
@@ -485,7 +487,6 @@ func TestShortName(t *testing.T) {
 			expected: "",
 		},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := tt.id.ShortName(); got != tt.expected {
@@ -522,7 +523,6 @@ func TestIsDated(t *testing.T) {
 			expected: false,
 		},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := tt.id.IsDated(); got != tt.expected {
@@ -554,7 +554,6 @@ func TestAppStreamIDToName(t *testing.T) {
 			expected: "",
 		},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := AppStreamIDToName(tt.input); got != tt.expected {
@@ -586,7 +585,6 @@ func TestSanitize(t *testing.T) {
 			expected: "my_app",
 		},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := Sanitize(tt.input); got != tt.expected {
@@ -602,7 +600,6 @@ func TestFindFiles(t *testing.T) {
 		"root/subdir/file2.conf":   {Data: []byte("file2 content")},
 		"root/subdir/sub/file3.yml": {Data: []byte("file3 content")},
 	}
-
 	tests := []struct {
 		name      string
 		fsys      fs.FS
@@ -640,7 +637,6 @@ func TestFindFiles(t *testing.T) {
 			shouldErr: false,
 		},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := FindFiles(tt.fsys, tt.dir, tt.walkDepth, tt.globs)
@@ -688,7 +684,6 @@ func TestIsRepo(t *testing.T) {
 			expected: false,
 		},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := IsRepo(tt.input); got != tt.expected {

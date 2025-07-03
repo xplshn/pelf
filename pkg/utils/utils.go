@@ -76,15 +76,18 @@ const (
 )
 
 const (
-	ValidSubstr        = `^[A-Za-z0-9.\-/]+$`
-	ValidRepoSubstr    = `^[A-Za-z0-9.\-_/]+$`
-	ValidNameSubstr    = `^[A-Za-z0-9.\-_/]+$`
+	ValidSubstr     = `^[A-Za-z0-9._]+$`
+	ValidRepoSubstr = `^[A-Za-z0-9._/\-]+$`
+	ValidNameSubstr = `^[A-Za-z0-9._/\-]+$`
 	ValidVersionSubstr = `^[A-Za-z0-9._]+$` // Version cannot contain hyphens
-	TypeIFormat        = `^(.+)-(\d{2}_\d{2}_\d{4})-([^-]+)$`
+	TypeIFormat        = `^(.+)-(\d{2}_\d{2}_\d{4}|\d{4}\d{2}\d{2}|\d{4}_\d{2}_\d{2})-([^-]+)$`
 	TypeIIFormat       = `^([^#]+)#([^:@]+)(?::([^@]+))?$`
-	TypeIIIFormat      = `^([^#]+)#([^:@]+)(?::([^@]+))?(@\d{2}_\d{2}_\d{4})$`
+	TypeIIIFormat      = `^([^#]+)#([^:@]+)(?::([^@]+))?(@(?:\d{2}_\d{2}_\d{4}|\d{4}\d{2}\d{2}|\d{4}_\d{2}_\d{2}))$`
 	DateFormat         = `^(\d{2})_(\d{2})_(\d{4})$`
-	TimeLayout         = "02_01_2006"
+	// Multiple date format support
+	TimeLayoutDDMMYYYY = "02_01_2006"    // DD_MM_YYYY
+	TimeLayoutYYYYMMDD = "20060102"      // YYYYMMDD
+	TimeLayoutYYYY_MM_DD = "2006_01_02"  // YYYY_MM_DD
 )
 
 var (
@@ -97,6 +100,48 @@ var (
 	validNameSubstrRe    = regexp.MustCompile(ValidNameSubstr)
 	validVersionSubstrRe = regexp.MustCompile(ValidVersionSubstr)
 )
+
+// parseDate attempts to parse a date string using multiple supported formats
+func parseDate(dateStr string) (*time.Time, error) {
+	layouts := []string{
+		TimeLayoutDDMMYYYY,   // DD_MM_YYYY
+		TimeLayoutYYYYMMDD,   // YYYYMMDD
+		TimeLayoutYYYY_MM_DD, // YYYY_MM_DD
+	}
+
+	for _, layout := range layouts {
+		if t, err := time.Parse(layout, dateStr); err == nil {
+			return &t, nil
+		}
+	}
+
+	return nil, fmt.Errorf("unable to parse date: %s", dateStr)
+}
+
+// isDateString checks if a string matches any of the supported date formats
+func isDateString(s string) bool {
+	layouts := []string{
+		TimeLayoutDDMMYYYY,   // DD_MM_YYYY
+		TimeLayoutYYYYMMDD,   // YYYYMMDD
+		TimeLayoutYYYY_MM_DD, // YYYY_MM_DD
+	}
+
+	for _, layout := range layouts {
+		if _, err := time.Parse(layout, s); err == nil {
+			return true
+		}
+	}
+
+	return false
+}
+
+// formatDate formats a time using the preferred DD_MM_YYYY format
+func formatDate(t *time.Time) string {
+	if t == nil {
+		return ""
+	}
+	return t.Format(TimeLayoutDDMMYYYY)
+}
 
 // validateField checks if the field matches the appropriate regex and replaces '/' with '.' for repo and maintainer.
 func validateField(field, fieldName string) (string, error) {
@@ -161,7 +206,7 @@ func ParseAppBundleID(raw string) (*AppBundleID, int, error) {
 		}
 
 		dateStr := strings.TrimPrefix(m[4], "@")
-		t, err := time.Parse(TimeLayout, dateStr)
+		t, err := parseDate(dateStr)
 		if err != nil {
 			return nil, -1, fmt.Errorf("invalid date in AppBundleID: %s: %w", dateStr, err)
 		}
@@ -171,7 +216,7 @@ func ParseAppBundleID(raw string) (*AppBundleID, int, error) {
 			Name:    name,
 			Repo:    repo,
 			Version: version,
-			Date:    &t,
+			Date:    t,
 		}, TypeIII, nil
 	}
 
@@ -211,13 +256,13 @@ func ParseAppBundleID(raw string) (*AppBundleID, int, error) {
 		var version string
 		var t *time.Time
 
-		// Check if second part is a date or version
-		if dateRe.MatchString(m[2]) {
-			parsedTime, err := time.Parse(TimeLayout, m[2])
+		// Check if second part is a date or version using the new multi-format date checker
+		if isDateString(m[2]) {
+			parsedTime, err := parseDate(m[2])
 			if err != nil {
 				return nil, -1, fmt.Errorf("invalid date: %w", err)
 			}
-			t = &parsedTime
+			t = parsedTime
 		} else {
 			// It's a version string
 			version, err = validateField(m[2], "version")
@@ -255,7 +300,7 @@ func (a *AppBundleID) Format(formatType int) (string, error) {
 			return "", fmt.Errorf("insufficient fields for type I format")
 		}
 		if a.Date != nil {
-			return fmt.Sprintf("%s-%s-%s", a.Name, a.Date.Format(TimeLayout), a.Repo), nil
+			return fmt.Sprintf("%s-%s-%s", a.Name, formatDate(a.Date), a.Repo), nil
 		}
 		if a.Version != "" {
 			return fmt.Sprintf("%s-%s-%s", a.Name, a.Version, a.Repo), nil
@@ -280,7 +325,7 @@ func (a *AppBundleID) Format(formatType int) (string, error) {
 			base = fmt.Sprintf("%s#%s:%s", a.Name, a.Repo, a.Version)
 		}
 		if a.Date != nil {
-			return base + "@" + a.Date.Format(TimeLayout), nil
+			return base + "@" + formatDate(a.Date), nil
 		}
 		// Fall back to type II if no date
 		return base, nil
