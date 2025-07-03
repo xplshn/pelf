@@ -108,10 +108,12 @@ cleanup() {
             fusermount -uz "$MOUNT_DIR" 2>/dev/null
         fi
 
-        # Remove temporary directories
-        rmdir  "$MOUNT_DIR"   2>/dev/null || true
-        rm -rf "$TEMP_DIR"    2>/dev/null || true
-        rm -rf "$UNIONFS_DIR" 2>/dev/null || true
+        if mountpoint -q "$MOUNT_DIR"; then
+            # Remove temporary directories, but only if it is SAFE.
+            rmdir  "$MOUNT_DIR"   2>/dev/null || true
+            rm -rf "$TEMP_DIR"    2>/dev/null || true
+            rm -rf "$UNIONFS_DIR" 2>/dev/null || true
+        fi
     ) & # Run cleanup in the background
 }
 trap cleanup INT TERM HUP QUIT EXIT
