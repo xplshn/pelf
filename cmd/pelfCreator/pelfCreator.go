@@ -260,7 +260,7 @@ func main() {
 
 func runPelfCreator(config Config) error {
 	// Initialize configuration
-	config.Date = time.Now().Format("02_01_2006")
+	config.Date = time.Now().Format("20060102")
 
 	// Resolve name
 	nameResolver := NewNameResolver(&config)

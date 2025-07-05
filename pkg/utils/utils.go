@@ -85,8 +85,8 @@ const (
 	TypeIIIFormat      = `^([^#]+)#([^:@]+)(?::([^@]+))?(@(?:\d{2}_\d{2}_\d{4}|\d{4}\d{2}\d{2}|\d{4}_\d{2}_\d{2}))$`
 	DateFormat         = `^(\d{2})_(\d{2})_(\d{4})$`
 	// Multiple date format support
-	TimeLayoutDDMMYYYY = "02_01_2006"    // DD_MM_YYYY
-	TimeLayoutYYYYMMDD = "20060102"      // YYYYMMDD
+	TimeLayoutYYYYMMDD   = "20060102"      // YYYYMMDD
+	TimeLayoutDD_MM_YYYY = "02_01_2006"  // DD_MM_YYYY
 	TimeLayoutYYYY_MM_DD = "2006_01_02"  // YYYY_MM_DD
 )
 
@@ -104,9 +104,9 @@ var (
 // parseDate attempts to parse a date string using multiple supported formats
 func parseDate(dateStr string) (*time.Time, error) {
 	layouts := []string{
-		TimeLayoutDDMMYYYY,   // DD_MM_YYYY
-		TimeLayoutYYYYMMDD,   // YYYYMMDD
-		TimeLayoutYYYY_MM_DD, // YYYY_MM_DD
+		TimeLayoutYYYYMMDD,
+		TimeLayoutYYYY_MM_DD,
+		TimeLayoutDD_MM_YYYY,
 	}
 
 	for _, layout := range layouts {
@@ -121,9 +121,9 @@ func parseDate(dateStr string) (*time.Time, error) {
 // isDateString checks if a string matches any of the supported date formats
 func isDateString(s string) bool {
 	layouts := []string{
-		TimeLayoutDDMMYYYY,   // DD_MM_YYYY
-		TimeLayoutYYYYMMDD,   // YYYYMMDD
-		TimeLayoutYYYY_MM_DD, // YYYY_MM_DD
+		TimeLayoutYYYYMMDD,
+		TimeLayoutYYYY_MM_DD,
+		TimeLayoutDD_MM_YYYY,
 	}
 
 	for _, layout := range layouts {
@@ -140,7 +140,7 @@ func formatDate(t *time.Time) string {
 	if t == nil {
 		return ""
 	}
-	return t.Format(TimeLayoutDDMMYYYY)
+	return t.Format(TimeLayoutYYYYMMDD)
 }
 
 // validateField checks if the field matches the appropriate regex and replaces '/' with '.' for repo and maintainer.

@@ -10,7 +10,7 @@ import (
 func parseTime(t *testing.T, s string) *time.Time {
 	t.Helper()
 	layouts := []string{
-		TimeLayoutDDMMYYYY,   // DD_MM_YYYY
+		TimeLayoutDD_MM_YYYY, // DD_MM_YYYY
 		TimeLayoutYYYYMMDD,   // YYYYMMDD
 		TimeLayoutYYYY_MM_DD, // YYYY_MM_DD
 	}
@@ -43,14 +43,14 @@ func TestParseAppBundleID(t *testing.T) {
 		},
 		{
 			name:      "Valid new format with date",
-			raw:       "myapp#core_repo:v1.2.3@01_01_2023",
+			raw:       "myapp#core_repo:v1.2.3@20230101",
 			shouldErr: false,
 			expected: &AppBundleID{
-				Raw:     "myapp#core_repo:v1.2.3@01_01_2023",
+				Raw:     "myapp#core_repo:v1.2.3@20230101",
 				Name:    "myapp",
 				Repo:    "core_repo",
 				Version: "v1.2.3",
-				Date:    parseTime(t, "01_01_2023"),
+				Date:    parseTime(t, "2023_01_01"),
 			},
 		},
 		{
@@ -170,10 +170,10 @@ func TestFormat(t *testing.T) {
 			id: &AppBundleID{
 				Name: "app",
 				Repo: "repo",
-				Date: parseTime(t, "01_01_2023"),
+				Date: parseTime(t, "2023_01_01"),
 			},
 			formatType: TypeI,
-			expected:   "app-01_01_2023-repo",
+			expected:   "app-20230101-repo",
 			shouldErr:  false,
 		},
 		{
@@ -224,10 +224,10 @@ func TestFormat(t *testing.T) {
 				Name:    "app",
 				Repo:    "repo",
 				Version: "v1.0",
-				Date:    parseTime(t, "01_01_2023"),
+				Date:    parseTime(t, "2023_01_01"),
 			},
 			formatType: TypeIII,
-			expected:   "app#repo:v1.0@01_01_2023",
+			expected:   "app#repo:v1.0@20230101",
 			shouldErr:  false,
 		},
 		{
@@ -235,10 +235,10 @@ func TestFormat(t *testing.T) {
 			id: &AppBundleID{
 				Name: "app",
 				Repo: "repo",
-				Date: parseTime(t, "01_01_2023"),
+				Date: parseTime(t, "2023_01_01"),
 			},
 			formatType: TypeIII,
-			expected:   "app#repo@01_01_2023",
+			expected:   "app#repo@20230101",
 			shouldErr:  false,
 		},
 		{
@@ -289,13 +289,13 @@ func TestMarshalText(t *testing.T) {
 		shouldErr bool
 	}{
 		{
-			name: "Legacy format",
+			name: "Type I format",
 			id: &AppBundleID{
 				Name: "tool",
 				Repo: "user",
-				Date: parseTime(t, "01_01_2023"),
+				Date: parseTime(t, "2023_01_01"),
 			},
-			expected:  "tool#user@01_01_2023",
+			expected:  "tool#user@20230101",
 			shouldErr: false,
 		},
 		{
@@ -314,9 +314,9 @@ func TestMarshalText(t *testing.T) {
 				Name:    "app",
 				Repo:    "core",
 				Version: "v1.0",
-				Date:    parseTime(t, "01_01_2023"),
+				Date:    parseTime(t, "2023_01_01"),
 			},
-			expected:  "app#core:v1.0@01_01_2023",
+			expected:  "app#core:v1.0@20230101",
 			shouldErr: false,
 		},
 		{
@@ -416,9 +416,9 @@ func TestStringOutput(t *testing.T) {
 				Name:    "foo",
 				Repo:    "bar",
 				Version: "v3",
-				Date:    parseTime(t, "12_12_2024"),
+				Date:    parseTime(t, "2024_12_12"),
 			},
-			expected: "foo#bar:v3@12_12_2024",
+			expected: "foo#bar:v3@20241212",
 		},
 		{
 			name: "Legacy format",
@@ -426,9 +426,9 @@ func TestStringOutput(t *testing.T) {
 				Raw:  "tool-01_01_2023-user",
 				Name: "tool",
 				Repo: "user",
-				Date: parseTime(t, "01_01_2023"),
+				Date: parseTime(t, "2023_01_01"),
 			},
-			expected: "tool#user@01_01_2023",
+			expected: "tool#user@20230101",
 		},
 		{
 			name: "New format without date",
