@@ -1072,7 +1072,7 @@ func extractToDirectory(tarball, dst string, config *Config) error {
 }
 
 func parseTime(s string) *time.Time {
-	tm, err := time.Parse(utils.TimeLayout, s)
+	tm, err := time.Parse(utils.TimeLayoutYYYYMMDD, s)
 	if err != nil {
 		log.Fatalf("Failed to parse time %q: %v", s, err)
 	}
