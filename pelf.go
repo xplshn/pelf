@@ -1,3 +1,7 @@
+// PELF - The AppBundle format and the AppBundle Creation Tool
+// It used to stand for Pack an Elf, but we slowly evolved into a much simpler yet more featureful alternative to .AppImages
+// PELF now refers to the tool used to create .AppBundles
+//
 package main
 
 import (
