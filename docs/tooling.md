@@ -1,6 +1,6 @@
 # Tooling Usage & Explanation
 
-### `pelf`
+## `pelf`
 
 The `pelf` command is responsible for assembling an AppBundle by combining an ELF runtime, runtime information, static tools, and a compressed filesystem image.
 
@@ -36,7 +36,7 @@ The pelf tool is can be invoked with the following flags:
 -   **--add-elf-section <path>:** Adds a custom ELF section from a .elfS file., where the filename of the .elfS file minus the extension is the section name, and the file contents are the data
 -   **--add-updinfo <string>:** Adds an upd_info ELF section with the given string.
 
-# pelfCreator
+## pelfCreator
 
 The `pelfCreator` command is a higher-level utility that prepares an AppDir and invokes `pelf` to create an AppBundle. It supports multiple modes for different use cases.
 

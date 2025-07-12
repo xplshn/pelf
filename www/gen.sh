@@ -16,7 +16,6 @@ if [ ! "$(basename "$BASE")" = "www" ] || [ ! -f "$PWD/config.toml" ]; then
     exit 1
 fi
 
-
 process_markdown_files() {
     mkdir -p "$2"
     for FILE in "$1"/*.md; do
@@ -31,12 +30,14 @@ process_markdown_files() {
             echo "Skipping \"$FILE\""
             continue
         fi
+
         FILENAME="$(basename "$FILE")"
         DATE="$(git log -1 --format="%ai" -- "$FILE" | awk '{print $1 "T" $2}')"
-        # Extract title from first line if it starts with '#'
         TITLE=$(head -n 1 "$FILE" | grep '^#' | sed 's/^# //')
-        # Fallback to filename if no valid title found
-        [ -z "$TITLE" ] && TITLE="$(basename "$FILE")"
+        [ -z "$TITLE" ] && {
+            TITLE="$FILENAME"
+            FILENAME_AS_TITLE=1
+        }
         AUTHOR_NAME="$(git log --follow --format="%an" -- "$FILE" | tail -n 1)"
         AUTHOR_EMAIL="$(git log --follow --format="%ae" -- "$FILE" | tail -n 1)"
 
@@ -49,7 +50,7 @@ process_markdown_files() {
             echo "  name = '$AUTHOR_NAME'"
             echo "  email = '$AUTHOR_EMAIL'"
             echo "+++"
-            cat "$FILE"
+            [ -z "$FILENAME_AS_TITLE" ] && sed '1{/^#/d}' "$FILE"
         } >"$2/$FILENAME"
     done
 
@@ -64,7 +65,6 @@ process_markdown_files() {
         fi
     fi
 }
-
 
 # Start actual processing
 rm -rf -- ./content/docs/*
