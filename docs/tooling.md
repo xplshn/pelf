@@ -1,4 +1,6 @@
-# pelf
+# Tooling Usage & Explanation
+
+### `pelf`
 
 The `pelf` command is responsible for assembling an AppBundle by combining an ELF runtime, runtime information, static tools, and a compressed filesystem image.
 

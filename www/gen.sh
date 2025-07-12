@@ -1,38 +1,44 @@
 #!/bin/sh
 
-check_directory() {
-    if [ ! "$(basename "$PWD")" = "www" ] || [ ! -f "$PWD/config.toml" ]; then
-        if [ -d "$PWD/www" ]; then
-            echo "You must enter ./www"
-        else
-            echo "Where the fuck are we? You must enter https://github.com/xplshn/alicelinux/www, run me within of the ./www directory!"
-        fi
-        exit 1
-    fi
-}
+OPWD="$PWD"
+BASE="$(dirname "$(realpath "$0")")"
+TEMP_DIR="/tmp/pelf_build_$(date +%s)"
+# Change to BASE directory if not already there
+if [ "$OPWD" != "$BASE" ]; then
+    echo "Changing to $BASE"
+    cd "$BASE" || exit 1
+fi
+trap 'cd "$OPWD"; [ -d "$TEMP_DIR" ] && rm -rf "$TEMP_DIR"' EXIT
+
+# Check if we're really in WWW
+if [ ! "$(basename "$BASE")" = "www" ] || [ ! -f "$PWD/config.toml" ]; then
+    echo "\"\$(basename \"\$BASE\")\" != \"www\" || \"\$PWD/config.toml\" does not exist"
+    exit 1
+fi
+
 
 process_markdown_files() {
     mkdir -p "$2"
     for FILE in "$1"/*.md; do
-    	if [ "$FILE" = "_index.md" ]; then
-			echo "Skipping \"$FILE\""
-    	fi
+        if [ ! -f "$FILE" ]; then continue; fi
+        if [ "$(basename "$FILE")" = "_index.md" ]; then
+            echo "Skipping \"$FILE\""
+            cp "$FILE" "./content/docs"
+            _GENERATE_EMPTY_INDEX=0
+            continue
+        fi
+        if [ "$(basename "$FILE")" = "index.md" ]; then
+            echo "Skipping \"$FILE\""
+            continue
+        fi
         FILENAME="$(basename "$FILE")"
         DATE="$(git log -1 --format="%ai" -- "$FILE" | awk '{print $1 "T" $2}')"
-        TITLE="$(basename "$FILE")"
+        # Extract title from first line if it starts with '#'
+        TITLE=$(head -n 1 "$FILE" | grep '^#' | sed 's/^# //')
+        # Fallback to filename if no valid title found
+        [ -z "$TITLE" ] && TITLE="$(basename "$FILE")"
         AUTHOR_NAME="$(git log --follow --format="%an" -- "$FILE" | tail -n 1)"
         AUTHOR_EMAIL="$(git log --follow --format="%ae" -- "$FILE" | tail -n 1)"
-
-		case "$TITLE" in
-        "_index.md")
-            cp "$FILE" "./content/docs"
-            continue
-            ;;
-         "index.md")
-         	echo "Skipping \"$FILE\""
-            continue
-            ;;
-    	esac
 
         {
             echo "+++"
@@ -47,18 +53,20 @@ process_markdown_files() {
         } >"$2/$FILENAME"
     done
 
-    # Disabled because I manually created the ./content/docs/_index.md
-    #if [ "$(find "$2" -maxdepth 1 -type f | wc -l)" -gt 0 ]; then
-    #    {
-    #        echo "---"
-    #        echo "title: '$3'"
-    #        echo "---"
-    #    } >"$2/_index.md"
-    #fi
+    if [ "$_GENERATE_EMPTY_INDEX" != "0" ]; then
+        echo "Automatically generated an empty \"_index.md\""
+        if [ "$(find "$2" -maxdepth 1 -type f | wc -l)" -gt 0 ]; then
+            {
+                echo "---"
+                echo "title: '$3'"
+                echo "---"
+            } >"$2/_index.md"
+        fi
+    fi
 }
 
-# Main script execution
-check_directory
+
+# Start actual processing
 rm -rf -- ./content/docs/*
 rm -rf -- ./static/assets/*
 process_markdown_files "../docs" "./content/docs" "Documentation"

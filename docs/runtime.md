@@ -1,4 +1,4 @@
-# AppBundle Runtime Execution
+# AppBundle Runtime Logic Specification
 
 This document describes how the AppBundle runtime operates, including how it reads its own information, extracts static tools, determines environment variables, and handles runtime flags.
 
