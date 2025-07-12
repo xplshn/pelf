@@ -211,7 +211,7 @@ func extractAppBundleInfo(filename string) (RuntimeInfo, error) {
 	}
 
 	if appBundleID.IsDated() {
-		cfg.BuildDate = appBundleID.Date.Format("2006-01-02")
+		cfg.BuildDate = appBundleID.Date.Format(utils.TimeLayoutYYYYMMDD)
 	} else {
 		cfg.BuildDate = "unknown"
 	}
@@ -375,8 +375,10 @@ func main() {
 		}
 
 		baseFilename := filepath.Base(path)
+		name := appBundleID.Name
 		item := BinaryEntry{
-			PkgId:       "github.com.xplshn.appbundlehub."+strings.ToLower(appBundleID.Name),
+			Pkg:         name,
+			PkgId:       "github.com.xplshn.appbundlehub."+strings.ToLower(name),
 			BuildDate:   appBundleInfo.BuildDate,
 			Size:        getFileSize(path),
 			Bsum:        b3sum,
@@ -398,10 +400,11 @@ func main() {
 			item.BuildDate = appBundleID.Date.String()
 		}
 
-		name := ""
 		appStreamXML, err := extractAppStreamXML(path)
 		if err == nil && appStreamXML != nil {
-			name = getText(appStreamXML.Names)
+			if !strings.Contains(getText(appStreamXML.Names), " ") {
+				name = getText(appStreamXML.Names)
+			}
 			if appStreamXML.Icon != "" {
 				item.Icon = appStreamXML.Icon
 			}
