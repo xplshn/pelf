@@ -66,3 +66,11 @@ Additionally, we embed the tools used for mounting and unmounting the `.AppBundl
 - [AppBundle format documentation & specifications](https://xplshn.github.io/pelf/docs)
 - The [AppBundleHUB](https://github.com/xplshn/AppBundleHUB) a repo which builds a ton of portable AppBundles in an automated fashion, using GH actions. (we have a [webStore](https://xplshn.github.io/AppBundleHUB) too, tho that is WIP)
 - [dbin](https://github.com/xplshn/dbin) a self-contained, portable, statically linked, package manager, +4000 binaries (portable, self-contained/static) are available in its repos at the time of writting. Among these, are the AppBundles from the AppBundleHUB and from pkgforge
+
+---
+
+<p align="center">
+    <a href="https://deepwiki.com/xplshn/pelf">
+        <img src="https://deepwiki.com/badge.svg" width="100" alt="Ask DeepWiki">
+    </a>
+</p>
