@@ -15,7 +15,7 @@ An AppBundle is a single executable file that combines an ELF (Executable and Li
    - The structure of this section is defined in Go as:
      ```go
      type RuntimeInfo struct {
-         AppBundleID          string `json:"AppBundleID"` // Unique identifier for the AppBundle
+         AppBundleID          string `json:"AppBundleID"` // Contents should be as specified [appBundleID.md](../appBundleID.md)
          PelfVersion          string `json:"PelfVersion"` // Version of the pelf tool used to create the AppBundle
          HostInfo             string `json:"HostInfo"` // System information from `uname -mrsp(v)`
          FilesystemType       string `json:"FilesystemType"` // Filesystem type: "dwarfs" or "squashfs"
