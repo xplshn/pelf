@@ -29,10 +29,16 @@ jobs:
         run: |
           apk add nodejs gcompat openssl
           sed -i "s:ID=alpine:ID=NotpineForGHA:" /etc/os-release
-          #cd /host/home/runner/runners/*/externals/
-          #rm -rf node20/*
-          #mkdir node20/bin
-          #ln -sfT /usr/bin/node node20/bin/node
+          ls /host
+          ls /host/home
+          ls /host/home/runner
+          ls /host/home/runner/runners
+          ls /host/home/runner/runners/*
+          ls /host/home/runner/runners/*/*
+          cd /host/home/runner/runners/*/externals/
+          rm -rf node20/*
+          mkdir node20/bin
+          ln -sfT /usr/bin/node node20/bin/node
 
       - name: Checkout repository
         uses: actions/checkout@v4
