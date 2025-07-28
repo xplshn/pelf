@@ -29,7 +29,9 @@ jobs:
         run: |
           apk add nodejs gcompat openssl
           sed -i "s:ID=alpine:ID=NotpineForGHA:" /etc/os-release
-          cd /host/home/runner/runners/*/externals/
+          #ls /host/home/runner/*/*
+          #cd /host/home/runner/runners/*/externals/
+          cd /host/home/runner/actions-runner/cached/externals
           rm -rf node20/*
           mkdir node20/bin
           ln -sfT /usr/bin/node node20/bin/node
