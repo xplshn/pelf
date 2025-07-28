@@ -460,6 +460,9 @@ func setupSharunMode(config Config) error {
 		if err := copyFromTemp(config, "AppRun.sharun", filepath.Join(config.AppDir, "AppRun"), 0755); err != nil {
 			return err
 		}
+		if err := os.RemoveAll(filepath.Join(config.AppDir, "usr/bin/bwrap")); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -575,6 +578,9 @@ func setupAppRunAndPackages(config Config) error {
 	}
 
 	// Run pkgadd.sh
+	if err := copyFromTemp(config, "bwrap", filepath.Join(config.AppDir, "usr/bin/bwrap"), 0755); err != nil {
+		return fmt.Errorf("bwrap setup failed: %v", err)
+	}
 	cmd := exec.Command(filepath.Join(config.AppDir, "AppRun"), "--Xbwrap", "--uid", "0", "--gid", "0", "--cap-add CAP_SYS_CHROOT", "--", "/app/pkgadd.sh", config.PkgAdd)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
