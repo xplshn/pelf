@@ -11,19 +11,19 @@
 OPWD="$PWD"
 BASE="$(dirname "$(realpath "$0")")"
 TEMP_DIR="/tmp/pelf_build_$(date +%s)"
-export DBIN_INSTALL_DIR="$BASE/binaryDependencies"
-export DBIN_NOCONFIG="1"
-
-# -----------------
-DWFS_VER="0.12.4" #
-# -----------------
-
 # Change to BASE directory if not already there
 if [ "$OPWD" != "$BASE" ]; then
     echo "Changing to $BASE"
     cd "$BASE" || exit 1
 fi
 trap 'cd "$OPWD"; [ -d "$TEMP_DIR" ] && rm -rf "$TEMP_DIR"' EXIT
+
+# -Dbin-related-envs-------------------------------#
+export DBIN_INSTALL_DIR="$BASE/binaryDependencies" #
+export DBIN_NOCONFIG="1"                           #
+# -Dependency-Revision-Tracking--------------------#
+DWFS_VER="0.12.4"                                  #
+# -------------------------------------------------#
 
 if [ "$(uname -m)" = "aarch64" ]; then
     export GOARCH="arm64" # Weird things happen when it is not set, I think my GH action has this env already set.
@@ -149,12 +149,32 @@ build_pelfCreator() {
 
 	cat <<'EOF' > "$TEMP_DIR/binaryDependencies/pkgadd.sh"
 #!/bin/sh
-fakeroot apk -U \
+fakeroot apk \
         --allow-untrusted \
-        --no-interactive \
-        --no-cache \
-        --initdb add \
+        --no-interactive  \
+        --no-cache        \
+        --initdb add      \
         $@ || true
+
+# Check if each package in $@ is installed
+for pkg in "$@"; do
+    if ! fakeroot apk info | grep -q "^${pkg}$" >/dev/null 2>&1; then
+        echo "error: Package $pkg not installed" >&2
+        exit 1
+    fi
+done
+
+# Get version of the first package ($1)
+if [ -n "$1" ]; then
+    version=$(fakeroot apk info "$1" 2>/dev/null | head -n 1 | cut -d' ' -f1 | cut -d'-' -f2-)
+    if [ -n "$version" ]; then
+        # Blue color for NOTE using ANSI escape codes
+        printf "\033[34mNOTICE\033[0m: using %s's version as the AppBundle's version: [%s]\n" "$1" "$version"
+    else
+        echo "error: could not retrieve version for $1" >&2
+        exit 1
+    fi
+fi
 EOF
 	chmod +x "$TEMP_DIR/binaryDependencies/pkgadd.sh"
 

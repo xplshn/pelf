@@ -745,16 +745,16 @@ func findAndCopyIcon(appDir, iconName string) error {
 
 func setupLib4bin(config Config) error {
 	l4bCmdPath := filepath.Join(config.AppDir, ".l4bCmd")
-
 	script := "#!/bin/sh\n"
+	script += "OPWD=\"$PWD\"\n"
+	script += "cd \"%s\" || exit 1\n"
 	script += "PATH=\"%s:$PATH\"\n"
-	script += "\"%s/AppRun\" --Xbwrap --gid 0 --uid 0 sharun l --with-sharun --gen-lib-path --with-hooks --dst-dir /app %s\n"
-	script = fmt.Sprintf(script, config.TempDir, config.AppDir, config.Lib4binArgs)
-
+	script += "./AppRun --Xbwrap --gid 0 --uid 0 sharun l --with-sharun --gen-lib-path --with-hooks --dst-dir . %s\n"
+	script += "cd \"$OPWD\" || exit 1\n"
+	script = fmt.Sprintf(script, config.AppDir, config.TempDir, config.Lib4binArgs)
 	if err := os.WriteFile(l4bCmdPath, []byte(script), 0755); err != nil {
 		return err
 	}
-
 	cmd := exec.Command(l4bCmdPath)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
