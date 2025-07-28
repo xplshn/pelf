@@ -23,18 +23,23 @@ jobs:
       image: "alpine:edge"
       volumes:
         - /:/host  # Jailbreak!
+        - /tmp/node20:/__e/node20
     steps:
       - name: Patch native Alpine NodeJS into Runner environment
         if: matrix.arch == 'aarch64'
         run: |
-          #apk add nodejs gcompat openssl
-          #sed -i "s:ID=alpine:ID=NotpineForGHA:" /etc/os-release
+          apk add nodejs gcompat openssl
+          sed -i "s:ID=alpine:ID=NotpineForGHA:" /etc/os-release
+          # --- old workaround ---
           #ls /host/home/runner/*/*
           #cd /host/home/runner/runners/*/externals/
           #rm -rf node20/*
           #mkdir node20/bin
           #ln -sfT /usr/bin/node node20/bin/node
-          echo "workaround disabled"
+          # --- second workaround ---
+          mkdir -p /__e/node20/bin
+          ln -sfT /usr/bin/node /__e/node20/bin/node
+          ln -sfT /usr/bin/npm /__e/node20/bin/npm
 
       - name: Checkout repository
         uses: actions/checkout@v4
