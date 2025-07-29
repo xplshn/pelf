@@ -1,6 +1,6 @@
 #!/bin/sh
 
-# DATE OF LAST REVISION: 26-05-2025
+# DATE OF LAST REVISION: 28-07-2025
 
 # shellcheck disable=SC2086
 [ -n "$DEBUG" ] && set -$DEBUG
@@ -17,7 +17,7 @@
 
 # Find bwrap
 BWRAP_BIN="${APPDIR}/usr/bin/bwrap"
-[ ! -f "$BWRAP_BIN" ] && BWRAP_BIN="bwrap"
+[ ! -f "$BWRAP_BIN" ] && echo "bwrap not at $BWRAP_BIN"
 
 # Default ARGV0
 [ -z "$ARGV0" ] && ARGV0="${0##*/}"
