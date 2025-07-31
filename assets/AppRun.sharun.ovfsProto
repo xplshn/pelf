@@ -108,11 +108,11 @@ cleanup() {
             fusermount -uz "$MOUNT_DIR" 2>/dev/null
         fi
 
+       	# Safe remove ops
         if mountpoint -q "$MOUNT_DIR"; then
-            # Remove temporary directories, but only if it is SAFE.
-            rmdir  "$MOUNT_DIR"   2>/dev/null || true
-            rm -rf "$TEMP_DIR"    2>/dev/null || true
-            rm -rf "$UNIONFS_DIR" 2>/dev/null || true
+            rmdir --ignore-fail-on-non-empty "$MOUNT_DIR"
+            rmdir --ignore-fail-on-non-empty "$TEMP_DIR"  
+            rmdir --ignore-fail-on-non-empty "$UNIONFS_DIR"
         fi
     ) & # Run cleanup in the background
 }
