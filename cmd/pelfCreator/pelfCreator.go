@@ -340,6 +340,17 @@ func runPelfCreator(config Config) error {
 		}
 	}
 
+	// dbg
+	//if os.Getenv("PELFCREATOR_DEPS_LS") == "1" {
+	//	files, err := os.ReadDir(config.TempDir)
+	//	if err != nil {
+	//		log.Fatal(err)
+	//	}
+	//	for i, file := range files {
+	//	    fmt.Printf("\t[%d]: %s\n", i, file.Name())
+	//	}
+	//}
+
 	fmt.Printf("Successfully created %s\n", config.OutputTo)
 	return nil
 }
@@ -744,12 +755,16 @@ func findAndCopyIcon(appDir, iconName string) error {
 }
 
 func setupLib4bin(config Config) error {
+	// This could be MUCH SIMPLER:
 	l4bCmdPath := filepath.Join(config.AppDir, ".l4bCmd")
-	script := "#!/bin/sh\n"
+	script := "#!/bin/sh -e\n"
+	script += "[ \"$_DASBUG\" = \"1\" ] && set -x\n" // dbg
+	script += "set -u\n"
 	script += "OPWD=\"$PWD\"\n"
-	script += "cd \"%s\" || exit 1\n"
+	script += "APPDIR=\"%s\"\n"
+	script += "cd \"$APPDIR\" || exit 1\n"
 	script += "PATH=\"%s:$PATH\"\n"
-	script += "./AppRun --Xbwrap --gid 0 --uid 0 sharun l --with-sharun --gen-lib-path --with-hooks --dst-dir . %s\n"
+	script += "./AppRun --Xbwrap --gid 0 --uid 0 --bind-try \"$OPWD/$APPDIR\" \"$OPWD/$APPDIR\" sharun l --gen-lib-path --with-sharun --with-hooks --dst-dir . %s\n"
 	script += "cd \"$OPWD\" || exit 1\n"
 	script = fmt.Sprintf(script, config.AppDir, config.TempDir, config.Lib4binArgs)
 	if err := os.WriteFile(l4bCmdPath, []byte(script), 0755); err != nil {
