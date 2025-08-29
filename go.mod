@@ -4,7 +4,6 @@ go 1.24
 
 require (
 	fyne.io/fyne/v2 v2.5.5
-	github.com/adrg/xdg v0.5.3
 	github.com/emmansun/base64 v0.7.0
 	github.com/go-ini/ini v1.67.0
 	github.com/goccy/go-json v0.10.5
@@ -21,9 +20,7 @@ require (
 	github.com/u-root/u-root v0.14.0
 	github.com/urfave/cli/v3 v3.3.8
 	github.com/zeebo/blake3 v0.2.4
-	golang.org/x/image v0.25.0
 	golang.org/x/sys v0.33.0
-	gopkg.in/yaml.v3 v3.0.1
 	pgregory.net/rand v1.0.2
 )
 
@@ -76,11 +73,13 @@ require (
 	github.com/therootcompany/xz v1.0.1 // indirect
 	github.com/tklauser/go-sysconf v0.3.15 // indirect
 	github.com/tklauser/numcpus v0.10.0 // indirect
-	github.com/ulikunitz/xz v0.5.12 // indirect
+	github.com/ulikunitz/xz v0.5.14 // indirect
 	github.com/yuin/goldmark v1.7.1 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go4.org v0.0.0-20230225012048-214862532bf5 // indirect
+	golang.org/x/image v0.25.0 // indirect
 	golang.org/x/mobile v0.0.0-20231127183840-76ac6878050a // indirect
 	golang.org/x/net v0.40.0 // indirect
 	golang.org/x/text v0.26.0 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
