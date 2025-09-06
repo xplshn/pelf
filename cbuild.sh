@@ -22,7 +22,7 @@ trap 'cd "$OPWD"; [ -d "$TEMP_DIR" ] && rm -rf "$TEMP_DIR"' EXIT
 export DBIN_INSTALL_DIR="$BASE/binaryDependencies" #
 export DBIN_NOCONFIG="1"                           #
 # -Dependency-Revision-Tracking--------------------#
-DWFS_VER="0.13.0"                                  #
+DWFS_VER="0.12.4"                                  #
 # -------------------------------------------------#
 
 if [ "$(uname -m)" = "aarch64" ]; then
