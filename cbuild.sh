@@ -22,7 +22,7 @@ trap 'cd "$OPWD"; [ -d "$TEMP_DIR" ] && rm -rf "$TEMP_DIR"' EXIT
 export DBIN_INSTALL_DIR="$BASE/binaryDependencies" #
 export DBIN_NOCONFIG="1"                           #
 # -Dependency-Revision-Tracking--------------------#
-DWFS_VER="0.12.4"                                  #
+DWFS_VER="0.13.0"                                  #
 # -------------------------------------------------#
 
 if [ "$(uname -m)" = "aarch64" ]; then
@@ -63,7 +63,7 @@ build_appbundle_runtime() {
         export DBIN_INSTALL_DIR="$BASE/appbundle-runtime/binaryDependencies"
         mkdir -p "$DBIN_INSTALL_DIR"
         # Fetch required tools using curl and dbin
-        curl -sL "https://github.com/mhx/dwarfs/releases/download/v$DWFS_VER/dwarfs-fuse-extract-mimalloc-$DWFS_VER-Linux-$(uname -m)" -o "$DBIN_INSTALL_DIR/dwarfs"
+        curl -sL "https://github.com/mhx/dwarfs/releases/download/v$DWFS_VER/dwarfs-fuse-extract-$DWFS_VER-$(uname -o)-$(uname -m).upx" -o "$DBIN_INSTALL_DIR/dwarfs"
         chmod +x "$DBIN_INSTALL_DIR/dwarfs"
         curl -sL "https://github.com/VHSgunzo/squashfuse-static/releases/latest/download/squashfuse_ll-musl-mimalloc-$(uname -m)" -o "$DBIN_INSTALL_DIR/squashfuse"
         chmod +x "$DBIN_INSTALL_DIR/squashfuse"
