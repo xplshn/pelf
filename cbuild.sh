@@ -63,52 +63,56 @@ fetchFromGithub() {
     _fileName="$3"
     _outputPath="$4"
 
-    # First get the release info
-    _apiUrl="https://api.github.com/repos/$_repo/releases/tags/$_tag"
-    _tempJson="/tmp/release_info_$.json"
+    log "Fetching $_fileName from $_repo:$_tag"
 
-    if ! curl -fsSL -H "Accept: application/vnd.github.v3+json" \
-               "$_apiUrl" -o "$_tempJson"; then
-        log_error "Failed to fetch release info for $_repo:$_tag"
-        return 1
+    if [ "$_tag" = "latest" ]; then
+        _downloadUrl="https://github.com/$_repo/releases/latest/download/$_fileName"
+    else
+        _downloadUrl="https://github.com/$_repo/releases/download/$_tag/$_fileName"
     fi
 
-    # Extract the download URL for the specific asset
+    if curl -fsSL --retry 2 --retry-delay 3 --max-time 120 \
+            "$_downloadUrl" -o "$_outputPath" 2>/dev/null && validateDownload "$_outputPath" "$_fileName"; then
+        return 0
+    fi
+    rm -f "$_outputPath"
+
+    log_warning "Direct download failed, trying API method"
+    if [ "$_tag" = "latest" ]; then
+        _apiUrl="https://api.github.com/repos/$_repo/releases/latest"
+    else
+        _apiUrl="https://api.github.com/repos/$_repo/releases/tags/$_tag"
+    fi
+    _tempJson="/tmp/release_info_$$.json"
+
+    if ! curl -fsSL -H "Accept: application/vnd.github.v3+json" \
+               "$_apiUrl" -o "$_tempJson" 2>/dev/null; then
+        rm -f "$_tempJson"
+        log_error "Failed to fetch release info for $_repo:$_tag"
+    fi
+
     if available "jq"; then
-        _downloadUrl=$(jq -r ".assets[] | select(.name == \"$_fileName\") | .browser_download_url" "$_tempJson")
+        _downloadUrl=$(jq -r ".assets[] | select(.name == \"$_fileName\") | .browser_download_url" "$_tempJson" 2>/dev/null)
     else
         _downloadUrl=$(grep -o "\"browser_download_url\":\"[^\"]*$_fileName\"" "$_tempJson" | cut -d'"' -f4)
     fi
-
     rm -f "$_tempJson"
 
-    if [ -z "$_downloadUrl" ] || [ "$_downloadUrl" = "null" ]; then
-        log_error "Could not find asset '$_fileName' in release $_repo:$_tag"
-        return 1
-    fi
+    [ -z "$_downloadUrl" ] || [ "$_downloadUrl" = "null" ] && log_error "Asset '$_fileName' not found in $_repo:$_tag"
 
-    # Now download the actual file
-    log "Downloading $_fileName from $_repo:$_tag"
     if ! curl -fsSL --retry 3 --retry-delay 5 --max-time 300 \
-               -H "Accept: application/octet-stream" \
-               "$_downloadUrl" -o "$_outputPath"; then
+               "$_downloadUrl" -o "$_outputPath" || ! validateDownload "$_outputPath" "$_fileName"; then
         log_error "Failed to download $_fileName"
-        return 1
     fi
+}
 
-    # Verify the download is not an HTML error page
-    if [ -f "$_outputPath" ] && [ -s "$_outputPath" ]; then
-        if file "$_outputPath" 2>/dev/null | grep -q "HTML\|text"; then
-            log_error "Downloaded HTML error page instead of binary file $_fileName"
-            rm -f "$_outputPath"
-            return 1
-        fi
-        return 0
-    else
-        log_error "Downloaded file $_fileName is empty or doesn't exist"
-        rm -f "$_outputPath"
-        return 1
-    fi
+validateDownload() {
+    _file="$1"
+    _name="$2"
+
+    [ -f "$_file" ] && [ -s "$_file" ] || { log_error "Downloaded file $_name is empty or doesn't exist"; return 1; }
+    file "$_file" 2>/dev/null | grep -q "HTML\|text" && { log_error "Downloaded HTML error page instead of $_name"; return 1; }
+    return 0
 }
 
 checkElf() {
