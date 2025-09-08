@@ -318,7 +318,7 @@ build_pelfCreator_extensions() {
         [ -f "$file" ] || continue
         filename=$(basename "$file")
         case "$filename" in
-            *.tar* | pkgadd.sh)
+            AppRun* | *.tar* | pkgadd.sh )
                 log "Skipping $filename"
                 ;;
             *)
