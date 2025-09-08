@@ -142,7 +142,7 @@ build_appbundle_runtime() {
         export DBIN_INSTALL_DIR="$BASE/appbundle-runtime/binaryDependencies"
         mkdir -p "$DBIN_INSTALL_DIR"
         # Fetch required tools using curl and dbin
-        fetchFromGithub "mhx/dwarfs" "v$DWFS_VER" "dwarfs-fuse-extract-$DWFS_VER-$(uname -o)-$(uname -m).upx" "$DBIN_INSTALL_DIR/dwarfs"
+        fetchFromGithub "mhx/dwarfs" "v$DWFS_VER" "dwarfs-fuse-extract-$DWFS_VER-$(basename "$(uname -o)")-$(uname -m).upx" "$DBIN_INSTALL_DIR/dwarfs"
         checkElf "$DBIN_INSTALL_DIR/dwarfs"
         chmod +x "$DBIN_INSTALL_DIR/dwarfs"
         fetchFromGithub "VHSgunzo/squashfuse-static" "latest" "squashfuse_ll-musl-mimalloc-$(uname -m)" "$DBIN_INSTALL_DIR/squashfuse"
