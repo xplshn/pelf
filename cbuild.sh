@@ -56,21 +56,44 @@ require() {
     available "$1" || log_error "[$1] is not installed. Please ensure the command is available [$1] and try again."
 }
 
+checkElf() {
+    _file="$1"
+    # Check if file exists
+    [ -f "$_file" ] || { log_error "File $_file does not exist"; return 1; }
+    
+    if available "xxd"; then
+        magic=$(xxd -p -l 4 "$_file" 2>/dev/null)
+    elif available "hexdump"; then
+        magic=$(hexdump -ve '/1 "%02x"' -n 4 "$_file" 2>/dev/null)
+    else
+        log_error "Neither xxd nor hexdump is available to check ELF header"
+        return 1
+    fi
+    
+    # Check if the first 4 bytes match ELF magic number (7F454C46)
+    [ "$magic" = "7f454c46" ] && return 0
+    log_warning "$_file is not an ELF file. Do clean and re-run the target to re-download"
+    return 1
+}
+
 build_appbundle_runtime() {
     log "Building appbundle-runtime variants"
     if [ "$(basename "$(uname -o)")" = "Linux" ]; then
-    log "Preparing appbundle-runtime binary dependencies"
+        log "Preparing appbundle-runtime binary dependencies"
         export DBIN_INSTALL_DIR="$BASE/appbundle-runtime/binaryDependencies"
         mkdir -p "$DBIN_INSTALL_DIR"
         # Fetch required tools using curl and dbin
         curl -sL "https://github.com/mhx/dwarfs/releases/download/v$DWFS_VER/dwarfs-fuse-extract-$DWFS_VER-$(uname -o)-$(uname -m).upx" -o "$DBIN_INSTALL_DIR/dwarfs"
+        checkElf "$DBIN_INSTALL_DIR/dwarfs" || log_error "Downloaded dwarfs is not a valid ELF file"
         chmod +x "$DBIN_INSTALL_DIR/dwarfs"
         curl -sL "https://github.com/VHSgunzo/squashfuse-static/releases/latest/download/squashfuse_ll-musl-mimalloc-$(uname -m)" -o "$DBIN_INSTALL_DIR/squashfuse"
+        checkElf "$DBIN_INSTALL_DIR/squashfuse" || log_error "Downloaded squashfuse is not a valid ELF file"
         chmod +x "$DBIN_INSTALL_DIR/squashfuse"
         dbin add squashfs-tools/unsquashfs
         # UPX the unsquashfs binary
         if available "upx"; then
             log "Compressing unsquashfs for appbundle-runtime"
+            checkElf "$DBIN_INSTALL_DIR/unsquashfs" || log_error "unsquashfs is not a valid ELF file"
             upx "$DBIN_INSTALL_DIR/unsquashfs" || log_error "Unable to compress unsquashfs"
         else
             log_warning "upx not available. The unsquashfs binary will be unnecessarily large"
@@ -116,6 +139,7 @@ build_pelf() {
 
         if available "upx"; then
             log "Compressing ./pelf tool"
+            checkElf "./pelf" || log_error "./pelf is not a valid ELF file"
             upx ./pelf || log_error "unable to compress ./pelf"
             rm -f ./pelf.upx
         else
@@ -135,10 +159,13 @@ build_pelfCreator() {
     # Copy only the necessary dependencies to temp dir
     log "Preparing dependencies for pelfCreator"
     cp "$BASE/pelf" "$TEMP_DIR/binaryDependencies/pelf" || log_error "Unable to move pelf to the binaryDependencies of pelfCreator"
+    checkElf "$TEMP_DIR/binaryDependencies/pelf" || log_error "Copied pelf is not a valid ELF file"
 
     # Get the unionfs and bwrap binaries
     mkdir -p "$TEMP_DIR/binaryDependencies"
     DBIN_INSTALL_DIR="$TEMP_DIR/binaryDependencies" dbin add unionfs-fuse3/unionfs bwrap
+    checkElf "$TEMP_DIR/binaryDependencies/unionfs" || log_error "Downloaded unionfs is not a valid ELF file"
+    checkElf "$TEMP_DIR/binaryDependencies/bwrap" || log_error "Downloaded bwrap is not a valid ELF file"
 
     # Copy AppRun assets
     if [ -d "$BASE/assets" ]; then
@@ -147,7 +174,7 @@ build_pelfCreator() {
         log_warning "assets directory not found, AppRun files might be missing"
     fi
 
-	cat <<'EOF' > "$TEMP_DIR/binaryDependencies/pkgadd.sh"
+    cat <<'EOF' > "$TEMP_DIR/binaryDependencies/pkgadd.sh"
 #!/bin/sh
 fakeroot apk \
         --allow-untrusted \
@@ -176,7 +203,7 @@ if [ -n "$1" ]; then
     fi
 fi
 EOF
-	chmod +x "$TEMP_DIR/binaryDependencies/pkgadd.sh"
+    chmod +x "$TEMP_DIR/binaryDependencies/pkgadd.sh"
 
     if [ ! -f "$TEMP_DIR/binaryDependencies/rootfs.tar.zst" ]; then
         log "Downloading rootfs"
@@ -189,6 +216,7 @@ EOF
     if [ ! -f "$TEMP_DIR/binaryDependencies/sharun" ]; then
         log "Downloading sharun-$(uname -m)-aio"
         curl -sL "https://github.com/VHSgunzo/sharun/releases/latest/download/sharun-$(uname -m)-aio" -o "$TEMP_DIR/binaryDependencies/sharun"
+        checkElf "$TEMP_DIR/binaryDependencies/sharun" || log_error "Downloaded sharun is not a valid ELF file"
         chmod +x "$TEMP_DIR/binaryDependencies/sharun"
     fi
 
@@ -204,6 +232,7 @@ EOF
     go build || log_error "Unable to build pelfCreator"
     if available "upx"; then
         log "Compressing ./pelfCreator tool"
+        checkElf "./pelfCreator" || log_error "./pelfCreator is not a valid ELF file"
         upx ./pelfCreator || log_error "unable to compress ./pelfCreator"
         rm -f ./pelfCreator.upx
     else
@@ -235,6 +264,7 @@ build_pelfCreator_extensions() {
                 ;;
             *)
                 cp "$file" "$TEMP_DIR/binaryDependencies/"
+                checkElf "$TEMP_DIR/binaryDependencies/$filename" || log_error "Copied $filename is not a valid ELF file"
                 ;;
         esac
     done
@@ -274,6 +304,7 @@ build_appstream_helper() {
     go build || log_error "Unable to build appstream-helper"
     if available "upx"; then
         log "Compressing ./appstream-helper tool"
+        checkElf "./appstream-helper" || log_error "./appstream-helper is not a valid ELF file"
         upx ./appstream-helper
     else
         log_warning "upx not available. The resulting binary will be unnecessarily large"
@@ -303,14 +334,20 @@ handle_dependencies() {
 
     unnappear rm "$DBIN_INSTALL_DIR/dwarfs-tools"
     curl -sL "https://github.com/mhx/dwarfs/releases/download/v$DWFS_VER/dwarfs-universal-$DWFS_VER-Linux-$(uname -m)" -o "$DBIN_INSTALL_DIR/dwarfs-tools"
+    checkElf "$DBIN_INSTALL_DIR/dwarfs-tools" || log_error "Downloaded dwarfs-tools is not a valid ELF file"
     chmod +x "$DBIN_INSTALL_DIR/dwarfs-tools"
     unnappear rm "$DBIN_INSTALL_DIR/squashfuse_ll"
     curl -sL "https://github.com/VHSgunzo/squashfuse-static/releases/latest/download/squashfuse_ll-musl-mimalloc-$(uname -m)" -o "$DBIN_INSTALL_DIR/squashfuse_ll"
+    checkElf "$DBIN_INSTALL_DIR/squashfuse_ll" || log_error "Downloaded squashfuse_ll is not a valid ELF file"
     chmod +x "$DBIN_INSTALL_DIR/squashfuse_ll"
 
     log "Installing dependencies..."
     # shellcheck disable=SC2086
     dbin add $DEPS
+    for dep in $DEPS; do
+        dep_name=$(echo "$dep" | cut -d'/' -f2)
+        checkElf "$DBIN_INSTALL_DIR/$dep_name" || log_error "Downloaded $dep_name is not a valid ELF file"
+    done
 
     cd "$DBIN_INSTALL_DIR" && {
         log "Linking dependencies"
