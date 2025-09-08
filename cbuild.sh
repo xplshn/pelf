@@ -56,11 +56,66 @@ require() {
     available "$1" || log_error "[$1] is not installed. Please ensure the command is available [$1] and try again."
 }
 
+
+fetchFromGithub() {
+    _repo="$1"
+    _tag="$2"
+    _fileName="$3"
+    _outputPath="$4"
+
+    # First get the release info
+    _apiUrl="https://api.github.com/repos/$_repo/releases/tags/$_tag"
+    _tempJson="/tmp/release_info_$.json"
+
+    if ! curl -fsSL -H "Accept: application/vnd.github.v3+json" \
+               "$_apiUrl" -o "$_tempJson"; then
+        log_error "Failed to fetch release info for $_repo:$_tag"
+        return 1
+    fi
+
+    # Extract the download URL for the specific asset
+    if available "jq"; then
+        _downloadUrl=$(jq -r ".assets[] | select(.name == \"$_fileName\") | .browser_download_url" "$_tempJson")
+    else
+        _downloadUrl=$(grep -o "\"browser_download_url\":\"[^\"]*$_fileName\"" "$_tempJson" | cut -d'"' -f4)
+    fi
+
+    rm -f "$_tempJson"
+
+    if [ -z "$_downloadUrl" ] || [ "$_downloadUrl" = "null" ]; then
+        log_error "Could not find asset '$_fileName' in release $_repo:$_tag"
+        return 1
+    fi
+
+    # Now download the actual file
+    log "Downloading $_fileName from $_repo:$_tag"
+    if ! curl -fsSL --retry 3 --retry-delay 5 --max-time 300 \
+               -H "Accept: application/octet-stream" \
+               "$_downloadUrl" -o "$_outputPath"; then
+        log_error "Failed to download $_fileName"
+        return 1
+    fi
+
+    # Verify the download is not an HTML error page
+    if [ -f "$_outputPath" ] && [ -s "$_outputPath" ]; then
+        if file "$_outputPath" 2>/dev/null | grep -q "HTML\|text"; then
+            log_error "Downloaded HTML error page instead of binary file $_fileName"
+            rm -f "$_outputPath"
+            return 1
+        fi
+        return 0
+    else
+        log_error "Downloaded file $_fileName is empty or doesn't exist"
+        rm -f "$_outputPath"
+        return 1
+    fi
+}
+
 checkElf() {
     _file="$1"
     # Check if file exists
     [ -f "$_file" ] || { log_error "File $_file does not exist"; return 1; }
-    
+
     if available "xxd"; then
         magic=$(xxd -p -l 4 "$_file" 2>/dev/null)
     elif available "hexdump"; then
@@ -69,10 +124,10 @@ checkElf() {
         log_error "Neither xxd nor hexdump is available to check ELF header"
         return 1
     fi
-    
+
     # Check if the first 4 bytes match ELF magic number (7F454C46)
     [ "$magic" = "7f454c46" ] && return 0
-    log_warning "$_file is not an ELF file. Do clean and re-run the target to re-download"
+    log_error "$_file is not an ELF file. Do clean and re-run the target to re-download"
     return 1
 }
 
@@ -83,17 +138,17 @@ build_appbundle_runtime() {
         export DBIN_INSTALL_DIR="$BASE/appbundle-runtime/binaryDependencies"
         mkdir -p "$DBIN_INSTALL_DIR"
         # Fetch required tools using curl and dbin
-        curl -sL "https://github.com/mhx/dwarfs/releases/download/v$DWFS_VER/dwarfs-fuse-extract-$DWFS_VER-$(uname -o)-$(uname -m).upx" -o "$DBIN_INSTALL_DIR/dwarfs"
-        checkElf "$DBIN_INSTALL_DIR/dwarfs" || log_error "Downloaded dwarfs is not a valid ELF file"
+        fetchFromGithub "mhx/dwarfs" "v$DWFS_VER" "dwarfs-fuse-extract-$DWFS_VER-$(uname -o)-$(uname -m).upx" "$DBIN_INSTALL_DIR/dwarfs"
+        checkElf "$DBIN_INSTALL_DIR/dwarfs"
         chmod +x "$DBIN_INSTALL_DIR/dwarfs"
-        curl -sL "https://github.com/VHSgunzo/squashfuse-static/releases/latest/download/squashfuse_ll-musl-mimalloc-$(uname -m)" -o "$DBIN_INSTALL_DIR/squashfuse"
-        checkElf "$DBIN_INSTALL_DIR/squashfuse" || log_error "Downloaded squashfuse is not a valid ELF file"
+        fetchFromGithub "VHSgunzo/squashfuse-static" "latest" "squashfuse_ll-musl-mimalloc-$(uname -m)" "$DBIN_INSTALL_DIR/squashfuse"
+        checkElf "$DBIN_INSTALL_DIR/squashfuse"
         chmod +x "$DBIN_INSTALL_DIR/squashfuse"
         dbin add squashfs-tools/unsquashfs
         # UPX the unsquashfs binary
         if available "upx"; then
             log "Compressing unsquashfs for appbundle-runtime"
-            checkElf "$DBIN_INSTALL_DIR/unsquashfs" || log_error "unsquashfs is not a valid ELF file"
+            checkElf "$DBIN_INSTALL_DIR/unsquashfs"
             upx "$DBIN_INSTALL_DIR/unsquashfs" || log_error "Unable to compress unsquashfs"
         else
             log_warning "upx not available. The unsquashfs binary will be unnecessarily large"
@@ -139,7 +194,7 @@ build_pelf() {
 
         if available "upx"; then
             log "Compressing ./pelf tool"
-            checkElf "./pelf" || log_error "./pelf is not a valid ELF file"
+            checkElf "./pelf"
             upx ./pelf || log_error "unable to compress ./pelf"
             rm -f ./pelf.upx
         else
@@ -159,13 +214,13 @@ build_pelfCreator() {
     # Copy only the necessary dependencies to temp dir
     log "Preparing dependencies for pelfCreator"
     cp "$BASE/pelf" "$TEMP_DIR/binaryDependencies/pelf" || log_error "Unable to move pelf to the binaryDependencies of pelfCreator"
-    checkElf "$TEMP_DIR/binaryDependencies/pelf" || log_error "Copied pelf is not a valid ELF file"
+    checkElf "$TEMP_DIR/binaryDependencies/pelf"
 
     # Get the unionfs and bwrap binaries
     mkdir -p "$TEMP_DIR/binaryDependencies"
     DBIN_INSTALL_DIR="$TEMP_DIR/binaryDependencies" dbin add unionfs-fuse3/unionfs bwrap
-    checkElf "$TEMP_DIR/binaryDependencies/unionfs" || log_error "Downloaded unionfs is not a valid ELF file"
-    checkElf "$TEMP_DIR/binaryDependencies/bwrap" || log_error "Downloaded bwrap is not a valid ELF file"
+    checkElf "$TEMP_DIR/binaryDependencies/unionfs"
+    checkElf "$TEMP_DIR/binaryDependencies/bwrap"
 
     # Copy AppRun assets
     if [ -d "$BASE/assets" ]; then
@@ -208,15 +263,15 @@ EOF
     if [ ! -f "$TEMP_DIR/binaryDependencies/rootfs.tar.zst" ]; then
         log "Downloading rootfs"
         RELEASE_NAME="AlpineLinux_edge-$(uname -m).tar.xz"
-        curl -sL "https://github.com/xplshn/filesystems/releases/latest/download/$RELEASE_NAME" -o "$TEMP_DIR/binaryDependencies/$RELEASE_NAME"
+        fetchFromGithub "xplshn/filesystems" "latest" "$RELEASE_NAME" "$TEMP_DIR/binaryDependencies/$RELEASE_NAME"
         cd "$TEMP_DIR/binaryDependencies" || log_error "Failed to change to temp directory"
         ln -sfT "$RELEASE_NAME" "rootfs.tar.${RELEASE_NAME##*.}"
     fi
 
     if [ ! -f "$TEMP_DIR/binaryDependencies/sharun" ]; then
         log "Downloading sharun-$(uname -m)-aio"
-        curl -sL "https://github.com/VHSgunzo/sharun/releases/latest/download/sharun-$(uname -m)-aio" -o "$TEMP_DIR/binaryDependencies/sharun"
-        checkElf "$TEMP_DIR/binaryDependencies/sharun" || log_error "Downloaded sharun is not a valid ELF file"
+        fetchFromGithub "VHSgunzo/sharun" "latest" "sharun-$(uname -m)-aio" "$TEMP_DIR/binaryDependencies/sharun"
+        checkElf "$TEMP_DIR/binaryDependencies/sharun"
         chmod +x "$TEMP_DIR/binaryDependencies/sharun"
     fi
 
@@ -232,7 +287,7 @@ EOF
     go build || log_error "Unable to build pelfCreator"
     if available "upx"; then
         log "Compressing ./pelfCreator tool"
-        checkElf "./pelfCreator" || log_error "./pelfCreator is not a valid ELF file"
+        checkElf "./pelfCreator"
         upx ./pelfCreator || log_error "unable to compress ./pelfCreator"
         rm -f ./pelfCreator.upx
     else
@@ -264,7 +319,7 @@ build_pelfCreator_extensions() {
                 ;;
             *)
                 cp "$file" "$TEMP_DIR/binaryDependencies/"
-                checkElf "$TEMP_DIR/binaryDependencies/$filename" || log_error "Copied $filename is not a valid ELF file"
+                checkElf "$TEMP_DIR/binaryDependencies/$filename"
                 ;;
         esac
     done
@@ -282,7 +337,7 @@ EOF
     if [ ! -f "$TEMP_DIR/binaryDependencies/rootfs.tar.zst" ]; then
         log "Downloading ArchLinux rootfs"
         RELEASE_NAME="ArchLinux-base_$(uname -m).tar.zst"
-        curl -sL "https://github.com/xplshn/filesystems/releases/latest/download/$RELEASE_NAME" -o "$TEMP_DIR/binaryDependencies/$RELEASE_NAME"
+        fetchFromGithub "xplshn/filesystems" "latest" "$RELEASE_NAME" "$TEMP_DIR/binaryDependencies/$RELEASE_NAME"
         cd "$TEMP_DIR/binaryDependencies" || log_error "Failed to change to temp directory"
         ln -sfT "$RELEASE_NAME" "rootfs.tar.${RELEASE_NAME##*.}"
         cd "$BASE" || log_error "Unable to return to base directory"
@@ -304,7 +359,7 @@ build_appstream_helper() {
     go build || log_error "Unable to build appstream-helper"
     if available "upx"; then
         log "Compressing ./appstream-helper tool"
-        checkElf "./appstream-helper" || log_error "./appstream-helper is not a valid ELF file"
+        checkElf "./appstream-helper"
         upx ./appstream-helper
     else
         log_warning "upx not available. The resulting binary will be unnecessarily large"
@@ -329,16 +384,14 @@ handle_dependencies() {
     mkdir -p "$DBIN_INSTALL_DIR"
     DEPS="bintools/objcopy
           squashfs-tools/mksquashfs
-          squashfs-tools/unsquashfs
-          squashfuse/squashfuse_ll"
+          squashfs-tools/unsquashfs" #squashfuse/squashfuse_ll
 
     unnappear rm "$DBIN_INSTALL_DIR/dwarfs-tools"
-    curl -sL "https://github.com/mhx/dwarfs/releases/download/v$DWFS_VER/dwarfs-universal-$DWFS_VER-Linux-$(uname -m)" -o "$DBIN_INSTALL_DIR/dwarfs-tools"
-    checkElf "$DBIN_INSTALL_DIR/dwarfs-tools" || log_error "Downloaded dwarfs-tools is not a valid ELF file"
+    fetchFromGithub "mhx/dwarfs" "v$DWFS_VER" "dwarfs-universal-$DWFS_VER-Linux-$(uname -m)" "$DBIN_INSTALL_DIR/dwarfs-tools"
+    checkElf "$DBIN_INSTALL_DIR/dwarfs-tools"
     chmod +x "$DBIN_INSTALL_DIR/dwarfs-tools"
-    unnappear rm "$DBIN_INSTALL_DIR/squashfuse_ll"
-    curl -sL "https://github.com/VHSgunzo/squashfuse-static/releases/latest/download/squashfuse_ll-musl-mimalloc-$(uname -m)" -o "$DBIN_INSTALL_DIR/squashfuse_ll"
-    checkElf "$DBIN_INSTALL_DIR/squashfuse_ll" || log_error "Downloaded squashfuse_ll is not a valid ELF file"
+    fetchFromGithub "VHSgunzo/squashfuse-static" "latest" "squashfuse_ll-musl-mimalloc-$(uname -m)" "$DBIN_INSTALL_DIR/squashfuse_ll"
+    checkElf "$DBIN_INSTALL_DIR/squashfuse_ll"
     chmod +x "$DBIN_INSTALL_DIR/squashfuse_ll"
 
     log "Installing dependencies..."
@@ -346,7 +399,7 @@ handle_dependencies() {
     dbin add $DEPS
     for dep in $DEPS; do
         dep_name=$(echo "$dep" | cut -d'/' -f2)
-        checkElf "$DBIN_INSTALL_DIR/$dep_name" || log_error "Downloaded $dep_name is not a valid ELF file"
+        checkElf "$DBIN_INSTALL_DIR/$dep_name"
     done
 
     cd "$DBIN_INSTALL_DIR" && {
