@@ -390,9 +390,10 @@ func setSelfEnvs(cfg *RuntimeConfig) error {
 		return nil
 	}
 
-	setEnvIfExists(hiddenPath(cfg.selfPath, ".home"), "HOME", "OLD_HOME")
-	setEnvIfExists(hiddenPath(cfg.selfPath, ".share"), "XDG_DATA_HOME", "OLD_XDG_DATA_HOME")
-	setEnvIfExists(hiddenPath(cfg.selfPath, ".config"), "XDG_CONFIG_HOME", "OLD_XDG_CONFIG_HOME")
+	setEnvIfExists(hiddenPath(cfg.selfPath, ".home"), "HOME", "REAL_HOME")
+	setEnvIfExists(hiddenPath(cfg.selfPath, ".share"), "XDG_DATA_HOME", "REAL_XDG_DATA_HOME")
+	setEnvIfExists(hiddenPath(cfg.selfPath, ".config"), "XDG_CONFIG_HOME", "REAL_XDG_CONFIG_HOME")
+	setEnvIfExists(hiddenPath(cfg.selfPath, ".cache"), "XDG_CACHE_HOME", "REAL_XDG_CACHE_HOME")
 
 	envFile := hiddenPath(cfg.selfPath, ".env")
 	if _, err := os.Stat(envFile); err == nil {
