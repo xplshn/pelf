@@ -376,37 +376,55 @@ func logError(msg string, err error, cfg *RuntimeConfig) {
 	os.Exit(1)
 }
 
+/* TODO:
+	if there is a `.config` directory, then:
+
+     - check if `REAL_XDG_CONFIG_HOME` is set.
+     - if NOT set, set it to `XDG_CONFIG_HOME` or the default: `$HOME/.config`
+     - finally set `XDG_CONFIG_HOME` to the `.config` dir regardless of the previous condition.
+
+   TODO 2: Remove func hiddenPath()
+*/
+
+func setSelfEnv(cfg *RuntimeConfig, dirSuffix, envVar, oldEnvVar, defaultValue string) error {
+    dir := hiddenPath(cfg.selfPath, dirSuffix)
+    if _, err := os.Stat(dir); err == nil {
+        // Save the old value in REAL_* if not already set
+        oldValue := getEnv(globalEnv, oldEnvVar)
+        if oldValue == "" {
+            oldValue = getEnv(globalEnv, envVar)
+            if oldValue == "" {
+                // Use the provided default value if neither REAL_* nor the envVar is set
+                oldValue = defaultValue
+            }
+            setEnv(&globalEnv, oldEnvVar, oldValue)
+        }
+        // Override the environment variable with the new directory
+        setEnv(&globalEnv, envVar, dir)
+    }
+    return nil
+}
+
 func setSelfEnvs(cfg *RuntimeConfig) error {
+    // Set environment variables with XDG logic, in the correct order
+    homeDir := getEnv(globalEnv, "HOME")
+    setSelfEnv(cfg, ".config", "XDG_CONFIG_HOME", "REAL_XDG_CONFIG_HOME", filepath.Join(homeDir, ".config"))
+    setSelfEnv(cfg, ".share", "XDG_DATA_HOME", "REAL_XDG_DATA_HOME", filepath.Join(homeDir, ".local", "share"))
+    setSelfEnv(cfg, ".cache", "XDG_CACHE_HOME", "REAL_XDG_CACHE_HOME", filepath.Join(homeDir, ".cache"))
+    setSelfEnv(cfg, ".home", "HOME", "REAL_HOME", homeDir)
 
-	setEnvIfExists := func(dir, envVar, oldEnvVar string) error {
-		if _, err := os.Stat(dir); err == nil {
-			oldValue := getEnv(globalEnv, oldEnvVar)
-			if oldValue == "" {
-				oldValue = getEnv(globalEnv, envVar)
-				setEnv(&globalEnv, oldEnvVar, oldValue)
-			}
-			setEnv(&globalEnv, envVar, dir)
-		}
-		return nil
-	}
-
-	setEnvIfExists(hiddenPath(cfg.selfPath, ".home"), "HOME", "REAL_HOME")
-	setEnvIfExists(hiddenPath(cfg.selfPath, ".share"), "XDG_DATA_HOME", "REAL_XDG_DATA_HOME")
-	setEnvIfExists(hiddenPath(cfg.selfPath, ".config"), "XDG_CONFIG_HOME", "REAL_XDG_CONFIG_HOME")
-	setEnvIfExists(hiddenPath(cfg.selfPath, ".cache"), "XDG_CACHE_HOME", "REAL_XDG_CACHE_HOME")
-
-	envFile := hiddenPath(cfg.selfPath, ".env")
-	if _, err := os.Stat(envFile); err == nil {
-		if envs, err := godotenv.Read(envFile); err == nil {
-			for key, value := range envs {
-				globalEnv = append(globalEnv, fmt.Sprintf("%s=%s", key, value))
-			}
-		} else {
-			return fmt.Errorf("failed to load .env file: %w", err)
-		}
-	}
-
-	return nil
+    // Load .env file if it exists
+    envFile := hiddenPath(cfg.selfPath, ".env")
+    if _, err := os.Stat(envFile); err == nil {
+        if envs, err := godotenv.Read(envFile); err != nil {
+            return fmt.Errorf("failed to load .env file: %w", err)
+        } else {
+            for key, value := range envs {
+                globalEnv = append(globalEnv, fmt.Sprintf("%s=%s", key, value))
+            }
+        }
+    }
+    return nil
 }
 
 func executeFile(args []string, cfg *RuntimeConfig) error {
