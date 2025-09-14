@@ -3,9 +3,9 @@ concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: true
 on:
-  schedule:
-    - cron: "0 14 * * 0"
   workflow_dispatch:
+  #schedule:
+  #  - cron: "0 14 * * 0"
 jobs:
   build:
     name: "${{ matrix.name }} (${{ matrix.arch }})"
