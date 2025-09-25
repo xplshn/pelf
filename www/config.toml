@@ -38,33 +38,29 @@ footnotereturnlinkcontents = "↩"
     url = "/index.xml"
     weight = 100
 [[menu.feed]]
-    name = "neoblog"
-    url = "https://fatbuffalo.neocities.org/def"
+    name = "git.xplshn.com.ar"
+    url = "https://git.xplshn.com.ar"
     weight = 90
-[[menu.feed]]
-    name = "dbin"
-    url = "https://github.com/xplshn/dbin"
-    weight = 80
 [[menu.feed]]
     name = "harmful.cat-v.org"
     url = "https://harmful.cat-v.org"
-    weight = 70
+    weight = 80
 [[menu.feed]]
     name = "nosystemd.org"
     url = "https://nosystemd.org"
-    weight = 60
+    weight = 70
 [[menu.feed]]
     name = "suckless.org"
     url = "https://suckless.org"
-    weight = 50
+    weight = 60
 [[menu.feed]]
     name = "copacabana.pindorama.net.br"
     url = "https://copacabana.pindorama.net.br"
-    weight = 40
+    weight = 50
 [[menu.feed]]
     name = "shithub.us"
     url = "https://shithub.us"
-    weight = 30
+    weight = 40
 [[menu.feed]]
     name = "managainstthestate.blogspot.com"
     url = "https://web.archive.org/web/20231123031907/https://managainstthestate.blogspot.com/2011/08/anarcho-capitalist-resources-by-wesker.html"
@@ -87,12 +83,9 @@ footnotereturnlinkcontents = "↩"
     themeVariant = "theme_blue.css"
     printSidebar = false
 
-#[[social]]
-#    name = "Github"
-#    url = "https://github.com/xplshn/alicelinux"
-#[[social]]
-#    name = "Telegram"
-#    url = "https://t.me/alicelinux"
+[[social]]
+    name = "Github"
+    url = "https://github.com/xplshn"
 
 [markup.goldmark.renderer]
 hardWraps = false
@@ -107,3 +100,4 @@ unsafe = true
 
 [markup.goldmark.renderHooks.image]
 enableDefault = true
+
