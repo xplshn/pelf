@@ -195,10 +195,8 @@ func extractAppBundleInfo(filename string) (RuntimeInfo, error) {
 	}
 
 	switch cfg.FilesystemType {
-	case "dwarfs":
-		cfg.FilesystemType = "dwfs"
-	case "squashfs":
-		cfg.FilesystemType = "sqfs"
+	case "dwarfs": cfg.FilesystemType = "dwfs"
+	case "squashfs": cfg.FilesystemType = "sqfs"
 	}
 
 	if cfg.AppBundleID == "" {
@@ -374,21 +372,25 @@ func main() {
 			return nil
 		}
 
-		baseFilename := filepath.Base(path)
-		name := appBundleID.Name
+		fullFilename := filepath.Base(path)
+		baseName := strings.TrimSuffix(strings.TrimSuffix(fullFilename, filepath.Ext(fullFilename)), appBundleInfo.FilesystemType)
+		baseName = strings.TrimSuffix(baseName, ".")
+
 		item := BinaryEntry{
-			Pkg:         name,
-			PkgId:       "github.com.xplshn.appbundlehub."+strings.ToLower(name),
 			BuildDate:   appBundleInfo.BuildDate,
 			Size:        getFileSize(path),
 			Bsum:        b3sum,
 			Shasum:      shasum,
-			DownloadURL: *downloadPrefix + baseFilename,
+			DownloadURL: *downloadPrefix + fullFilename,
 			RepoName:    *repoName,
 		}
 
 		if len(appBundleID.Repo) != 0 && utils.IsRepo(appBundleID.Repo) {
-			item.SrcURLs = append(item.SrcURLs, "https://"+appBundleID.Repo)
+			repoURL := appBundleID.Repo
+			if strings.Contains(repoURL, "github.com.") {
+				repoURL = strings.Replace(repoURL, "github.com.", "github.com/", 1)
+			}
+			item.SrcURLs = append(item.SrcURLs, "https://"+repoURL)
 			item.PkgId = strings.ToLower(appBundleID.Repo)
 		} else {
 			item.Maintainers = appBundleID.Repo
@@ -400,6 +402,9 @@ func main() {
 			item.BuildDate = appBundleID.Date.String()
 		}
 
+		var name string
+
+		// Try to get name from embedded AppStream XML
 		appStreamXML, err := extractAppStreamXML(path)
 		if err == nil && appStreamXML != nil {
 			if !strings.Contains(getText(appStreamXML.Names), " ") {
@@ -432,10 +437,11 @@ func main() {
 			item.AppstreamId = appBundleID.Name
 		}
 
+		// Try to get name from Flathub data if still empty or missing other fields
 		if name == "" || item.Description == "" || item.LongDescription == "" || item.Icon == "" || len(item.Screenshots) == 0 {
 			appData := findAppStreamMetadataForAppId(appBundleID.Name)
 			if appData != nil {
-				log.Printf("Using Flathub AppStream data for %s%s%s", blueColor, baseFilename, resetColor)
+				log.Printf("Using Flathub AppStream data for %s%s%s", blueColor, fullFilename, resetColor)
 				if appData.Name != "" && name == "" {
 					name = appData.Name
 				}
@@ -473,14 +479,26 @@ func main() {
 			}
 		}
 
-		if name != "" {
-			name = utils.Sanitize(name)
-		} else {
-			name = utils.AppStreamIDToName(appBundleID.Name)
+		// Fall back to extracting from AppStream ID
+		if name == "" {
+			if utils.IsAppStreamID(appBundleID.Name) {
+				name = utils.AppStreamIDToName(appBundleID.Name)
+			}
 		}
 
+		// Final fallback: use filename minus extension
+		if name == "" {
+			name = baseName
+		}
+
+		// Sanitize the final name
+		name = utils.Sanitize(name)
+
+		// Set .Pkg with extension and .Name without
 		item.Pkg = name + "." + appBundleInfo.FilesystemType + ".AppBundle"
-		item.Name = strings.Title(strings.ReplaceAll(name, "-", " "))
+		item.Name = strings.Title(strings.ReplaceAll(name, "-", ""))
+
+		log.Printf("Adding [%s%s%s](%s) to repository index", blueColor, fullFilename, resetColor, appBundleID.String())
 
 		isExec, err := isExecutable(path)
 		if err != nil {
@@ -488,10 +506,9 @@ func main() {
 			return nil
 		}
 		if !isExec {
-			log.Printf("%s%s%s is not executable%s", warningColor, blueColor, baseFilename, resetColor)
+			log.Printf("%s%s%s is not executable%s", warningColor, blueColor, baseName, resetColor)
 		}
 
-		log.Printf("Adding [%s%s%s](%s) to repository index", blueColor, baseFilename, resetColor, appBundleID.String())
 		dbinMetadata[*repoName] = append(dbinMetadata[*repoName], item)
 		return nil
 	})
