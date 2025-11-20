@@ -514,17 +514,20 @@ func updatePath(envVar, dirs string) string {
 }
 
 func detachedCleanup(cfg *RuntimeConfig) {
-	if cfg.noCleanup {
-		return
-	}
+	if cfg.noCleanup { return }
 	cmd := exec.Command(os.Args[0], "--pbundle_internal_Cleanup", cfg.mountDir, cfg.poolDir, cfg.workDir, T(cfg.mountOrExtract == 1, "1", ""))
 	cmd.Stdin = nil
 	cmd.Stdout = nil
 	cmd.Stderr = nil
 	cmd.Env = globalEnv
-	if err := cmd.Start(); err != nil {
-		panic(err)
-	}
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true} // fully detach
+	_ = cmd.Start()
+}
+
+func fuseUnmount(mountDir string) {
+	cmd := exec.Command("fusermount3", "-u", mountDir)
+	cmd.Env = globalEnv
+	cmd.Run()
 }
 
 func cleanup(mountDir, poolDir, workDir, doNotMount string) {
@@ -533,30 +536,17 @@ func cleanup(mountDir, poolDir, workDir, doNotMount string) {
 			if !isMounted(mountDir) {
 				break
 			}
-			cmd := exec.Command("fusermount3", "-u", mountDir)
-			cmd.Env = globalEnv
-			cmd.Run()
+			fuseUnmount(mountDir)
 			sleep(i)
 		}
 		if isMounted(mountDir) {
-			exec.Command("fusermount3", "-uz", mountDir).Run()
+			fuseUnmount(mountDir)
 		}
 	}
-	if mountDir != "" {
-		rmEmptyDir(mountDir)
-	}
-	if workDir != "" {
-		rmEmptyDir(workDir)
-	}
-	if poolDir != "" {
-		rmEmptyDir(poolDir)
-	}
+	if mountDir != "" { rmEmptyDir(mountDir) }
+	if workDir  != "" { rmEmptyDir(workDir) }
+	if poolDir  != "" { rmEmptyDir(poolDir) }
 	// TODO: Make it remove other work dirs on the pool if they are empty
-}
-
-func main2() {
-	// ---- mountDir,   poolDir,    workDir,    doNotMount
-	cleanup(os.Args[2], os.Args[3], os.Args[4], os.Args[5])
 }
 
 func isMounted(path string) bool {
@@ -644,7 +634,8 @@ func main() {
 		if len(os.Args) < 5 {
 			logError("Invalid number of arguments for --pbundle_internal_Cleanup", nil, nil)
 		}
-		main2()
+		// ---- mountDir,   poolDir,    workDir,    doNotMount
+		cleanup(os.Args[2], os.Args[3], os.Args[4], os.Args[5])
 		os.Exit(0)
 	}
 
