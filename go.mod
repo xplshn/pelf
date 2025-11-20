@@ -1,6 +1,6 @@
 module github.com/xplshn/pelf //module pelf
 
-go 1.24
+go 1.24.0
 
 require (
 	fyne.io/fyne/v2 v2.5.5
@@ -9,18 +9,18 @@ require (
 	github.com/goccy/go-json v0.10.5
 	github.com/jaytaylor/html2text v0.0.0-20230321000545-74c2419ad056
 	github.com/joho/godotenv v1.5.1
-	github.com/klauspost/compress v1.18.0
+	github.com/klauspost/compress v1.18.1
 	github.com/liamg/memit v0.0.3
 	github.com/liamg/tml v0.7.0
 	github.com/mholt/archives v0.1.2
 	github.com/minio/md5-simd v1.1.2
-	github.com/pkg/xattr v0.4.11
-	github.com/shamaton/msgpack/v2 v2.2.3
+	github.com/pkg/xattr v0.4.12
+	github.com/shamaton/msgpack/v2 v2.4.0
 	github.com/shirou/gopsutil/v4 v4.25.4
 	github.com/u-root/u-root v0.14.0
-	github.com/urfave/cli/v3 v3.3.8
+	github.com/urfave/cli/v3 v3.6.1
 	github.com/zeebo/blake3 v0.2.4
-	golang.org/x/sys v0.33.0
+	golang.org/x/sys v0.38.0
 	pgregory.net/rand v1.0.2
 )
 
@@ -50,7 +50,7 @@ require (
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/jeandeaual/go-locale v0.0.0-20240223122105-ce5225dcaa49 // indirect
 	github.com/jsummers/gobmp v0.0.0-20151104160322-e2ba15ffa76e // indirect
-	github.com/klauspost/cpuid/v2 v2.2.11 // indirect
+	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/klauspost/pgzip v1.2.6 // indirect
 	github.com/lufia/plan9stats v0.0.0-20250317134145-8bc96cf8fc35 // indirect
 	github.com/mattn/go-runewidth v0.0.16 // indirect
@@ -69,7 +69,7 @@ require (
 	github.com/srwiley/oksvg v0.0.0-20221011165216-be6e8873101c // indirect
 	github.com/srwiley/rasterx v0.0.0-20220730225603-2ab79fcdd4ef // indirect
 	github.com/ssor/bom v0.0.0-20170718123548-6386211fdfcf // indirect
-	github.com/stretchr/testify v1.10.0 // indirect
+	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/therootcompany/xz v1.0.1 // indirect
 	github.com/tklauser/go-sysconf v0.3.15 // indirect
 	github.com/tklauser/numcpus v0.10.0 // indirect
