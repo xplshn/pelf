@@ -1,4 +1,4 @@
-//TODO: Cleanup
+// TODO: Cleanup
 package main
 
 import (
@@ -10,10 +10,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
-	"slices"
 
 	"github.com/xplshn/pelf/pkg/utils"
 
@@ -40,31 +40,35 @@ const (
 )
 
 type Config struct {
-	Maintainer          string
-	Name                string
-	AppBundleID         string
-	AppStreamID         string
-	PkgAdd              string
-	Entrypoint          string
-	DontPack            bool
-	Sharun              bool
-	Sandbox             bool
-	PreservePermissions bool
-	Lib4binArgs         string
-	ToBeKeptFiles       string
-	GetridFiles         string
-	AppBundleFS         string
-	OutputTo            string
-	LocalResources      string
-	AppDir              string
-	Date                string
-	TempDir             string
+	Maintainer           string
+	Name                 string
+	AppBundleID          string
+	AppStreamID          string
+	PkgAdd               string
+	Entrypoint           string
+	DontPack             bool
+	Sharun               bool
+	Sandbox              bool
+	PreservePermissions  bool
+	Lib4binArgs          string
+	ToBeKeptFiles        string
+	GetridFiles          string
+	AppBundleFS          string
+	OutputTo             string
+	LocalResources       string
+	AppDir               string
+	Date                 string
+	TempDir              string
+	Passthrough          []string
+	DisableRandomWorkdir bool
+	RunBehavior          uint
 }
 
 // AppBundleIDHandler handles AppBundleID generation and validation
 type AppBundleIDHandler struct {
 	config *Config
 }
+
 func NewAppBundleIDHandler(config *Config) *AppBundleIDHandler {
 	return &AppBundleIDHandler{config: config}
 }
@@ -247,6 +251,29 @@ func main() {
 				Usage:       "Enable sandbox mode (uses AppRun.rootfs-based)",
 				Destination: &config.Sandbox,
 			},
+			// === NEW FLAGS ===
+			&cli.StringSliceFlag{
+				Name:    "passthrough",
+				Aliases: []string{"P"},
+				Usage:   "Passthrough arbitrary arguments directly to the final `pelf` command",
+			},
+			&cli.BoolFlag{
+				Name:        "disable-use-random-workdir",
+				Aliases:     []string{"d"},
+				Usage:       "Disable the use of a random working directory (default: false)",
+				Destination: &config.DisableRandomWorkdir,
+			},
+			&cli.UintFlag{
+				Name:        "run-behavior",
+				Aliases:     []string{"b"},
+				Usage:       "Specify the run behavior of the output AppBundle (0[Only FUSE mounting], 1[Only Extract & Run], 2[Try FUSE, fallback to Extract & Run], 3[2, but only if the file is <= 350MB]) (default: 3)",
+				Value:       3,
+				Destination: &config.RunBehavior,
+			},
+		},
+		Before: func(ctx context.Context, c *cli.Command) (context.Context, error) {
+			config.Passthrough = c.StringSlice("passthrough")
+			return ctx, nil
 		},
 		Action: func(ctx context.Context, c *cli.Command) error {
 			return runPelfCreator(config)
@@ -887,11 +914,23 @@ func setupSandboxFiles(protoDir string) error {
 }
 
 func createBundle(config Config) error {
-	cmd := exec.Command(filepath.Join(config.TempDir, "pelf"),
+	args := []string{
 		"--add-appdir", config.AppDir,
 		"--appbundle-id", config.AppBundleID,
 		"--output-to", config.OutputTo,
-	)
+	}
+
+	if config.DisableRandomWorkdir {
+		args = append(args, "--disable-use-random-workdir")
+	}
+	if config.RunBehavior != 3 { // add if non-default
+		args = append(args, "--run-behavior", fmt.Sprintf("%d", config.RunBehavior))
+	}
+
+	// Append any user-provided passthrough arguments
+	args = append(args, config.Passthrough...)
+
+	cmd := exec.Command(filepath.Join(config.TempDir, "pelf"), args...)
 
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

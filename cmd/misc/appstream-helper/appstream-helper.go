@@ -112,7 +112,7 @@ type RuntimeInfo struct {
 }
 
 var (
-	appStreamMetadata      []AppStreamMetadata
+	appStreamMetadata       []AppStreamMetadata
 	appStreamMetadataLoaded bool
 )
 
@@ -195,8 +195,10 @@ func extractAppBundleInfo(filename string) (RuntimeInfo, error) {
 	}
 
 	switch cfg.FilesystemType {
-	case "dwarfs": cfg.FilesystemType = "dwfs"
-	case "squashfs": cfg.FilesystemType = "sqfs"
+	case "dwarfs":
+		cfg.FilesystemType = "dwfs"
+	case "squashfs":
+		cfg.FilesystemType = "sqfs"
 	}
 
 	if cfg.AppBundleID == "" {
