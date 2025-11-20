@@ -12,7 +12,7 @@ import (
 var dwarfsBinary []byte
 
 var Filesystems = []*Filesystem{
-	&Filesystem{
+	{
 		Type:     "dwarfs",
 		Commands: []string{"dwarfs", "dwarfsextract"},
 		MountCmd: func(cfg *RuntimeConfig) CommandRunner {
@@ -64,4 +64,3 @@ var Filesystems = []*Filesystem{
 		},
 	},
 }
-

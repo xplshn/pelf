@@ -37,12 +37,12 @@ func handleRuntimeFlags(fh *fileHandler, args *[]string, cfg *RuntimeConfig) err
   --pbundle_mount: Mounts the AppBundle's filesystem to the specified directory or the default mount directory.
 `)
 
-	    if cfg.appBundleFS != "dwarfs" {
-	    	fmt.Printf("  --pbundle_extract <[]globs>: Extracts the AppBundle's filesystem to ./%s\n", cfg.rExeName + "_" + cfg.appBundleFS)
-	    	fmt.Println(`  If globs are provided, it will extract the matching files`)
-	    } else {
-	    	fmt.Printf("  --pbundle_extract: Extracts the AppBundle's filesystem to ./%s\n", cfg.rExeName + "_" + cfg.appBundleFS)
-	    }
+		if cfg.appBundleFS != "dwarfs" {
+			fmt.Printf("  --pbundle_extract <[]globs>: Extracts the AppBundle's filesystem to ./%s\n", cfg.rExeName+"_"+cfg.appBundleFS)
+			fmt.Println(`  If globs are provided, it will extract the matching files`)
+		} else {
+			fmt.Printf("  --pbundle_extract: Extracts the AppBundle's filesystem to ./%s\n", cfg.rExeName+"_"+cfg.appBundleFS)
+		}
 
 		fmt.Printf(`
   Compatibilty flags:
@@ -72,13 +72,13 @@ func handleRuntimeFlags(fh *fileHandler, args *[]string, cfg *RuntimeConfig) err
 		return fmt.Errorf("!no_return")
 
 	case "--pbundle_portableHome":
-		if err := os.MkdirAll(hiddenPath(cfg.selfPath, ".home"), 0755); err != nil {
+		if err := os.MkdirAll(cfg.selfPath+".home", 0755); err != nil {
 			return err
 		}
 		return fmt.Errorf("!no_return")
 
 	case "--pbundle_portableConfig":
-		if err := os.MkdirAll(hiddenPath(cfg.selfPath, ".config"), 0755); err != nil {
+		if err := os.MkdirAll(cfg.selfPath+".config", 0755); err != nil {
 			return err
 		}
 		return fmt.Errorf("!no_return")
@@ -195,7 +195,7 @@ func handleRuntimeFlags(fh *fileHandler, args *[]string, cfg *RuntimeConfig) err
 	case "--pbundle_cleanup":
 		fmt.Println("A cleanup job has been requested...")
 		cfg.noCleanup = false
-		cleanup(cfg)
+		detachedCleanup(cfg)
 		return fmt.Errorf("!no_return")
 
 	default:

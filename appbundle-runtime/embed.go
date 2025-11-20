@@ -1,4 +1,5 @@
 //go:build !noEmbed
+
 package main
 
 import (
@@ -8,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	//	"syscall"
 
 	"github.com/liamg/memit"
 )
@@ -46,6 +48,8 @@ func newMemitCmd(cfg *RuntimeConfig, binary []byte, name string, args ...string)
 		}
 		cmd := exec.Command(tempFile, args...)
 		cmd.Env = globalEnv
+		//// Detach FUSE binary so it survives runtime death
+		//cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 		return &memitCmd{Cmd: cmd}, nil
 	}
 	cmd, file, err := memit.Command(bytes.NewReader(binary), args...)
@@ -54,6 +58,8 @@ func newMemitCmd(cfg *RuntimeConfig, binary []byte, name string, args ...string)
 	}
 	cmd.Args[0] = name
 	cmd.Env = globalEnv
+	//// Detach FUSE binary so it survives runtime death
+	//cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	return &memitCmd{Cmd: cmd, file: file}, nil
 }
 
@@ -64,4 +70,3 @@ func checkDeps(cfg *RuntimeConfig, fh *fileHandler) (*Filesystem, error) {
 	}
 	return fs, nil
 }
-

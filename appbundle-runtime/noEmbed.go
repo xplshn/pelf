@@ -3,82 +3,85 @@
 package main
 
 import (
-    "fmt"
-    "os"
-    "os/exec"
-    "debug/elf"
-    "strings"
-    "runtime"
-    "io"
-    "archive/tar"
-    "bytes"
-    "path/filepath"
+	"archive/tar"
+	"bytes"
+	"debug/elf"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	//  "syscall"
 
-    "github.com/klauspost/compress/zstd"
-
+	"github.com/klauspost/compress/zstd"
 )
 
 const runtimeEdition = "noEmbed"
 
 type osExecCmd struct {
-    *exec.Cmd
+	*exec.Cmd
 }
 
-func (c *osExecCmd) SetStdout(w io.Writer) { c.Cmd.Stdout = w }
-func (c *osExecCmd) SetStderr(w io.Writer) { c.Cmd.Stderr = w }
-func (c *osExecCmd) SetStdin(r io.Reader)  { c.Cmd.Stdin = r }
+func (c *osExecCmd) SetStdout(w io.Writer)           { c.Cmd.Stdout = w }
+func (c *osExecCmd) SetStderr(w io.Writer)           { c.Cmd.Stderr = w }
+func (c *osExecCmd) SetStdin(r io.Reader)            { c.Cmd.Stdin = r }
 func (c *osExecCmd) CombinedOutput() ([]byte, error) { return c.Cmd.CombinedOutput() }
 
 var Filesystems = []*Filesystem{
-    {
-        Type:     "squashfs",
-        Commands: []string{"squashfuse", "unsquashfs"},
-        MountCmd: func(cfg *RuntimeConfig) CommandRunner {
-            executable, err := lookPath("squashfuse", globalPath)
-            if err != nil {
-                println(globalPath)
-                logError("squashfuse not available", err, cfg)
-            }
-            args := []string{
-                "-o", "ro,nodev",
-                "-o", "uid=0,gid=0",
-                "-o", fmt.Sprintf("offset=%d", cfg.archiveOffset),
-                cfg.selfPath,
-                cfg.mountDir,
-            }
-            if getEnv(globalEnv, "ENABLE_FUSE_DEBUG") != "" {
-                logWarning("squashfuse's debug mode implies foreground. The AppRun won't be called.")
-                args = append(args, "-o", "debug")
-            }
-            cmd := exec.Command(executable, args...)
-            cmd.Env = globalEnv
-            return &osExecCmd{cmd}
-        },
-        ExtractCmd: func(cfg *RuntimeConfig, query string) CommandRunner {
-            executable, err := lookPath("unsquashfs", globalPath)
-            if err != nil {
-                logError("unsquashfs not available", err, cfg)
-            }
-            args := []string{"-d", cfg.mountDir, "-o", fmt.Sprintf("%d", cfg.archiveOffset), cfg.selfPath}
-            if query != "" {
-                for _, file := range strings.Split(query, " ") {
-                    args = append(args, "-e", file)
-                }
-            }
-            cmd := exec.Command(executable, args...)
-            cmd.Env = globalEnv
-            return &osExecCmd{cmd}
-        },
-    },
-    {
-        Type:     "dwarfs",
-        Commands: []string{"dwarfs", "dwarfsextract"},
-        MountCmd: func(cfg *RuntimeConfig) CommandRunner {
-            executable, err := lookPath("dwarfs", globalPath)
-            if err != nil {
-                logError("dwarfs not available", err, cfg)
-            }
-            cacheSize := getDwarfsCacheSize()
+	{
+		Type:     "squashfs",
+		Commands: []string{"squashfuse", "unsquashfs"},
+		MountCmd: func(cfg *RuntimeConfig) CommandRunner {
+			executable, err := lookPath("squashfuse", globalPath)
+			if err != nil {
+				println(globalPath)
+				logError("squashfuse not available", err, cfg)
+			}
+			args := []string{
+				"-o", "ro,nodev",
+				"-o", "uid=0,gid=0",
+				"-o", fmt.Sprintf("offset=%d", cfg.archiveOffset),
+				cfg.selfPath,
+				cfg.mountDir,
+			}
+			if getEnv(globalEnv, "ENABLE_FUSE_DEBUG") != "" {
+				logWarning("squashfuse's debug mode implies foreground. The AppRun won't be called.")
+				args = append(args, "-o", "debug")
+			}
+			cmd := exec.Command(executable, args...)
+			cmd.Env = globalEnv
+			//// Detach FUSE binary so it survives runtime death
+			//cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+			return &osExecCmd{cmd}
+		},
+		ExtractCmd: func(cfg *RuntimeConfig, query string) CommandRunner {
+			executable, err := lookPath("unsquashfs", globalPath)
+			if err != nil {
+				logError("unsquashfs not available", err, cfg)
+			}
+			args := []string{"-d", cfg.mountDir, "-o", fmt.Sprintf("%d", cfg.archiveOffset), cfg.selfPath}
+			if query != "" {
+				for _, file := range strings.Split(query, " ") {
+					args = append(args, "-e", file)
+				}
+			}
+			cmd := exec.Command(executable, args...)
+			cmd.Env = globalEnv
+			//// Detach FUSE binary so it survives runtime death
+			//cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+			return &osExecCmd{cmd}
+		},
+	},
+	{
+		Type:     "dwarfs",
+		Commands: []string{"dwarfs", "dwarfsextract"},
+		MountCmd: func(cfg *RuntimeConfig) CommandRunner {
+			executable, err := lookPath("dwarfs", globalPath)
+			if err != nil {
+				logError("dwarfs not available", err, cfg)
+			}
+			cacheSize := getDwarfsCacheSize()
 			args := []string{
 				"-o", "ro,nodev",
 				"-o", "cache_files,no_cache_image,clone_fd",
@@ -93,38 +96,42 @@ var Filesystems = []*Filesystem{
 				cfg.selfPath,
 				cfg.mountDir,
 			}
-            if e := getEnv(globalEnv, "DWARFS_ANALYSIS_FILE"); e != "" {
-                args = append(args, "-o", "analysis_file="+e)
-            }
-            if e := getEnv(globalEnv, "DWARFS_PRELOAD_ALL"); e != "" {
-                args = append(args, "-o", "preload_all")
-            } else {
-                args = append(args, "-o", "preload_category=hotness")
-            }
-            cmd := exec.Command(executable, args...)
-            cmd.Env = globalEnv
-            return &osExecCmd{cmd}
-        },
-        ExtractCmd: func(cfg *RuntimeConfig, query string) CommandRunner {
-            executable, err := lookPath("dwarfsextract", globalPath)
-            if err != nil {
-                logError("dwarfsextract not available", err, cfg)
-            }
-            args := []string{
-                "--input", cfg.selfPath,
-                "--image-offset", fmt.Sprintf("%d", cfg.archiveOffset),
-                "--output", cfg.mountDir,
-            }
-            if query != "" {
-                for _, pattern := range strings.Split(query, " ") {
-                    args = append(args, "--pattern", pattern)
-                }
-            }
-            cmd := exec.Command(executable, args...)
-            cmd.Env = globalEnv
-            return &osExecCmd{cmd}
-        },
-    },
+			if e := getEnv(globalEnv, "DWARFS_ANALYSIS_FILE"); e != "" {
+				args = append(args, "-o", "analysis_file="+e)
+			}
+			if e := getEnv(globalEnv, "DWARFS_PRELOAD_ALL"); e != "" {
+				args = append(args, "-o", "preload_all")
+			} else {
+				args = append(args, "-o", "preload_category=hotness")
+			}
+			cmd := exec.Command(executable, args...)
+			cmd.Env = globalEnv
+			//// Detach FUSE binary so it survives runtime death
+			//cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+			return &osExecCmd{cmd}
+		},
+		ExtractCmd: func(cfg *RuntimeConfig, query string) CommandRunner {
+			executable, err := lookPath("dwarfsextract", globalPath)
+			if err != nil {
+				logError("dwarfsextract not available", err, cfg)
+			}
+			args := []string{
+				"--input", cfg.selfPath,
+				"--image-offset", fmt.Sprintf("%d", cfg.archiveOffset),
+				"--output", cfg.mountDir,
+			}
+			if query != "" {
+				for _, pattern := range strings.Split(query, " ") {
+					args = append(args, "--pattern", pattern)
+				}
+			}
+			cmd := exec.Command(executable, args...)
+			cmd.Env = globalEnv
+			//// Detach FUSE binary so it survives runtime death
+			//cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+			return &osExecCmd{cmd}
+		},
+	},
 }
 
 func (f *fileHandler) extractStaticTools(cfg *RuntimeConfig) error {
@@ -226,30 +233,29 @@ func (f *fileHandler) extractStaticTools(cfg *RuntimeConfig) error {
 }
 
 func checkDeps(cfg *RuntimeConfig, fh *fileHandler) (*Filesystem, error) {
-    fs, ok := getFilesystem(cfg.appBundleFS)
-    if !ok {
-        return nil, fmt.Errorf("unsupported filesystem: %s", cfg.appBundleFS)
-    }
+	fs, ok := getFilesystem(cfg.appBundleFS)
+	if !ok {
+		return nil, fmt.Errorf("unsupported filesystem: %s", cfg.appBundleFS)
+	}
 
-    updatePath("PATH", cfg.staticToolsDir)
-    var missingCmd bool
-    for _, cmd := range fs.Commands {
-        if _, err := lookPath(cmd, globalPath); err != nil {
-            missingCmd = true
-            break
-        }
-    }
+	updatePath("PATH", cfg.staticToolsDir)
+	var missingCmd bool
+	for _, cmd := range fs.Commands {
+		if _, err := lookPath(cmd, globalPath); err != nil {
+			missingCmd = true
+			break
+		}
+	}
 
-    if missingCmd {
-        if err := os.MkdirAll(cfg.staticToolsDir, 0755); err != nil {
-            return nil, fmt.Errorf("failed to create static tools directory: %v", err)
-        }
+	if missingCmd {
+		if err := os.MkdirAll(cfg.staticToolsDir, 0755); err != nil {
+			return nil, fmt.Errorf("failed to create static tools directory: %v", err)
+		}
 
-        if err := fh.extractStaticTools(cfg); err != nil {
-            return nil, fmt.Errorf("failed to extract static tools: %v", err)
-        }
-    }
+		if err := fh.extractStaticTools(cfg); err != nil {
+			return nil, fmt.Errorf("failed to extract static tools: %v", err)
+		}
+	}
 
-    return fs, nil
+	return fs, nil
 }
-

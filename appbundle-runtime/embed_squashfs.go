@@ -15,7 +15,7 @@ var squashfuseBinary []byte
 var unsquashfsBinary []byte
 
 var Filesystems = []*Filesystem{
-	&Filesystem{
+	{
 		Type:     "squashfs",
 		Commands: []string{"squashfuse", "unsquashfs"},
 		MountCmd: func(cfg *RuntimeConfig) CommandRunner {
@@ -51,4 +51,3 @@ var Filesystems = []*Filesystem{
 		},
 	},
 }
-

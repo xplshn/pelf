@@ -3,23 +3,22 @@ package main
 import (
 	"debug/elf"
 	"encoding/binary"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
 	"time"
-	"runtime"
 
-	"github.com/shirou/gopsutil/v4/mem"
-	"github.com/shamaton/msgpack/v2" //"github.com/fxamacker/cbor/v2"
-	"github.com/pkg/xattr"
 	"github.com/joho/godotenv"
+	"github.com/pkg/xattr"
+	"github.com/shamaton/msgpack/v2" //"github.com/fxamacker/cbor/v2"
+	"github.com/shirou/gopsutil/v4/mem"
 
 	"github.com/emmansun/base64"
 	"pgregory.net/rand"
@@ -68,11 +67,11 @@ type fileHandler struct {
 
 // CommandRunner interface unifies both os/exec.Cmd and embedexe/exec.Cmd
 type CommandRunner interface {
-    Run() error
-    SetStdout(io.Writer)
-    SetStderr(io.Writer)
-    SetStdin(io.Reader)
-    CombinedOutput() ([]byte, error)
+	Run() error
+	SetStdout(io.Writer)
+	SetStderr(io.Writer)
+	SetStdin(io.Reader)
+	CombinedOutput() ([]byte, error)
 }
 
 // CommandCreator defines the function type for creating commands
@@ -80,41 +79,41 @@ type CommandCreator func(*RuntimeConfig) CommandRunner
 type ExtractCommandCreator func(*RuntimeConfig, string) CommandRunner
 
 type Filesystem struct {
-    Type       string
-    Commands   []string
-    MountCmd   CommandCreator
-    ExtractCmd ExtractCommandCreator
+	Type       string
+	Commands   []string
+	MountCmd   CommandCreator
+	ExtractCmd ExtractCommandCreator
 }
 
+// mountImage now relies only on cleanMountpointIfBroken.
 func mountImage(cfg *RuntimeConfig, fh *fileHandler, fs *Filesystem) error {
-    pidFile := filepath.Join(cfg.workDir, ".pid")
+	if err := cleanMountpointIfBroken(cfg.mountDir); err != nil {
+		return fmt.Errorf("failed to prepare mount directory %s: %v", cfg.mountDir, err)
+	}
 
-    if _, err := os.Stat(pidFile); os.IsNotExist(err) {
-        if err := os.MkdirAll(cfg.mountDir, 0755); err != nil {
-            return fmt.Errorf("failed to create mount directory %s: %v", cfg.mountDir, err)
-        }
+	// If the directory is already a valid mount, reuse it, and rewrite pid file
+	if isMounted(cfg.mountDir) {
+		go func() {
+			_ = os.WriteFile(filepath.Join(cfg.workDir, ".pid"), []byte(fmt.Sprintf("%d", os.Getpid())), 0644)
+		}()
+		return nil
+	}
 
-        if err := os.WriteFile(pidFile, fmt.Appendf(nil, "%d", os.Getpid()), 0644); err != nil {
-            logError("Failed to write PID file", err, cfg)
-        }
+	cmd := fs.MountCmd(cfg)
+	cmd.SetStdout(os.Stdout)
+	cmd.SetStderr(os.Stderr)
 
-        cmd := fs.MountCmd(cfg)
-        cmd.SetStdout(os.Stdout)
-        cmd.SetStderr(os.Stderr)
+	if err := cmd.Run(); err != nil {
+		logWarning(fmt.Sprintf("Failed to mount %s archive: %v", cfg.appBundleFS, err))
+		return err
+	}
 
-        if err := cmd.Run(); err != nil {
-            logWarning(fmt.Sprintf("Failed to mount %s archive: %v", cfg.appBundleFS, err))
-            return err
-        }
-    } else {
-        if cfg.noCleanup {
-            if _, err := os.Stat(filepath.Join(cfg.mountDir, "AppRun")); os.IsNotExist(err) {
-                os.Remove(pidFile)
-                logError(".pid file present in workdir, but AppRun is not", err, cfg)
-            }
-        }
-    }
-    return nil
+	// Write .pid after successful mount
+	go func() {
+		_ = os.WriteFile(filepath.Join(cfg.workDir, ".pid"), []byte(fmt.Sprintf("%d", os.Getpid())), 0644)
+	}()
+
+	return nil
 }
 
 func extractImage(cfg *RuntimeConfig, fh *fileHandler, fs *Filesystem, query string) error {
@@ -371,7 +370,7 @@ func logError(msg string, err error, cfg *RuntimeConfig) {
 		}
 	}
 	if cfg != nil {
-		cleanup(cfg)
+		detachedCleanup(cfg)
 	}
 	os.Exit(1)
 }
@@ -387,44 +386,73 @@ func logError(msg string, err error, cfg *RuntimeConfig) {
 */
 
 func setSelfEnv(cfg *RuntimeConfig, dirSuffix, envVar, oldEnvVar, defaultValue string) error {
-    dir := hiddenPath(cfg.selfPath, dirSuffix)
-    if _, err := os.Stat(dir); err == nil {
-        // Save the old value in REAL_* if not already set
-        oldValue := getEnv(globalEnv, oldEnvVar)
-        if oldValue == "" {
-            oldValue = getEnv(globalEnv, envVar)
-            if oldValue == "" {
-                // Use the provided default value if neither REAL_* nor the envVar is set
-                oldValue = defaultValue
-            }
-            setEnv(&globalEnv, oldEnvVar, oldValue)
-        }
-        // Override the environment variable with the new directory
-        setEnv(&globalEnv, envVar, dir)
-    }
-    return nil
+	dir := cfg.selfPath + dirSuffix
+	if _, err := os.Stat(dir); err == nil {
+		// Save the old value in REAL_* if not already set
+		oldValue := getEnv(globalEnv, oldEnvVar)
+		if oldValue == "" {
+			oldValue = getEnv(globalEnv, envVar)
+			if oldValue == "" {
+				// Use the provided default value if neither REAL_* nor the envVar is set
+				oldValue = defaultValue
+			}
+			setEnv(&globalEnv, oldEnvVar, oldValue)
+		}
+		// Override the environment variable with the new directory
+		setEnv(&globalEnv, envVar, dir)
+	}
+	return nil
 }
 
 func setSelfEnvs(cfg *RuntimeConfig) error {
-    // Set environment variables with XDG logic, in the correct order
-    homeDir := getEnv(globalEnv, "HOME")
-    setSelfEnv(cfg, ".config", "XDG_CONFIG_HOME", "REAL_XDG_CONFIG_HOME", filepath.Join(homeDir, ".config"))
-    setSelfEnv(cfg, ".share", "XDG_DATA_HOME", "REAL_XDG_DATA_HOME", filepath.Join(homeDir, ".local", "share"))
-    setSelfEnv(cfg, ".cache", "XDG_CACHE_HOME", "REAL_XDG_CACHE_HOME", filepath.Join(homeDir, ".cache"))
-    setSelfEnv(cfg, ".home", "HOME", "REAL_HOME", homeDir)
+	homeDir := getEnv(globalEnv, "HOME")
 
-    // Load .env file if it exists
-    envFile := hiddenPath(cfg.selfPath, ".env")
-    if _, err := os.Stat(envFile); err == nil {
-        if envs, err := godotenv.Read(envFile); err != nil {
-            return fmt.Errorf("failed to load .env file: %w", err)
-        } else {
-            for key, value := range envs {
-                globalEnv = append(globalEnv, fmt.Sprintf("%s=%s", key, value))
-            }
-        }
-    }
-    return nil
+	// XDG_CONFIG_HOME special logic
+	configDir := cfg.selfPath + ".config"
+	if _, err := os.Stat(configDir); err == nil {
+		// Save real value if not already saved
+		if getEnv(globalEnv, "REAL_XDG_CONFIG_HOME") == "" {
+			real := getEnv(globalEnv, "XDG_CONFIG_HOME")
+			if real == "" {
+				real = filepath.Join(homeDir, ".config")
+			}
+			setEnv(&globalEnv, "REAL_XDG_CONFIG_HOME", real)
+		}
+		setEnv(&globalEnv, "XDG_CONFIG_HOME", configDir)
+	}
+
+	// Other XDG directories (no special logic, just override if present)
+	for _, item := range []struct {
+		suffix, env, realEnv, def string
+	}{
+		{".share", "XDG_DATA_HOME", "REAL_XDG_DATA_HOME", filepath.Join(homeDir, ".local", "share")},
+		{".cache", "XDG_CACHE_HOME", "REAL_XDG_CACHE_HOME", filepath.Join(homeDir, ".cache")},
+		{".home", "HOME", "REAL_HOME", homeDir},
+	} {
+		dir := cfg.selfPath + item.suffix
+		if _, err := os.Stat(dir); err == nil {
+			if getEnv(globalEnv, item.realEnv) == "" {
+				old := getEnv(globalEnv, item.env)
+				if old == "" {
+					old = item.def
+				}
+				setEnv(&globalEnv, item.realEnv, old)
+			}
+			setEnv(&globalEnv, item.env, dir)
+		}
+	}
+
+	// Load .env file if it exists next to the bundle
+	envFile := cfg.selfPath + ".env"
+	if _, err := os.Stat(envFile); err == nil {
+		if envs, err := godotenv.Read(envFile); err == nil {
+			for k, v := range envs {
+				globalEnv = append(globalEnv, fmt.Sprintf("%s=%s", k, v))
+			}
+		}
+	}
+
+	return nil
 }
 
 func executeFile(args []string, cfg *RuntimeConfig) error {
@@ -485,11 +513,11 @@ func updatePath(envVar, dirs string) string {
 	return newPath
 }
 
-func cleanup(cfg *RuntimeConfig) {
+func detachedCleanup(cfg *RuntimeConfig) {
 	if cfg.noCleanup {
 		return
 	}
-	cmd := exec.Command(os.Args[0], "--pbundle_internal_Cleanup", cfg.mountDir, cfg.poolDir, cfg.workDir, T(cfg.mountOrExtract == 1, "true", ""))
+	cmd := exec.Command(os.Args[0], "--pbundle_internal_Cleanup", cfg.mountDir, cfg.poolDir, cfg.workDir, T(cfg.mountOrExtract == 1, "1", ""))
 	cmd.Stdin = nil
 	cmd.Stdout = nil
 	cmd.Stderr = nil
@@ -499,19 +527,77 @@ func cleanup(cfg *RuntimeConfig) {
 	}
 }
 
-func isMounted(dir string) bool {
-	var stat syscall.Statfs_t
-	if err := syscall.Statfs(dir, &stat); err != nil {
+func cleanup(mountDir, poolDir, workDir, doNotMount string) {
+	if doNotMount != "1" {
+		for i := range 5 {
+			if !isMounted(mountDir) {
+				break
+			}
+			cmd := exec.Command("fusermount3", "-u", mountDir)
+			cmd.Env = globalEnv
+			cmd.Run()
+			sleep(i)
+		}
+		if isMounted(mountDir) {
+			exec.Command("fusermount3", "-uz", mountDir).Run()
+		}
+	}
+	if mountDir != "" {
+		rmEmptyDir(mountDir)
+	}
+	if workDir != "" {
+		rmEmptyDir(workDir)
+	}
+	if poolDir != "" {
+		rmEmptyDir(poolDir)
+	}
+	// TODO: Make it remove other work dirs on the pool if they are empty
+}
+
+func main2() {
+	// ---- mountDir,   poolDir,    workDir,    doNotMount
+	cleanup(os.Args[2], os.Args[3], os.Args[4], os.Args[5])
+}
+
+func isMounted(path string) bool {
+	var st syscall.Statfs_t
+	if err := syscall.Statfs(path, &st); err != nil {
 		return false
 	}
 
-	parentDir := filepath.Dir(dir)
-	var parentStat syscall.Statfs_t
-	if err := syscall.Statfs(parentDir, &parentStat); err != nil {
+	parent := filepath.Dir(path)
+	if parent == path { // handles "/" or other edge cases
+		return true
+	}
+
+	var pst syscall.Statfs_t
+	if err := syscall.Statfs(parent, &pst); err != nil {
 		return false
 	}
 
-	return stat.Fsid != parentStat.Fsid
+	return st.Fsid != pst.Fsid
+}
+
+// cleanMountpointIfBroken removes stale directories / broken mounts
+func cleanMountpointIfBroken(mountDir string) error {
+	if isMounted(mountDir) {
+		return nil
+	}
+
+	if fi, err := os.Stat(mountDir); err == nil && fi.IsDir() {
+		cleanup(mountDir, "", "", "1")
+		if err := os.RemoveAll(mountDir); err != nil {
+			return fmt.Errorf("remove stale mount dir: %w", err)
+		}
+	}
+
+	return os.MkdirAll(mountDir, 0755)
+}
+
+func rmEmptyDir(dir string) {
+	if isDirEmpty(dir) {
+		os.RemoveAll(dir)
+	}
 }
 
 func isDirEmpty(dir string) bool {
@@ -558,31 +644,7 @@ func main() {
 		if len(os.Args) < 5 {
 			logError("Invalid number of arguments for --pbundle_internal_Cleanup", nil, nil)
 		}
-		mountDir := os.Args[2]
-		poolDir := os.Args[3]
-		workDir := os.Args[4]
-		doNotMount := os.Args[5]
-
-		if doNotMount != "true" {
-			for range 5 {
-				if !isMounted(mountDir) {
-					break
-				}
-				cmd := exec.Command("fusermount3", "-u", mountDir)
-				cmd.Env = globalEnv
-				cmd.Run()
-				sleep(1)
-			}
-			if isMounted(mountDir) {
-				exec.Command("fusermount3", "-uz", mountDir).Run()
-			}
-		}
-
-		os.RemoveAll(workDir)
-		if isDirEmpty(poolDir) {
-			os.RemoveAll(poolDir)
-		}
-
+		main2()
 		os.Exit(0)
 	}
 
@@ -598,7 +660,7 @@ func main() {
 		if fh != nil {
 			fh.file.Close()
 		}
-		cleanup(cfg)
+		detachedCleanup(cfg)
 		os.Exit(0)
 	}
 
@@ -620,14 +682,24 @@ func main() {
 			if err.Error() != "!no_return" {
 				logError("Runtime flag handling failed", err, cfg)
 			} else {
-				cleanup(cfg)
+				detachedCleanup(cfg)
 			}
 		}
 	} else {
 		mountOrExtract(cfg, fh)
 		_ = executeFile(args, cfg)
-		cleanup(cfg)
+		detachedCleanup(cfg)
 	}
+}
+
+func hex(b []byte) string {
+	const tbl = "0123456789abcdef"
+	dst := make([]byte, len(b)*2)
+	for i, v := range b {
+		dst[i*2] = tbl[v>>4]
+		dst[i*2+1] = tbl[v&15]
+	}
+	return string(dst)
 }
 
 func generateRandomString(length int) string {
@@ -635,7 +707,7 @@ func generateRandomString(length int) string {
 	if _, err := rand.Read(bytes); err != nil {
 		panic(err)
 	}
-	return hex.EncodeToString(bytes)
+	return hex(bytes)
 }
 
 func lookPath(file string, pathenv string) (string, error) {
@@ -725,39 +797,33 @@ func T[T any](cond bool, vtrue, vfalse T) T {
 	}
 	return vfalse
 }
-//func hiddenPath(base string, suffix string) string { return filepath.Join(filepath.Dir(base), "."+filepath.Base(base)+suffix) }
-func hiddenPath(base string, suffix string) string { return base+suffix }
 
 // --- DWARFS ---
 func getDwarfsCacheSize() string {
-    if cacheSize := getEnv(globalEnv, "DWARFS_CACHESIZE"); cacheSize != "" { return cacheSize }
-
-    memStats, err := mem.VirtualMemory()
-    if err != nil { return DWARFS_CACHESIZE }
-
-	availableMemory := memStats.Available
-    if availableMemory == 0 { availableMemory = memStats.Free }
-
-    availableMemoryMB := float64(availableMemory) / 1024.0 / 1024.0 / 1.3
-    cacheSizesMB := []uint32{64, 128, 256, 384, 512, 640, 768, 896, 1024, 1536}
-
-    for i := len(cacheSizesMB) - 1; i >= 0; i-- {
-        if availableMemoryMB >= float64(cacheSizesMB[i]) { return fmt.Sprintf("%dM", cacheSizesMB[i]) }
-    }
-    return "32M"
+	if s := os.Getenv("DWARFS_CACHESIZE"); s != "" {
+		return s
+	}
+	m, _ := mem.VirtualMemory()
+	avail := float64(m.Available) / 1024 / 1024 / 1.3
+	for _, sz := range []int{1536, 1024, 768, 512, 384, 256, 128, 64} {
+		if avail >= float64(sz) {
+			return strconv.Itoa(sz) + "M"
+		}
+	}
+	return "64M"
 }
 
 func getDwarfsWorkers(cachesize *string) string {
-    workers := getEnv(globalEnv, "DWARFS_WORKERS")
-    if workers != "" {
-        return workers
-    }
-    switch *cachesize {
-    case "1536M", "1024M":
-        return strconv.Itoa(runtime.NumCPU())
-    case "896M":
-        return "2"
-    default:
-        return "1"
-    }
+	workers := getEnv(globalEnv, "DWARFS_WORKERS")
+	if workers != "" {
+		return workers
+	}
+	switch *cachesize {
+	case "1536M", "1024M":
+		return strconv.Itoa(runtime.NumCPU())
+	case "896M":
+		return "2"
+	default:
+		return "1"
+	}
 }
