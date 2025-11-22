@@ -86,33 +86,38 @@ MOUNT_DIR="$TEMP_DIR/mount_dir"
 mkdir -p "$MOUNT_DIR"
 
 # Mount the unionfs
-# Note: Using CoW (copy-on-write) and preserving branch for better compatibility
 "$UNIONFS_BIN" -o cow,preserve_branch "$PROTO=RO:/=RW" "$MOUNT_DIR"
 
 cleanup() {
+	FUSERMOUNT="fusermount3"
+	command -v "fusermount" && FUSERMOUNT="fusermount"
+
     (
         # Attempt to unmount
-        fusermount -u "$MOUNT_DIR" 2>/dev/null
+        "$FUSERMOUNT" -u "$MOUNT_DIR" 2>/dev/null
 
         # Wait and check if the mount point is unmounted
-        for i in 1 2 3 4 5; do
-            if mountpoint -q "$MOUNT_DIR"; then
-                sleep "$i"
-            else
-                break
-            fi
-        done
+        _wait() {
+        	for i in 1 2 3 4 5; do
+        	    if mountpoint -q "$MOUNT_DIR"; then
+        	        sleep "$i"
+        	    else
+        	        break
+        	    fi
+        	done
+        }; _wait
 
         # Force unmount if still mounted
         if mountpoint -q "$MOUNT_DIR"; then
-            fusermount -uz "$MOUNT_DIR" 2>/dev/null
+            "$FUSERMOUNT" -uz "$MOUNT_DIR" 2>/dev/null
         fi
 
+        _wait
+
        	# Safe remove ops
-        if mountpoint -q "$MOUNT_DIR"; then
-            rmdir --ignore-fail-on-non-empty "$MOUNT_DIR"
-            rmdir --ignore-fail-on-non-empty "$TEMP_DIR"  
+        if ! mountpoint -q "$MOUNT_DIR"; then
             rmdir --ignore-fail-on-non-empty "$UNIONFS_DIR"
+            rmdir --ignore-fail-on-non-empty "$TEMP_DIR"  
         fi
     ) & # Run cleanup in the background
 }
@@ -145,7 +150,7 @@ UID0_GID0="$(is_enabled "UID0_GID0" 0)"
 
 # Initialize the bwrap command
 TMPDIR="${TMPDIR:-/tmp}"
-bwrap_cmd="$BWRAP_BIN --dev-bind $MOUNT_DIR / --bind-try $TMPDIR /tmp --bind-try /home /home"
+bwrap_cmd="$BWRAP_BIN --dev-bind \"$MOUNT_DIR\" / --bind-try \"$TMPDIR\" \"$TMPDIR\" --bind-try \"$HOME\" \"$HOME\""
 [ "$UID0_GID0" = "1" ] && bwrap_cmd="$bwrap_cmd --uid 0 --gid 0"
 [ "$SHARE_VAR" = "1" ] && bwrap_cmd="$bwrap_cmd --bind-try /var /var"
 [ "$SHARE_RUN" = "1" ] && bwrap_cmd="$bwrap_cmd --bind-try /run /run"
