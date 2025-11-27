@@ -80,8 +80,25 @@ _dirname() { # DIRNAME but made entirely in POSIX SH
 UNIONFS_DIR="$(_dirname "$APPDIR")/unionfs"
 mkdir -p "$UNIONFS_DIR"
 
-# Create temp directories for unionfs
-TEMP_DIR="$(mktemp -d)"
+TEMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/$name" 2>/dev/null) || unset TEMP_DIR
+if [ -z "$TEMP_DIR" ]; then
+    base="${TMPDIR:-/tmp}/.doNotDelete_youWillLoseHOME_$$"
+    n=0
+    while true; do
+        TEMP_DIR="${base}_${n}"
+        # mkdir is atomic in POSIX when used like this
+        mkdir "$TEMP_DIR" 2>/dev/null && break
+        n=$((n + 1))
+        # Sanity limit — if we ever hit this, something is horribly wrong
+        [ "$n" -gt 5 ] && { echo "Cannot create temp dir" >&2; exit 1; }
+    done
+fi
+[ -d "$TEMP_DIR" ] || { echo "Failed to create temporary directory" >&2; exit 1; }
+
+printf '%s\n' \
+    "DANGER: This directory contains a symlink or bind-mount to your HOME." \
+    "Deleting it with rm -rf will destroy your personal files." \
+    > "$TEMP_DIR/DO_NOT_DELETE_OR_YOU_WILL_LOSE_YOUR_HOME"
 MOUNT_DIR="$TEMP_DIR/mount_dir"
 mkdir -p "$MOUNT_DIR"
 
