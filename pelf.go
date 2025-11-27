@@ -1,7 +1,6 @@
 // PELF - The AppBundle format and the AppBundle Creation Tool
 // It used to stand for Pack an Elf, but we slowly evolved into a much simpler yet more featureful alternative to .AppImages
 // PELF now refers to the tool used to create .AppBundles
-//
 package main
 
 import (
@@ -376,7 +375,7 @@ func main() {
 					//// Fallback to Type II if Type I is not possible
 					//typeIOutput, err = appBundleID.Format(utils.TypeII)
 					//if err != nil {
-						return fmt.Errorf("cannot generate output filename: %v", err)
+					return fmt.Errorf("cannot generate output filename: %v", err)
 					//}
 				}
 				fsExt := ".dwfs"
