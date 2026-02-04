@@ -2,11 +2,11 @@ package utils
 
 import (
 	"fmt"
+	"io/fs"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
-	"path/filepath"
-	"io/fs"
 )
 
 // --- FS-Related functions --
@@ -76,18 +76,18 @@ const (
 )
 
 const (
-	ValidSubstr     = `^[A-Za-z0-9._]+$`
-	ValidRepoSubstr = `^[A-Za-z0-9._/\-]+$`
-	ValidNameSubstr = `^[A-Za-z0-9._/\-]+$`
+	ValidSubstr        = `^[A-Za-z0-9._]+$`
+	ValidRepoSubstr    = `^[A-Za-z0-9._/\-]+$`
+	ValidNameSubstr    = `^[A-Za-z0-9._/\-]+$`
 	ValidVersionSubstr = `^[A-Za-z0-9._]+$` // Version cannot contain hyphens
 	TypeIFormat        = `^(.+)-(\d{2}_\d{2}_\d{4}|\d{4}\d{2}\d{2}|\d{4}_\d{2}_\d{2})-([^-]+)$`
 	TypeIIFormat       = `^([^#]+)#([^:@]+)(?::([^@]+))?$`
 	TypeIIIFormat      = `^([^#]+)#([^:@]+)(?::([^@]+))?(@(?:\d{2}_\d{2}_\d{4}|\d{4}\d{2}\d{2}|\d{4}_\d{2}_\d{2}))$`
 	DateFormat         = `^(\d{2})_(\d{2})_(\d{4})$`
 	// Multiple date format support
-	TimeLayoutYYYYMMDD   = "20060102"      // YYYYMMDD
-	TimeLayoutDD_MM_YYYY = "02_01_2006"  // DD_MM_YYYY
-	TimeLayoutYYYY_MM_DD = "2006_01_02"  // YYYY_MM_DD
+	TimeLayoutYYYYMMDD   = "20060102"   // YYYYMMDD
+	TimeLayoutDD_MM_YYYY = "02_01_2006" // DD_MM_YYYY
+	TimeLayoutYYYY_MM_DD = "2006_01_02" // YYYY_MM_DD
 )
 
 var (

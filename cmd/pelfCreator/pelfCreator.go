@@ -17,11 +17,9 @@ import (
 
 	"github.com/xplshn/pelf/pkg/utils"
 
-	"github.com/go-ini/ini"
 	"github.com/mholt/archives"
 	"github.com/urfave/cli/v3"
 	"github.com/zeebo/blake3"
-	"golang.org/x/sys/unix"
 )
 
 //go:embed binaryDependencies.tar.zst
@@ -341,7 +339,7 @@ func runPelfCreator(config Config) error {
 	}
 
 	// Setup AppRun and packages
-	if err := setupAppRunAndPackages(config); err != nil {
+	if err := setupAppRunAndPackages(&config); err != nil {
 		return err
 	}
 
@@ -366,17 +364,6 @@ func runPelfCreator(config Config) error {
 			return fmt.Errorf("bundle creation failed: %v", err)
 		}
 	}
-
-	// dbg
-	//if os.Getenv("PELFCREATOR_DEPS_LS") == "1" {
-	//	files, err := os.ReadDir(config.TempDir)
-	//	if err != nil {
-	//		log.Fatal(err)
-	//	}
-	//	for i, file := range files {
-	//	    fmt.Printf("\t[%d]: %s\n", i, file.Name())
-	//	}
-	//}
 
 	fmt.Printf("Successfully created %s\n", config.OutputTo)
 	return nil
@@ -589,7 +576,7 @@ func copyFromTemp(config Config, srcRelPath, dest string, mode os.FileMode) erro
 	return nil
 }
 
-func setupAppRunAndPackages(config Config) error {
+func setupAppRunAndPackages(config *Config) error {
 	entrypointPath := filepath.Join(config.AppDir, "entrypoint")
 	if err := os.WriteFile(entrypointPath, []byte("sh"), 0755); err != nil {
 		return err
@@ -597,7 +584,7 @@ func setupAppRunAndPackages(config Config) error {
 
 	if config.Sandbox {
 		appRunPath := filepath.Join(config.AppDir, "AppRun.rootfs-based")
-		if err := copyFromTemp(config, "AppRun.rootfs-based", appRunPath, 0755); err != nil {
+		if err := copyFromTemp(*config, "AppRun.rootfs-based", appRunPath, 0755); err != nil {
 			return err
 		}
 	}
@@ -606,17 +593,17 @@ func setupAppRunAndPackages(config Config) error {
 		return err
 	}
 
-	if err := copyFromTemp(config, "AppRun.rootfs-based", filepath.Join(config.AppDir, "AppRun"), 0755); err != nil {
+	if err := copyFromTemp(*config, "AppRun.rootfs-based", filepath.Join(config.AppDir, "AppRun"), 0755); err != nil {
 		return err
 	}
 
 	pkgAddPath := filepath.Join(config.AppDir, "pkgadd.sh")
-	if err := copyFromTemp(config, "pkgadd.sh", pkgAddPath, 0755); err != nil {
+	if err := copyFromTemp(*config, "pkgadd.sh", pkgAddPath, 0755); err != nil {
 		return err
 	}
 
 	// Run pkgadd.sh
-	if err := copyFromTemp(config, "bwrap", filepath.Join(config.AppDir, "usr/bin/bwrap"), 0755); err != nil {
+	if err := copyFromTemp(*config, "bwrap", filepath.Join(config.AppDir, "usr/bin/bwrap"), 0755); err != nil {
 		return fmt.Errorf("bwrap setup failed: %v", err)
 	}
 	cmd := exec.Command(filepath.Join(config.AppDir, "AppRun"), "--Xbwrap", "--uid", "0", "--gid", "0", "--cap-add CAP_SYS_CHROOT", "--", "/app/pkgadd.sh", config.PkgAdd)
@@ -659,7 +646,7 @@ func setupAppRunAndPackages(config Config) error {
 		}
 
 		launchPath := filepath.Join(protoLocalBinDir, "LAUNCH")
-		return copyFromTemp(config, "LAUNCH-multicall.rootfs.entrypoint", launchPath, 0755)
+		return copyFromTemp(*config, "LAUNCH-multicall.rootfs.entrypoint", launchPath, 0755)
 	}
 
 	return nil
@@ -680,23 +667,18 @@ func handleDesktopFile(config Config) error {
 		return fmt.Errorf("failed to copy desktop file: %v", err)
 	}
 
-	// Parse the desktop file using ini library
-	cfg, err := ini.Load(appDirDesktopPath)
+	// Parse the desktop file using our utility
+	df, err := utils.ParseDesktopFile(appDirDesktopPath)
 	if err != nil {
 		return fmt.Errorf("failed to parse desktop file: %v", err)
 	}
 
-	// Get the [Desktop Entry] section
-	section, err := cfg.GetSection("Desktop Entry")
-	if err != nil {
-		return fmt.Errorf("no [Desktop Entry] section in desktop file: %v", err)
-	}
-
-	// Extract the Exec entry
-	executable := section.Key("Exec").String()
+	// Extract the Exec entry from [Desktop Entry] section
+	executable := df.GetValue("Desktop Entry", "Exec")
 	if executable == "" {
 		return fmt.Errorf("no Exec entry in desktop file")
 	}
+
 	// Take the first part of Exec (before arguments)
 	execParts := strings.Fields(executable)
 	if len(execParts) == 0 {
@@ -705,7 +687,7 @@ func handleDesktopFile(config Config) error {
 	executable = execParts[0]
 
 	// Extract the Icon entry
-	iconName := section.Key("Icon").String()
+	iconName := df.GetValue("Desktop Entry", "Icon")
 
 	// Update entrypoint with the executable
 	newConfig := config
@@ -824,7 +806,7 @@ func trimProtoDir(config Config) error {
 				return err
 			}
 
-			if err := copyPath(sourcePath, destPath); err != nil {
+			if err := copyDir(sourcePath, destPath); err != nil {
 				return fmt.Errorf("failed to copy %s: %v", item, err)
 			}
 		}
@@ -945,13 +927,16 @@ func copyFile(src, dest string) error {
 	return os.WriteFile(dest, data, 0644)
 }
 
-func copyPath(src, dest string) error {
+func copyDir(src, dest string) error {
 	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 
-		relPath := strings.TrimPrefix(path, src)
+		relPath, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
 		destPath := filepath.Join(dest, relPath)
 
 		if info.IsDir() {
@@ -960,14 +945,6 @@ func copyPath(src, dest string) error {
 
 		return copyFile(path, destPath)
 	})
-}
-
-func unixMachine() string {
-	var utsname unix.Utsname
-	if err := unix.Uname(&utsname); err != nil {
-		return "unknown"
-	}
-	return string(utsname.Machine[:])
 }
 
 func securePath(basePath, relativePath string) (string, error) {
@@ -1087,7 +1064,7 @@ func handleFile(f archives.FileInfo, dst string, config *Config) error {
 	}
 	defer dstFile.Close()
 
-	buf := make([]byte, 32*1024) // 32KB buffer
+	buf := make([]byte, 32*1024)
 	_, err = io.CopyBuffer(dstFile, reader, buf)
 	if err != nil {
 		return fmt.Errorf("copy: %w", err)
@@ -1139,9 +1116,4 @@ func parseTime(s string) *time.Time {
 	return &tm
 }
 
-func T[T any](cond bool, vtrue, vfalse T) T {
-	if cond {
-		return vtrue
-	}
-	return vfalse
-}
+

@@ -596,8 +596,8 @@ func TestSanitize(t *testing.T) {
 
 func TestFindFiles(t *testing.T) {
 	fsys := fstest.MapFS{
-		"root/file1.txt":           {Data: []byte("file1 content")},
-		"root/subdir/file2.conf":   {Data: []byte("file2 content")},
+		"root/file1.txt":            {Data: []byte("file1 content")},
+		"root/subdir/file2.conf":    {Data: []byte("file2 content")},
 		"root/subdir/sub/file3.yml": {Data: []byte("file3 content")},
 	}
 	tests := []struct {
