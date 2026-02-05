@@ -126,7 +126,7 @@ func loadAppStreamMetadata() error {
 	}
 
 	log.Println("Loading AppStream metadata from Flathub")
-	resp, err := http.Get("https://github.com/xplshn/dbin-metadata/raw/refs/heads/master/misc/cmd/flatpakAppStreamScrapper/appstream_metadata.msgp.zst")
+	resp, err := http.Get("https://d.xplshn.com.ar/misc/cmd/flatpakAppStreamScrapper/appstream_metadata.msgp")
 	if err != nil {
 		return fmt.Errorf("%sfailed to fetch Flathub AppStream metadata%s: %v", errorColor, resetColor, err)
 	}
@@ -137,18 +137,7 @@ func loadAppStreamMetadata() error {
 		return fmt.Errorf("%sfailed to read response body%s: %v", errorColor, resetColor, err)
 	}
 
-	zstdReader, err := zstd.NewReader(nil, zstd.WithDecoderConcurrency(1))
-	if err != nil {
-		return fmt.Errorf("%sfailed to create zstd reader%s: %v", errorColor, resetColor, err)
-	}
-	defer zstdReader.Close()
-
-	decompressed, err := zstdReader.DecodeAll(body, nil)
-	if err != nil {
-		return fmt.Errorf("%sfailed to decompress data%s: %v", errorColor, resetColor, err)
-	}
-
-	err = msgpack.Unmarshal(decompressed, &appStreamMetadata)
+	err = msgpack.Unmarshal(body, &appStreamMetadata)
 	if err != nil {
 		return fmt.Errorf("%sfailed to unmarshal Flathub AppStream metadata%s: %v", errorColor, resetColor, err)
 	}
