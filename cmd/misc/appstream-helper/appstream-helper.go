@@ -19,7 +19,6 @@ import (
 
 	"github.com/goccy/go-json"
 	"github.com/jaytaylor/html2text"
-	"github.com/klauspost/compress/zstd"
 	"github.com/shamaton/msgpack/v2"
 	"github.com/xplshn/pelf/pkg/utils"
 	"github.com/zeebo/blake3"
